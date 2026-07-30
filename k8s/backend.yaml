@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: eventoday-be
-          image: ghcr.io/half-fifty/eventoday-be:latest
+          image: ghcr.io/half-fifty/eventoday-be:d5beb6b5ba7662a7ae7adef92a003a347a84f879
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
