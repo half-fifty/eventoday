@@ -34,13 +34,15 @@ docs/   요구사항/API/테이블 명세 등 프로젝트 문서
 - Node.js 20+
 - Docker / Docker Compose
 
-### 1. 인프라 실행 (PostgreSQL, Redis)
+### 1. 환경변수 설정 및 인프라 실행 (Redis)
 
 ```bash
-docker compose up -d
+cp .env.example .env
+# .env에서 POSTGRES_PASSWORD 값을 팀 채널에서 전달받아 채워주세요.
+docker compose up -d   # Redis만 로컬에 띄웁니다
 ```
 
-기본 접속 정보는 `.env.example`을 참고하세요. 필요 시 `.env`로 복사해 값을 덮어쓸 수 있습니다.
+PostgreSQL은 팀 공유 원격 DB(`expo_platform`)를 그대로 사용합니다. 로컬에 별도로 띄우지 않습니다.
 
 ### 2. 백엔드 실행
 
