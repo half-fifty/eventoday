@@ -1,0 +1,66 @@
+### Java / Maven ###
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+*.class
+*.jar
+*.war
+*.ear
+
+### Spring Boot ###
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### IDE - IntelliJ ###
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+### IDE - Eclipse ###
+.apt_generated/
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache/
+bin/
+
+### IDE - VS Code ###
+.vscode/
+
+### 환경변수 / 민감정보 ###
+.env
+.env.*
+application-local.yml
+application-local.yaml
+application-secret.yml
+application-secret.yaml
+*.pem
+*.key
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### 로그 ###
+*.log
+logs/
+
+### Docker ###
+docker-compose.override.yml
+
+### QueryDSL 생성 파일 (JPA 사용 시) ###
+**/generated/
+**/Q*.java
+
+### 기타 ###
+*.tmp
+*.bak
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar

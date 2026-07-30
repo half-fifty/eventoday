@@ -1,0 +1,314 @@
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import Icon from "../components/Icon.jsx";
+
+const initialBooths = [
+  { id: "A01", name: "맛있는 식탁", zone: "A구역 1층", congestion: 62, interest: false, icon: "lunch_dining" },
+  { id: "A02", name: "그린 키친랩", zone: "A구역 1층", congestion: 30, interest: false, icon: "blender" },
+  { id: "A03", name: "베이크하우스", zone: "A구역 1층", congestion: 88, interest: false, icon: "bakery_dining" },
+  { id: "A04", name: "브루잉 스튜디오", zone: "A구역 2층", congestion: 45, interest: false, icon: "coffee" },
+  { id: "A05", name: "스마트키친 로보틱스", zone: "A구역 2층", congestion: 71, interest: true, icon: "smart_toy" },
+  { id: "A06", name: "콜드체인 솔루션", zone: "A구역 2층", congestion: 20, interest: false, icon: "ac_unit" },
+  { id: "A07", name: "비건 델리", zone: "B구역 1층", congestion: 55, interest: false, icon: "eco" },
+  { id: "A08", name: "프레시 로스터리", zone: "B구역 1층", congestion: 40, interest: false, icon: "coffee_maker" },
+  { id: "A09", name: "패키징 이노베이션", zone: "B구역 2층", congestion: 66, interest: false, icon: "inventory_2" },
+  { id: "A10", name: "푸드 딜리버리 테크", zone: "B구역 2층", congestion: 33, interest: false, icon: "delivery_dining" },
+];
+
+const level = (v) => (v >= 70 ? "crowded" : v >= 40 ? "normal" : "available");
+const levelLabel = (v) => (v >= 70 ? "혼잡" : v >= 40 ? "보통" : "여유");
+const levelColor = (v) => (v >= 70 ? "status-visited" : v >= 40 ? "status-pending" : "status-available");
+
+const tabButtons = [
+  { key: "map", label: "행사장 평면도", mobile: "평면도", icon: "map" },
+  { key: "booths", label: "참가 부스", mobile: "부스", icon: "storefront" },
+  { key: "popular", label: "인기 부스", mobile: "인기", icon: "bar_chart" },
+  { key: "interest", label: "관심 부스", mobile: "관심", icon: "favorite" },
+];
+
+// deterministic QR mock, same formula as original
+const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 37 + 13) % 7 < 3);
+
+export default function EventOngoing() {
+  const [booths, setBooths] = useState(initialBooths);
+  const [tab, setTab] = useState("map");
+  const [activeBoothId, setActiveBoothId] = useState(null);
+  const [boothSheetOpen, setBoothSheetOpen] = useState(false);
+  const [qrSheetOpen, setQrSheetOpen] = useState(false);
+
+  const top3 = useMemo(
+    () => [...booths].sort((a, b) => b.congestion - a.congestion).slice(0, 3),
+    [booths]
+  );
+  const interestList = booths.filter((b) => b.interest);
+  const activeBooth = booths.find((b) => b.id === activeBoothId) || null;
+
+  const openBoothSheet = (id) => {
+    setActiveBoothId(id);
+    setBoothSheetOpen(true);
+  };
+
+  const toggleInterestFromSheet = () => {
+    setBooths((prev) =>
+      prev.map((b) => (b.id === activeBoothId ? { ...b, interest: !b.interest } : b))
+    );
+  };
+
+  const boothCell = (b) => (
+    <div
+      key={b.id}
+      onClick={() => openBoothSheet(b.id)}
+      className={`booth-cell relative h-20 sm:h-24 rounded-lg border flex flex-col items-center justify-center text-center p-1 ${
+        b.interest ? "bg-primary-container text-white border-primary-focus" : "bg-white border-hairline text-secondary"
+      }`}
+    >
+      <span className={`absolute top-1 right-1 w-2 h-2 rounded-full bg-${levelColor(b.congestion)} border border-white ${level(b.congestion) === "crowded" ? "pulse" : ""}`} />
+      <Icon name={b.icon} className={`text-[18px] ${b.interest ? "text-white" : "text-primary"}`} />
+      <span className="text-[10px] font-bold mt-1">{b.id}</span>
+    </div>
+  );
+
+  return (
+    <div className="bg-surface font-body text-on-surface antialiased">
+      {/* Top Nav */}
+      <header className="fixed top-0 w-full h-[44px] z-[100] bg-black flex justify-between items-center px-lg">
+        <Link to="/" className="font-hero-display text-tagline text-white">EXPO HUB</Link>
+        <div className="flex gap-sm">
+          <button className="text-white/80 hover:text-white transition-colors"><Icon name="search" className="text-[20px]" /></button>
+          <button onClick={() => setQrSheetOpen(true)} className="text-white/80 hover:text-white transition-colors"><Icon name="qr_code_2" className="text-[20px]" /></button>
+        </div>
+      </header>
+
+      {/* Left sidebar (desktop) */}
+      <aside className="hidden md:flex flex-col fixed left-0 top-[44px] h-[calc(100vh-44px)] w-[220px] bg-white border-r border-hairline z-40 py-lg px-sm gap-1">
+        {tabButtons.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex items-center gap-sm px-md py-sm rounded-lg font-body-strong transition-colors ${
+              tab === t.key ? "text-primary-focus bg-primary-container/10" : "text-on-surface-variant hover:bg-surface-container"
+            }`}
+          >
+            <Icon name={t.icon} /> {t.label}
+          </button>
+        ))}
+        <Link to="/" className="mt-auto flex items-center gap-sm px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors">
+          <Icon name="arrow_back" /> 메인으로
+        </Link>
+      </aside>
+
+      <main className="pt-[44px] md:ml-[220px] pb-[90px] md:pb-xl">
+        {/* App Header & QR */}
+        <section className="pt-lg pb-md px-lg bg-surface-container-low">
+          <div className="max-w-[900px] mx-auto flex justify-between items-end">
+            <div>
+              <p className="text-caption text-secondary mb-1">2026.08.12 – 08.14 · 코엑스 3층 A홀</p>
+              <h1 className="font-display-lg-mobile md:font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface">2026 서울 푸드테크 박람회</h1>
+            </div>
+            <button onClick={() => setQrSheetOpen(true)} className="hidden md:flex bg-primary-container text-white px-lg py-sm rounded-full items-center gap-xs font-body-strong active:scale-95 transition-transform flex-shrink-0">
+              <Icon name="qr_code_2" fill /> 입장 QR
+            </button>
+          </div>
+          <div className="max-w-[900px] mx-auto mt-lg glass-nav border border-hairline rounded-xl p-md flex items-center justify-between flex-wrap gap-sm">
+            <div className="flex items-center gap-sm">
+              <div className="w-3 h-3 rounded-full dot-normal pulse" />
+              <span className="font-body-strong">실시간 행사장 혼잡도: 보통</span>
+            </div>
+            <div className="flex gap-xs text-caption">
+              <span className="px-sm py-1 bg-status-available/10 text-status-available font-bold rounded-full">여유</span>
+              <span className="px-sm py-1 bg-status-pending/10 text-status-pending font-bold rounded-full">보통</span>
+              <span className="px-sm py-1 bg-status-visited/10 text-status-visited font-bold rounded-full">혼잡</span>
+            </div>
+          </div>
+        </section>
+
+        {/* TAB: Floor map */}
+        {tab === "map" && (
+          <section className="py-lg px-lg max-w-[900px] mx-auto">
+            <div className="flex items-center justify-between mb-md">
+              <h2 className="font-display-md text-[20px]">행사장 배치도</h2>
+              <div className="flex bg-surface-container-high rounded-lg p-1">
+                <button className="px-md py-1 bg-white shadow-sm rounded-md text-caption font-bold text-primary">1F</button>
+                <button className="px-md py-1 text-caption text-secondary">2F</button>
+              </div>
+            </div>
+            <div className="floor-map-container bg-surface-pearl border border-hairline rounded-2xl relative overflow-hidden p-lg">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-sm">{booths.map(boothCell)}</div>
+              <div className="mt-md text-center text-caption text-ink-muted border border-dashed border-hairline rounded-lg py-sm">입구 · ENTRANCE</div>
+              <div className="absolute bottom-md right-md flex flex-col gap-xs">
+                <button className="w-9 h-9 bg-white shadow-md rounded-full flex items-center justify-center border border-hairline"><Icon name="add" className="text-[18px]" /></button>
+                <button className="w-9 h-9 bg-white shadow-md rounded-full flex items-center justify-center border border-hairline"><Icon name="remove" className="text-[18px]" /></button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-md mt-md text-caption text-on-surface-variant">
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full dot-available" />여유</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full dot-normal" />보통</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full dot-crowded" />혼잡</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-primary-container" />관심 등록</span>
+            </div>
+          </section>
+        )}
+
+        {/* TAB: Booth list */}
+        {tab === "booths" && (
+          <section className="py-lg px-lg max-w-[900px] mx-auto">
+            <h2 className="font-display-md text-[20px] mb-md">참가 부스 ({booths.length})</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-md">
+              {booths.map((b) => (
+                <div
+                  key={b.id}
+                  onClick={() => openBoothSheet(b.id)}
+                  className="bg-white border border-hairline rounded-xl overflow-hidden cursor-pointer hover:shadow-md transition-all-custom"
+                >
+                  <div className="h-20 flex items-center justify-center bg-surface-container-low relative">
+                    <Icon name={b.icon} className="text-[26px] text-primary" />
+                    <span className="absolute top-1 left-1 text-[10px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded-full">{b.id}</span>
+                  </div>
+                  <div className="p-sm">
+                    <p className="text-caption font-body-strong truncate">{b.name}</p>
+                    <p className="text-[11px] text-ink-muted">{b.zone}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* TAB: Popular */}
+        {tab === "popular" && (
+          <section className="py-lg px-lg max-w-[900px] mx-auto">
+            <h2 className="font-display-md text-[20px] mb-md">인기 부스 TOP 3</h2>
+            <div className="space-y-md">
+              {top3.map((b, i) => (
+                <div
+                  key={b.id}
+                  onClick={() => openBoothSheet(b.id)}
+                  className="flex gap-md bg-white p-md rounded-2xl border border-hairline shadow-sm cursor-pointer active:bg-surface-pearl transition-colors"
+                >
+                  <div className="w-16 h-16 rounded-lg bg-surface-container-low flex items-center justify-center flex-shrink-0 border border-hairline">
+                    <Icon name={b.icon} className="text-primary" />
+                  </div>
+                  <div className="flex-grow flex flex-col justify-center">
+                    <div className="flex items-center gap-xs mb-1">
+                      <span className="bg-primary text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded">{i + 1}</span>
+                      <span className="text-caption text-secondary">{b.zone}</span>
+                    </div>
+                    <h3 className="font-body-strong">{b.name}</h3>
+                    <p className="text-caption text-secondary">방문자 {1200 - i * 300}명</p>
+                  </div>
+                  <div className="flex items-center"><Icon name="chevron_right" className="text-secondary" /></div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* TAB: Interest */}
+        {tab === "interest" && (
+          <section className="py-lg px-lg max-w-[900px] mx-auto">
+            <h2 className="font-display-md text-[20px] mb-md">나의 관심 부스</h2>
+            {interestList.length === 0 ? (
+              <p className="text-center text-ink-muted py-xxl">
+                <Icon name="favorite_border" className="text-[32px] block mb-sm" />
+                등록한 관심 부스가 없어요
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-md">
+                {interestList.map((b) => (
+                  <div
+                    key={b.id}
+                    onClick={() => openBoothSheet(b.id)}
+                    className="bg-white border border-hairline rounded-xl overflow-hidden cursor-pointer hover:shadow-md transition-all-custom"
+                  >
+                    <div className="h-20 flex items-center justify-center bg-surface-container-low relative">
+                      <Icon name={b.icon} className="text-[26px] text-primary" />
+                      <span className="absolute top-1 right-1 text-primary"><Icon name="favorite" fill className="text-[16px]" /></span>
+                    </div>
+                    <div className="p-sm">
+                      <p className="text-caption font-body-strong truncate">{b.name}</p>
+                      <p className="text-[11px] text-ink-muted">{b.zone}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+      </main>
+
+      {/* Mobile bottom nav */}
+      <nav className="md:hidden fixed bottom-0 w-full h-[64px] bg-white border-t border-hairline flex items-center justify-around px-lg z-[100]">
+        {tabButtons.map((t) => {
+          const active = tab === t.key;
+          return (
+            <button key={t.key} onClick={() => setTab(t.key)} className={`flex flex-col items-center ${active ? "text-primary" : "text-secondary opacity-60"}`}>
+              <Icon name={t.icon} fill={active} className="text-[24px]" />
+              <span className={`text-[10px] mt-1 ${active ? "font-bold" : ""}`}>{t.mobile}</span>
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Booth detail bottom sheet */}
+      <div className={`sheet-overlay${boothSheetOpen ? " open" : ""}`}>
+        <div className="sheet-backdrop" onClick={() => setBoothSheetOpen(false)} />
+        <div className="sheet-panel max-w-[600px] mx-auto left-0 right-0">
+          <div className="w-12 h-1.5 bg-surface-variant rounded-full mx-auto mb-lg" />
+          {activeBooth && (
+            <>
+              <div className="flex justify-between items-start mb-md">
+                <div>
+                  <h3 className="font-display-md text-[24px] text-on-surface">{activeBooth.name}</h3>
+                  <p className="text-secondary text-caption">{activeBooth.id} · {activeBooth.zone}</p>
+                </div>
+                <span className={`px-sm py-1 text-caption font-bold rounded-full bg-${levelColor(activeBooth.congestion)}/10 text-${levelColor(activeBooth.congestion)}`}>
+                  {levelLabel(activeBooth.congestion)}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-sm mb-lg">
+                <div className="bg-surface-container-low p-md rounded-xl">
+                  <p className="text-caption text-secondary mb-xs">실시간 대기</p>
+                  <p className="font-display-md text-primary text-[22px]">{Math.round(activeBooth.congestion / 2)}분</p>
+                </div>
+                <div className="bg-surface-container-low p-md rounded-xl">
+                  <p className="text-caption text-secondary mb-xs">오늘 방문자</p>
+                  <p className="font-body-strong">{(1200 - activeBooth.congestion * 5).toLocaleString()}명</p>
+                </div>
+              </div>
+              <div className="flex gap-sm">
+                <button onClick={toggleInterestFromSheet} className="flex-1 border border-hairline rounded-xl py-md font-body-strong flex items-center justify-center gap-xs active:scale-95 transition-transform">
+                  {activeBooth.interest ? (
+                    <><Icon name="favorite" fill className="text-primary" /> 관심 등록됨</>
+                  ) : (
+                    <><Icon name="favorite_border" /> 관심 등록</>
+                  )}
+                </button>
+                <Link to={`/booth-detail?booth=${activeBooth.id}`} className="flex-1 bg-primary text-white rounded-xl py-md font-body-strong text-center active:scale-95 transition-transform">
+                  부스 상세·예약
+                </Link>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* QR sheet */}
+      <div className={`sheet-overlay${qrSheetOpen ? " open" : ""}`}>
+        <div className="sheet-backdrop" onClick={() => setQrSheetOpen(false)} />
+        <div className="sheet-panel max-w-[420px] mx-auto left-0 right-0 text-center">
+          <div className="w-12 h-1.5 bg-surface-variant rounded-full mx-auto mb-lg" />
+          <h3 className="font-display-md text-[20px] mb-md">입장 QR</h3>
+          <div className="bg-surface-container-low p-xl rounded-2xl inline-block mb-md">
+            <div className="grid grid-cols-10 gap-[2px] w-[160px] mx-auto">
+              {qrPixels.map((on, i) => (
+                <div key={i} className={`w-full aspect-square ${on ? "bg-black" : "bg-white"}`} />
+              ))}
+            </div>
+          </div>
+          <p className="font-body-strong">회원 입장 QR · 사용 전</p>
+          <p className="text-caption text-ink-muted mt-xs">화면 밝기를 최대로 설정하면 현장 스캔이 더 원활해요.</p>
+        </div>
+      </div>
+    </div>
+  );
+}

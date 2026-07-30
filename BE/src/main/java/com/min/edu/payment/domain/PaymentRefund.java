@@ -1,0 +1,59 @@
+package com.min.edu.payment.domain;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Table(name = "payment_refunds")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Builder
+public class PaymentRefund {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private Long id;
+
+    @Column(name = "payment_id", nullable = false)
+    private Long paymentId;
+
+    @Column(name = "exchange_code_id")
+    private Long exchangeCodeId;
+
+    @Column(name = "requester_member_id")
+    private Long requesterMemberId;
+
+    @Column(name = "refund_amount", nullable = false, precision = 12, scale = 0)
+    private BigDecimal refundAmount;
+
+    @Column(name = "reason", nullable = false, columnDefinition = "TEXT")
+    private String reason;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 30)
+    private PaymentRefundStatus status;
+
+    @Column(name = "requested_at", nullable = false)
+    private OffsetDateTime requestedAt;
+
+    @Column(name = "completed_at")
+    private OffsetDateTime completedAt;
+
+    @Column(name = "pg_cancel_key", length = 200)
+    private String pgCancelKey;
+}

@@ -1,0 +1,26 @@
+language: ko-KR
+early_access: false
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "main"
+  prompt_override: |
+    당신은 한국어를 사용하는 시니어 개발자입니다.
+    아래의 기준을 바탕으로 이 PR을 한국어로 리뷰해주세요:
+    - 로직 오류
+    - 성능 문제
+    - 코드 스타일 위반
+    - 보안 이슈
+    리뷰는 반드시 한국어로 작성해주세요. 너무 포멀하지 않아도 좋습니다.
+
+chat:
+  auto_reply: true
