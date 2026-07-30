@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eventoday-be
+  namespace: eventoday
+  labels:
+    app: eventoday-be
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eventoday-be
+  template:
+    metadata:
+      labels:
+        app: eventoday-be
+    spec:
+      containers:
+        - name: eventoday-be
+          image: ghcr.io/half-fifty/eventoday-be:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TZ
+              value: "Asia/Seoul"
+            - name: DB_URL
+              value: "jdbc:postgresql://10.0.0.31:5432/expo_platform"
+            - name: REDIS_HOST
+              value: "10.0.0.31"
+            - name: REDIS_PORT
+              value: "6379"
+          envFrom:
+            - secretRef:
+                name: eventoday-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eventoday-be
+  namespace: eventoday
+spec:
+  selector:
+    app: eventoday-be
+  ports:
+    - port: 8080
+      targetPort: 8080
