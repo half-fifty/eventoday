@@ -19,7 +19,7 @@ const ProtectedRoute = ({ children }) => {
 
   if (!isAuthenticated) {
     const redirectPath =
-      location.pathname + location.search;
+      location.pathname + location.search + location.hash;
     const loginPath =
       `/login?redirect=${encodeURIComponent(redirectPath)}`;
 

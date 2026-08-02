@@ -62,7 +62,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
 
         response.addHeader(HttpHeaders.SET_COOKIE, accessTokenCookie.toString());
         response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
-        response.sendRedirect(frontendUrl);
+        response.sendRedirect(createLoginRedirectUrl());
     }
 
     private Long getMemberId(OAuth2User oauth2User) {
@@ -99,5 +99,13 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
                 exception
             );
         }
+    }
+
+    private String createLoginRedirectUrl() {
+        if (frontendUrl.endsWith("/")) {
+            return frontendUrl + "login";
+        }
+
+        return frontendUrl + "/login";
     }
 }

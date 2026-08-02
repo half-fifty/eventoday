@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import { loginWithGoogle } from "../api/authApi.js";
@@ -8,12 +9,48 @@ const reasonMsgs = {
   reserve: "부스 예약은 회원 전용 기능이에요. 로그인 후 계속 진행할 수 있어요.",
 };
 
+const POST_LOGIN_REDIRECT_KEY = "postLoginRedirect";
+
+const getSafeRedirect = (redirect) => {
+  if (
+    typeof redirect === "string" &&
+    redirect.startsWith("/") &&
+    !redirect.startsWith("//")
+  ) {
+    return redirect;
+  }
+
+  return null;
+};
+
 export default function Login() {
   const [params] = useSearchParams();
   const { loading, isAuthenticated } = useAuth();
   const reason = params.get("reason");
+  const requestedRedirect = getSafeRedirect(
+    params.get("redirect")
+  );
+  const storedRedirect = getSafeRedirect(
+    sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY)
+  );
+  const redirectPath =
+    requestedRedirect || storedRedirect || "/mypage";
   const contextMsg =
     (reason && reasonMsgs[reason]) || "소셜 계정으로 로그인하고 회원 전용 기능을 이용하세요.";
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+    }
+  }, [isAuthenticated]);
+
+  const handleGoogleLogin = () => {
+    sessionStorage.setItem(
+      POST_LOGIN_REDIRECT_KEY,
+      redirectPath
+    );
+    loginWithGoogle();
+  };
 
   if (loading) {
     return (
@@ -24,7 +61,7 @@ export default function Login() {
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/mypage" replace />;
+    return <Navigate to={redirectPath} replace />;
   }
 
   return (
@@ -50,7 +87,7 @@ export default function Login() {
             </button>
             <button
               type="button"
-              onClick={loginWithGoogle}
+              onClick={handleGoogleLogin}
               className="group relative h-10 w-full min-w-min max-w-[400px] select-none appearance-none overflow-hidden whitespace-nowrap rounded-[20px] border border-[#747775] bg-white p-0 text-center align-middle [font-family:Roboto,Arial,sans-serif] text-[14px] tracking-[0.25px] text-[#1f1f1f] outline-none transition-[background-color,border-color,box-shadow] duration-[218ms] hover:shadow-[0_1px_2px_0_rgba(60,64,67,0.30),0_1px_3px_1px_rgba(60,64,67,0.15)] focus-visible:ring-2 focus-visible:ring-[#1a73e8] focus-visible:ring-offset-2 active:scale-[0.99] disabled:cursor-default disabled:border-[#1f1f1f1f] disabled:bg-[#ffffff61]"
             >
               <span className="absolute inset-0 opacity-0 transition-opacity duration-[218ms] group-hover:bg-[#303030] group-hover:opacity-[0.08] group-focus:bg-[#303030] group-focus:opacity-[0.12] group-active:bg-[#303030] group-active:opacity-[0.12]" />
