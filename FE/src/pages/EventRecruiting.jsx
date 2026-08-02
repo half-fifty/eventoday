@@ -1,5 +1,6 @@
 import { useNavigate, Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
+import TopNav from "../components/TopNav.jsx";
 
 const applyBooths = [
   { id: "A01", status: "assigned" }, { id: "A02", status: "assigned" }, { id: "A03", status: "pending" },
@@ -18,15 +19,7 @@ export default function EventRecruiting() {
 
   return (
     <div className="bg-surface text-on-surface">
-      {/* Top Nav */}
-      <header className="fixed top-0 w-full h-[44px] z-[100] bg-black flex justify-between items-center px-lg">
-        <Link to="/" className="font-hero-display text-tagline text-white">EXPO HUB</Link>
-        <nav className="hidden md:flex gap-xl h-full items-center">
-          <Link className="text-white/80 hover:text-white font-nav-link text-nav-link transition-colors" to="/">전체 행사</Link>
-          <Link className="text-primary-on-dark font-bold border-b-2 border-primary-on-dark pb-1 font-nav-link text-nav-link" to="/event-recruiting">부스 모집 공고</Link>
-        </nav>
-        <Link to="/login" className="bg-primary-container text-white px-md py-1.5 rounded-full text-nav-link font-nav-link active:scale-95 transition-transform">로그인</Link>
-      </header>
+      <TopNav active="recruiting" />
 
       {/* Secondary nav */}
       <nav className="sticky top-[44px] w-full h-[52px] z-[90] glass-nav border-b border-hairline flex justify-between items-center px-lg">
