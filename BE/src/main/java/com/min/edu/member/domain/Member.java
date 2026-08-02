@@ -31,7 +31,7 @@ public class Member {
     @Column(name = "email", nullable = false, unique = true, length = 255)
     private String email;
 
-    @Column(name = "nickname", nullable = false, unique = true, length = 50)
+    @Column(name = "nickname", nullable = false, length = 50)
     private String nickname;
 
     @Enumerated(EnumType.STRING)
@@ -57,4 +57,33 @@ public class Member {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public static Member createOAuthMember(
+            String email,
+            String nickname,
+            OauthProvider oauthProvider,
+            String oauthSubject,
+            OffsetDateTime now) {
+        return Member.builder()
+            .email(email)
+            .nickname(nickname)
+            .oauthProvider(oauthProvider)
+            .oauthSubject(oauthSubject)
+            .platformRole(PlatformRole.USER)
+            .status(MemberStatus.ACTIVE)
+            .lastLoginAt(now)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+    }
+
+    public void updateOAuthProfile(
+            String email,
+            String nickname,
+            OffsetDateTime loginAt) {
+        this.email = email;
+        this.nickname = nickname;
+        this.lastLoginAt = loginAt;
+        this.updatedAt = loginAt;
+    }
 }
