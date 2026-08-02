@@ -46,9 +46,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         OAuth2User oauth2User = (OAuth2User) authentication.getPrincipal();
 
         Long memberId = getMemberId(oauth2User);
-        PlatformRole platformRole = PlatformRole.valueOf(
-            oauth2User.getAttribute("platformRole")
-        );
+        PlatformRole platformRole = getPlatformRole(oauth2User);
 
         String accessToken = jwtTokenProvider.createAccessToken(
             memberId,
@@ -96,5 +94,24 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         }
 
         return Long.valueOf(String.valueOf(memberId));
+    }
+
+    private PlatformRole getPlatformRole(OAuth2User oauth2User) {
+        Object platformRole = oauth2User.getAttribute("platformRole");
+
+        if (platformRole == null) {
+            throw new IllegalStateException(
+                "OAuth 로그인 사용자 정보에 platformRole이 없습니다."
+            );
+        }
+
+        try {
+            return PlatformRole.valueOf(String.valueOf(platformRole));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException(
+                "OAuth 로그인 사용자의 platformRole이 올바르지 않습니다.",
+                exception
+            );
+        }
     }
 }
