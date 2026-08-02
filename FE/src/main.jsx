@@ -12,6 +12,8 @@ import BoothApply from "./pages/BoothApply.jsx";
 import MyPage from "./pages/MyPage.jsx";
 import OrganizerAdmin from "./pages/OrganizerAdmin.jsx";
 import PlatformAdmin from "./pages/PlatformAdmin.jsx";
+import { AuthProvider } from "./auth/AuthProvider.jsx";
+import ProtectedRoute from "./auth/ProtectedRoute.jsx";
 
 const router = createBrowserRouter([
   { path: "/", element: <Home /> },
@@ -20,13 +22,22 @@ const router = createBrowserRouter([
   { path: "/event-recruiting", element: <EventRecruiting /> },
   { path: "/booth-detail", element: <BoothDetail /> },
   { path: "/booth-apply", element: <BoothApply /> },
-  { path: "/mypage", element: <MyPage /> },
+  {
+    path: "/mypage",
+    element: (
+      <ProtectedRoute>
+        <MyPage />
+      </ProtectedRoute>
+    ),
+  },
   { path: "/organizer-admin", element: <OrganizerAdmin /> },
   { path: "/platform-admin", element: <PlatformAdmin /> },
 ]);
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <RouterProvider router={router} />
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
   </React.StrictMode>
 );
