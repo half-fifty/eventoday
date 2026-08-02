@@ -1,8 +1,6 @@
 package com.min.edu.auth.handler;
 
 import java.io.IOException;
-import java.time.Duration;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
@@ -11,6 +9,7 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
 
+import com.min.edu.auth.cookie.AuthCookieFactory;
 import com.min.edu.auth.service.RefreshTokenService;
 import com.min.edu.common.security.jwt.JwtTokenProvider;
 import com.min.edu.member.domain.PlatformRole;
@@ -24,18 +23,18 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
 
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenService refreshTokenService;
+    private final AuthCookieFactory authCookieFactory;
     private final String frontendUrl;
-    private final boolean cookieSecure;
 
     public OAuth2AuthenticationSuccessHandler(
             JwtTokenProvider jwtTokenProvider,
             RefreshTokenService refreshTokenService,
-            @Value("${app.frontend-url}") String frontendUrl,
-            @Value("${app.cookie-secure:false}") boolean cookieSecure) {
+            AuthCookieFactory authCookieFactory,
+            @Value("${app.frontend-url}") String frontendUrl) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.refreshTokenService = refreshTokenService;
+        this.authCookieFactory = authCookieFactory;
         this.frontendUrl = frontendUrl;
-        this.cookieSecure = cookieSecure;
     }
 
     @Override
@@ -56,23 +55,10 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
 
         refreshTokenService.save(memberId, refreshToken);
 
-        ResponseCookie accessTokenCookie = ResponseCookie
-            .from("accessToken", accessToken)
-            .httpOnly(true)
-            .secure(cookieSecure)
-            .sameSite("Lax")
-            .path("/")
-            .maxAge(Duration.ofMillis(jwtTokenProvider.getAccessTokenExpiration()))
-            .build();
-
-        ResponseCookie refreshTokenCookie = ResponseCookie
-            .from("refreshToken", refreshToken)
-            .httpOnly(true)
-            .secure(cookieSecure)
-            .sameSite("Lax")
-            .path("/api/auth")
-            .maxAge(Duration.ofMillis(jwtTokenProvider.getRefreshTokenExpiration()))
-            .build();
+        ResponseCookie accessTokenCookie =
+            authCookieFactory.createAccessTokenCookie(accessToken);
+        ResponseCookie refreshTokenCookie =
+            authCookieFactory.createRefreshTokenCookie(refreshToken);
 
         response.addHeader(HttpHeaders.SET_COOKIE, accessTokenCookie.toString());
         response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
