@@ -1,0 +1,100 @@
+package com.min.edu.auth.handler;
+
+import java.io.IOException;
+import java.time.Duration;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
+import org.springframework.stereotype.Component;
+
+import com.min.edu.auth.service.RefreshTokenService;
+import com.min.edu.common.security.jwt.JwtTokenProvider;
+import com.min.edu.member.domain.PlatformRole;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+@Component
+public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccessHandler {
+
+    private final JwtTokenProvider jwtTokenProvider;
+    private final RefreshTokenService refreshTokenService;
+    private final String frontendUrl;
+    private final boolean cookieSecure;
+
+    public OAuth2AuthenticationSuccessHandler(
+            JwtTokenProvider jwtTokenProvider,
+            RefreshTokenService refreshTokenService,
+            @Value("${app.frontend-url}") String frontendUrl,
+            @Value("${app.cookie-secure:false}") boolean cookieSecure) {
+        this.jwtTokenProvider = jwtTokenProvider;
+        this.refreshTokenService = refreshTokenService;
+        this.frontendUrl = frontendUrl;
+        this.cookieSecure = cookieSecure;
+    }
+
+    @Override
+    public void onAuthenticationSuccess(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            Authentication authentication) throws IOException, ServletException {
+        OAuth2User oauth2User = (OAuth2User) authentication.getPrincipal();
+
+        Long memberId = getMemberId(oauth2User);
+        PlatformRole platformRole = PlatformRole.valueOf(
+            oauth2User.getAttribute("platformRole")
+        );
+
+        String accessToken = jwtTokenProvider.createAccessToken(
+            memberId,
+            platformRole
+        );
+        String refreshToken = jwtTokenProvider.createRefreshToken(memberId);
+
+        refreshTokenService.save(memberId, refreshToken);
+
+        ResponseCookie accessTokenCookie = ResponseCookie
+            .from("accessToken", accessToken)
+            .httpOnly(true)
+            .secure(cookieSecure)
+            .sameSite("Lax")
+            .path("/")
+            .maxAge(Duration.ofMillis(jwtTokenProvider.getAccessTokenExpiration()))
+            .build();
+
+        ResponseCookie refreshTokenCookie = ResponseCookie
+            .from("refreshToken", refreshToken)
+            .httpOnly(true)
+            .secure(cookieSecure)
+            .sameSite("Lax")
+            .path("/api/auth")
+            .maxAge(Duration.ofMillis(jwtTokenProvider.getRefreshTokenExpiration()))
+            .build();
+
+        response.addHeader(HttpHeaders.SET_COOKIE, accessTokenCookie.toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
+        response.sendRedirect(frontendUrl);
+    }
+
+    private Long getMemberId(OAuth2User oauth2User) {
+        Object memberId = oauth2User.getAttribute("memberId");
+
+        if (memberId == null) {
+            throw new IllegalStateException(
+                "OAuth 로그인 사용자 정보에 memberId가 없습니다."
+            );
+        }
+
+        if (memberId instanceof Number) {
+            Number number = (Number) memberId;
+            return number.longValue();
+        }
+
+        return Long.valueOf(String.valueOf(memberId));
+    }
+}
