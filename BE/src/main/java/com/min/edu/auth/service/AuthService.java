@@ -11,6 +11,11 @@ import com.min.edu.common.security.jwt.JwtTokenProvider;
 import com.min.edu.member.domain.Member;
 import com.min.edu.member.domain.MemberStatus;
 import com.min.edu.member.repository.MemberRepository;
+import com.min.edu.organization.domain.Organization;
+import com.min.edu.organization.domain.OrganizationMember;
+import com.min.edu.organization.domain.OrganizationMemberStatus;
+import com.min.edu.organization.repository.OrganizationMemberRepository;
+import com.min.edu.organization.repository.OrganizationRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -19,6 +24,8 @@ import lombok.RequiredArgsConstructor;
 public class AuthService {
 
     private final MemberRepository memberRepository;
+    private final OrganizationRepository organizationRepository;
+    private final OrganizationMemberRepository organizationMemberRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenService refreshTokenService;
 
@@ -27,7 +34,28 @@ public class AuthService {
         Member member = memberRepository.findById(memberId)
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
-        return MemberProfileResponseDto.from(member);
+        OrganizationMember organizationMember = organizationMemberRepository
+            .findFirstByMemberIdAndStatusOrderByIdAsc(
+                memberId,
+                OrganizationMemberStatus.ACTIVE
+            )
+            .orElse(null);
+
+        if (organizationMember == null) {
+            return MemberProfileResponseDto.fromSocialMember(member);
+        }
+
+        Organization organization = organizationRepository
+            .findById(organizationMember.getOrganizationId())
+            .orElseThrow(() -> new BusinessException(
+                GlobalErrorCode.ENTITY_NOT_FOUND
+            ));
+
+        return MemberProfileResponseDto.fromBusinessMember(
+            member,
+            organization,
+            organizationMember
+        );
     }
 
     @Transactional

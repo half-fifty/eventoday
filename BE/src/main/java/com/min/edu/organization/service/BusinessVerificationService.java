@@ -24,11 +24,22 @@ public class BusinessVerificationService {
 
     public BusinessVerificationResponseDto verify(
             BusinessVerificationRequestDto request) {
+        return verify(
+            request.getBusinessNumber(),
+            request.getStartDate(),
+            request.getRepresentativeName()
+        );
+    }
+
+    public BusinessVerificationResponseDto verify(
+            String businessNumber,
+            String startDate,
+            String representativeName) {
         NtsBusinessValidationRequestDto.Business business =
             new NtsBusinessValidationRequestDto.Business(
-                request.getBusinessNumber(),
-                request.getStartDate(),
-                request.getRepresentativeName().trim()
+                businessNumber,
+                startDate,
+                representativeName.trim()
             );
 
         NtsBusinessValidationRequestDto ntsRequest =
