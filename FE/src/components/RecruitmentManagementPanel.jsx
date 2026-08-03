@@ -80,7 +80,7 @@ export default function RecruitmentManagementPanel() {
   };
 
   const handleLoadClick = () => {
-    if (!eventId) return;
+    if (!eventId || loading) return;
     setSearchParams({ eventId });
     loadRecruitment(eventId);
   };
@@ -152,7 +152,7 @@ export default function RecruitmentManagementPanel() {
           />
           <button
             onClick={handleLoadClick}
-            disabled={!eventId}
+            disabled={!eventId || loading}
             className="px-lg py-1.5 bg-primary text-white rounded-full text-caption font-body-strong disabled:opacity-40"
           >
             불러오기

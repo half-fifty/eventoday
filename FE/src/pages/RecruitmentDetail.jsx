@@ -29,6 +29,7 @@ export default function RecruitmentDetail() {
 
     setLoading(true);
     setError("");
+    setRecruitment(null);
 
     getPublicRecruitment(recruitmentId)
       .then((data) => {
