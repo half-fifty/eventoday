@@ -65,15 +65,31 @@ export default function Login() {
 
     try {
       await loginBusiness({ businessNumber, password });
-      sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, redirectPath);
-      await refreshMember();
     } catch (error) {
       setBusinessLoginError(
         error.message || "사업자 로그인에 실패했습니다."
       );
+      setIsBusinessLoginLoading(false);
+      return;
+    }
+
+    let currentMember = null;
+
+    try {
+      currentMember = await refreshMember();
+    } catch {
+      currentMember = null;
     } finally {
       setIsBusinessLoginLoading(false);
     }
+
+    if (currentMember !== null) {
+      return;
+    }
+
+    setBusinessLoginError(
+      "로그인은 완료됐지만 회원 정보를 불러오지 못했습니다. 화면을 새로고침해 주세요."
+    );
   };
 
   if (loading) {
