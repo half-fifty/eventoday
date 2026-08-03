@@ -33,7 +33,8 @@ public class JpaEventTicketReader implements EventTicketReader {
             event.getTicketSoldQuantity(),
             event.getTicketPurchaseLimit(),
             event.getTicketSalesStartAt(),
-            event.getTicketSalesEndAt()
+            event.getTicketSalesEndAt(),
+            event.getEndAt()
         );
     }
 }

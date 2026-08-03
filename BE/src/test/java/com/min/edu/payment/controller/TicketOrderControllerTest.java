@@ -3,6 +3,7 @@ package com.min.edu.payment.controller;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -62,7 +63,7 @@ class TicketOrderControllerTest {
                 org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)))
             .willReturn(response(false));
 
-        mockMvc.perform(post("/v1/events/1/ticket-orders")
+        mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
                 .content("""
                     {
@@ -104,7 +105,7 @@ class TicketOrderControllerTest {
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
-        mockMvc.perform(post("/v1/events/1/ticket-orders")
+        mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
                 .content("""
                     {
@@ -123,7 +124,7 @@ class TicketOrderControllerTest {
 
     @Test
     void createTicketOrder_returnsBadRequestWhenQuantityIsMissing() throws Exception {
-        mockMvc.perform(post("/v1/events/1/ticket-orders")
+        mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
                 .content("{}"))
             .andExpect(status().isBadRequest())
@@ -132,7 +133,7 @@ class TicketOrderControllerTest {
 
     @Test
     void createTicketOrder_returnsBadRequestWhenQuantityIsZero() throws Exception {
-        mockMvc.perform(post("/v1/events/1/ticket-orders")
+        mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
                 .content("""
                     {
@@ -151,7 +152,7 @@ class TicketOrderControllerTest {
                 org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)))
             .willThrow(new BusinessException(GlobalErrorCode.INVALID_GUEST_BUYER_INFO));
 
-        mockMvc.perform(post("/v1/events/1/ticket-orders")
+        mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
                 .content("""
                     {
@@ -170,7 +171,7 @@ class TicketOrderControllerTest {
                 org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)))
             .willThrow(new BusinessException(GlobalErrorCode.EVENT_NOT_FOUND));
 
-        mockMvc.perform(post("/v1/events/1/ticket-orders")
+        mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
                 .content("""
                     {
@@ -186,6 +187,20 @@ class TicketOrderControllerTest {
             .andExpect(jsonPath("$.code").value(GlobalErrorCode.EVENT_NOT_FOUND.getCode()));
     }
 
+    @Test
+    void createTicketOrder_doesNotExposeV1Path() throws Exception {
+        mockMvc.perform(post("/v" + "1/events/1/ticket-orders")
+                .contentType("application/json")
+                .content("""
+                    {
+                      "quantity": 1
+                    }
+                    """))
+            .andExpect(status().isInternalServerError());
+
+        verifyNoInteractions(ticketOrderService);
+    }
+
     private CreateTicketOrderResponse response(boolean paymentRequired) {
         return new CreateTicketOrderResponse(
             "EVT-20260803-A81C29F4307B",
@@ -196,6 +211,7 @@ class TicketOrderControllerTest {
             paymentRequired,
             paymentRequired ? "PENDING" : null,
             paymentRequired ? null : "CONFIRMED",
+            null,
             null,
             null
         );
