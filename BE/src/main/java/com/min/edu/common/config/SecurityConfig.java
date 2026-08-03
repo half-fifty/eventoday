@@ -12,6 +12,7 @@ import com.min.edu.common.security.handler.RestAuthenticationEntryPoint;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -44,6 +45,16 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/reissue", "/auth/logout").permitAll()
                         .requestMatchers("/auth/me").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/booth-recruitments/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/events/*/booth-recruitment/management")
+                            .authenticated()
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/events/*/booth-recruitment",
+                                "/events/*/booth-recruitment/completion",
+                                "/events/*/booth-recruitment/closure")
+                            .authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/events/*/booth-recruitment").authenticated()
                         .anyRequest().permitAll())
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo
