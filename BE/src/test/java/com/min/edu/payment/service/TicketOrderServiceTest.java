@@ -40,6 +40,7 @@ import com.min.edu.payment.event.TicketInventoryGateway;
 import com.min.edu.payment.policy.TicketOrderPolicy;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
+import com.min.edu.payment.support.OrderAccessTokenProvider;
 import com.min.edu.payment.support.OrderNoGenerator;
 
 @ExtendWith(MockitoExtension.class)
@@ -66,6 +67,9 @@ class TicketOrderServiceTest {
     @Mock
     private ExchangeCodeGenerator exchangeCodeGenerator;
 
+    @Mock
+    private OrderAccessTokenProvider orderAccessTokenProvider;
+
     private TicketOrderPolicy ticketOrderPolicy;
 
     @InjectMocks
@@ -82,7 +86,8 @@ class TicketOrderServiceTest {
             exchangeCodeRepository,
             orderNoGenerator,
             exchangeCodeGenerator,
-            ticketOrderPolicy
+            ticketOrderPolicy,
+            orderAccessTokenProvider
         );
     }
 
@@ -117,6 +122,7 @@ class TicketOrderServiceTest {
         assertThat(ticketOrder.getStatus()).isEqualTo(TicketOrderStatus.PENDING_PAYMENT.name());
         assertThat(ticketOrder.getConfirmedAt()).isNull();
         assertThat(response.getPaymentRequired()).isTrue();
+        assertThat(response.getOrderAccessToken()).isNull();
     }
 
     @Test
@@ -145,7 +151,12 @@ class TicketOrderServiceTest {
     void create_createsPaidOrderForGuest() {
         givenDefaultOrderDependencies(paidEvent());
 
-        ticketOrderService.create(
+        given(orderAccessTokenProvider.create(
+                eq("EVT-20260803-A81C29F4307B"),
+                org.mockito.ArgumentMatchers.any(OffsetDateTime.class)))
+            .willReturn("guest-order-token");
+
+        CreateTicketOrderResponse response = ticketOrderService.create(
             1L,
             null,
             guestRequest(2)
@@ -161,6 +172,7 @@ class TicketOrderServiceTest {
         assertThat(paymentOrder.getBuyerName()).isEqualTo("guest");
         assertThat(paymentOrder.getBuyerEmail()).isEqualTo("guest@example.com");
         assertThat(paymentOrder.getBuyerPhone()).isEqualTo("010-1234-5678");
+        assertThat(response.getOrderAccessToken()).isEqualTo("guest-order-token");
     }
 
     @Test
@@ -207,16 +219,22 @@ class TicketOrderServiceTest {
     void create_createsFreeOrderAndExchangeCodesForGuest() {
         givenDefaultOrderDependencies(freeEvent());
         given(exchangeCodeGenerator.generate()).willReturn("A1B2-C3D4-E5F6");
+        given(orderAccessTokenProvider.create(
+                eq("EVT-20260803-A81C29F4307B"),
+                org.mockito.ArgumentMatchers.any(OffsetDateTime.class)))
+            .willReturn("guest-order-token");
         when(exchangeCodeRepository.save(any(ExchangeCode.class)))
             .thenAnswer(invocation -> invocation.getArgument(0));
 
-        ticketOrderService.create(1L, null, guestRequest(1));
+        CreateTicketOrderResponse response =
+            ticketOrderService.create(1L, null, guestRequest(1));
 
         ArgumentCaptor<ExchangeCode> exchangeCaptor =
             ArgumentCaptor.forClass(ExchangeCode.class);
 
         verify(exchangeCodeRepository).save(exchangeCaptor.capture());
         assertThat(exchangeCaptor.getValue().getHolderMemberId()).isNull();
+        assertThat(response.getOrderAccessToken()).isEqualTo("guest-order-token");
     }
 
     @Test
@@ -339,7 +357,8 @@ class TicketOrderServiceTest {
             0,
             5,
             OffsetDateTime.now().minusHours(1),
-            OffsetDateTime.now().plusHours(1)
+            OffsetDateTime.now().plusHours(1),
+            OffsetDateTime.now().plusDays(1)
         );
     }
 }

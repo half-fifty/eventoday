@@ -27,6 +27,7 @@ public class CreateTicketOrderResponse {
     private String ticketOrderStatus;
     private OffsetDateTime expiresAt;
     private List<IssuedExchangeCodeResponse> exchangeCodes;
+    private String orderAccessToken;
 
     public static CreateTicketOrderResponse paymentPending(
             PaymentOrder paymentOrder,
@@ -41,8 +42,18 @@ public class CreateTicketOrderResponse {
             paymentOrder.getStatus(),
             null,
             paymentOrder.getExpiresAt(),
+            null,
             null
         );
+    }
+
+    public static CreateTicketOrderResponse paymentPending(
+            PaymentOrder paymentOrder,
+            TicketOrder ticketOrder,
+            String orderAccessToken) {
+        CreateTicketOrderResponse response = paymentPending(paymentOrder, ticketOrder);
+        response.orderAccessToken = orderAccessToken;
+        return response;
     }
 
     public static CreateTicketOrderResponse free(
@@ -61,7 +72,18 @@ public class CreateTicketOrderResponse {
             null,
             exchangeCodes.stream()
                 .map(IssuedExchangeCodeResponse::from)
-                .toList()
+                .toList(),
+            null
         );
+    }
+
+    public static CreateTicketOrderResponse free(
+            PaymentOrder paymentOrder,
+            TicketOrder ticketOrder,
+            List<ExchangeCode> exchangeCodes,
+            String orderAccessToken) {
+        CreateTicketOrderResponse response = free(paymentOrder, ticketOrder, exchangeCodes);
+        response.orderAccessToken = orderAccessToken;
+        return response;
     }
 }

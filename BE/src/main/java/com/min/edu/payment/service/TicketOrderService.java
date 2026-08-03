@@ -26,6 +26,7 @@ import com.min.edu.payment.event.TicketInventoryGateway;
 import com.min.edu.payment.policy.TicketOrderPolicy;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
+import com.min.edu.payment.support.OrderAccessTokenProvider;
 import com.min.edu.payment.support.OrderNoGenerator;
 
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class TicketOrderService {
     private final OrderNoGenerator orderNoGenerator;
     private final ExchangeCodeGenerator exchangeCodeGenerator;
     private final TicketOrderPolicy ticketOrderPolicy;
+    private final OrderAccessTokenProvider orderAccessTokenProvider;
 
     @Transactional
     public CreateTicketOrderResponse create(
@@ -71,6 +73,7 @@ public class TicketOrderService {
                 orderNo,
                 unitPrice,
                 totalAmount,
+                event,
                 now
             );
         }
@@ -82,6 +85,7 @@ public class TicketOrderService {
             orderNo,
             unitPrice,
             totalAmount,
+            event,
             now
         );
     }
@@ -93,6 +97,7 @@ public class TicketOrderService {
             String orderNo,
             BigDecimal unitPrice,
             BigDecimal totalAmount,
+            EventTicketSnapshot event,
             OffsetDateTime now) {
         PaymentOrder paymentOrder = paymentOrderRepository.save(
             PaymentOrder.createTicketOrder(
@@ -120,7 +125,11 @@ public class TicketOrderService {
             )
         );
 
-        return CreateTicketOrderResponse.paymentPending(paymentOrder, ticketOrder);
+        return CreateTicketOrderResponse.paymentPending(
+            paymentOrder,
+            ticketOrder,
+            createOrderAccessTokenIfGuest(buyerMemberId, orderNo, event, now)
+        );
     }
 
     private CreateTicketOrderResponse createFreeOrder(
@@ -130,6 +139,7 @@ public class TicketOrderService {
             String orderNo,
             BigDecimal unitPrice,
             BigDecimal totalAmount,
+            EventTicketSnapshot event,
             OffsetDateTime now) {
         PaymentOrder paymentOrder = paymentOrderRepository.save(
             PaymentOrder.createTicketOrder(
@@ -168,8 +178,25 @@ public class TicketOrderService {
         return CreateTicketOrderResponse.free(
             paymentOrder,
             ticketOrder,
-            exchangeCodes
+            exchangeCodes,
+            createOrderAccessTokenIfGuest(buyerMemberId, orderNo, event, now)
         );
+    }
+
+    private String createOrderAccessTokenIfGuest(
+            Long buyerMemberId,
+            String orderNo,
+            EventTicketSnapshot event,
+            OffsetDateTime now) {
+        if (buyerMemberId != null) {
+            return null;
+        }
+
+        if (!event.endAt().isAfter(now)) {
+            throw new BusinessException(GlobalErrorCode.TICKET_SALES_NOT_OPEN);
+        }
+
+        return orderAccessTokenProvider.create(orderNo, event.endAt());
     }
 
     private List<ExchangeCode> createExchangeCodes(
