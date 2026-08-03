@@ -196,7 +196,7 @@ class TicketOrderControllerTest {
                       "quantity": 1
                     }
                     """))
-            .andExpect(status().isInternalServerError());
+            .andExpect(status().isNotFound());
 
         verifyNoInteractions(ticketOrderService);
     }

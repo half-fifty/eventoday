@@ -6,6 +6,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNoResourceFoundException(
             NoResourceFoundException e) {
+        GlobalErrorCode errorCode = GlobalErrorCode.ENTITY_NOT_FOUND;
+        return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode));
+    }
+
+    @ExceptionHandler(NoHandlerFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoHandlerFoundException(
+            NoHandlerFoundException e) {
         GlobalErrorCode errorCode = GlobalErrorCode.ENTITY_NOT_FOUND;
         return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode));
     }

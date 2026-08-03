@@ -99,7 +99,7 @@ class TicketOrderQueryControllerTest {
         authenticate(10L);
 
         mockMvc.perform(get("/v1/members/me/ticket-orders"))
-            .andExpect(status().isInternalServerError());
+            .andExpect(status().isNotFound());
 
         verifyNoInteractions(ticketOrderQueryService);
     }
@@ -204,7 +204,7 @@ class TicketOrderQueryControllerTest {
         authenticate(10L);
 
         mockMvc.perform(get("/v" + "1/ticket-orders/ORDER-1"))
-            .andExpect(status().isInternalServerError());
+            .andExpect(status().isNotFound());
     }
 
     @Test
