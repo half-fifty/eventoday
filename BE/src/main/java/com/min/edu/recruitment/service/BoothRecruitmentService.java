@@ -126,6 +126,19 @@ public class BoothRecruitmentService {
         return BoothRecruitmentResponseDto.from(recruitment);
     }
 
+    @Transactional
+    public void delete(Long eventId, AuthenticatedMemberDto member) {
+        BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
+
+        requireEventManager(eventId, member);
+
+        if (recruitment.getStatus() != BoothRecruitmentStatus.BEFORE_OPEN) {
+            throw new BusinessException(GlobalErrorCode.RECRUITMENT_STATUS_TRANSITION_INVALID);
+        }
+
+        boothRecruitmentRepository.delete(recruitment);
+    }
+
     @Transactional(readOnly = true)
     public BoothRecruitmentResponseDto getManagement(Long eventId, AuthenticatedMemberDto member) {
         BoothRecruitment recruitment = getByEventIdOrThrow(eventId);

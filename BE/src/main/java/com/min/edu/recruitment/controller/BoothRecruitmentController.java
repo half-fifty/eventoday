@@ -3,6 +3,7 @@ package com.min.edu.recruitment.controller;
 import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -69,6 +70,14 @@ public class BoothRecruitmentController {
         return ApiResponse.success(
             boothRecruitmentService.update(eventId, request, member)
         );
+    }
+
+    @DeleteMapping("/events/{eventId}/booth-recruitment")
+    public ApiResponse<Void> delete(
+            @PathVariable Long eventId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        boothRecruitmentService.delete(eventId, member);
+        return ApiResponse.success();
     }
 
     // REC-API-006

@@ -9,6 +9,7 @@ import {
   getManagementRecruitment,
   createRecruitment,
   updateRecruitment,
+  deleteRecruitment,
   closeRecruitment,
   completeRecruitment,
 } from "../api/recruitmentApi.js";
@@ -146,6 +147,23 @@ export default function RecruitmentCheck() {
   const handleClose = () => runAction(() => closeRecruitment(eventId), "조기 마감 처리되었습니다.");
   const handleComplete = () => runAction(() => completeRecruitment(eventId), "완료 처리되었습니다.");
 
+  const handleDelete = async () => {
+    if (!window.confirm("이 모집 공고를 삭제할까요? 되돌릴 수 없습니다.")) return;
+
+    setManagementError("");
+    setActionMessage("");
+
+    try {
+      await deleteRecruitment(eventId);
+      setManagementResult(null);
+      setForm(EMPTY_FORM);
+      setActionMessage("삭제되었습니다.");
+      loadPublicList();
+    } catch (error) {
+      setManagementError(error instanceof ApiError ? `${error.code}: ${error.message}` : "삭제에 실패했습니다.");
+    }
+  };
+
   return (
     <div className="bg-surface text-on-surface min-h-screen">
       <TopNav active="recruiting" />
@@ -282,6 +300,13 @@ export default function RecruitmentCheck() {
                 className="border border-hairline rounded-full px-md py-1 disabled:opacity-40"
               >
                 완료 처리
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={managementResult.status !== "BEFORE_OPEN"}
+                className="border border-error text-error rounded-full px-md py-1 disabled:opacity-40 disabled:border-hairline disabled:text-ink-muted"
+              >
+                삭제
               </button>
             </div>
           )}
