@@ -18,7 +18,7 @@ const heroSlides = [
     title: "스마트팩토리 자동화 전시회",
     desc: "산업의 다음 단계를 지금 확인하세요",
     cta: "부스 모집 안내",
-    to: "/event-recruiting",
+    to: "/recruitments",
     bg: "linear-gradient(135deg,#2b5876,#4e4376)",
   },
   {
@@ -44,7 +44,7 @@ const upcoming = [
     priceCls: "",
   },
   {
-    to: "/event-recruiting",
+    to: "/recruitments",
     bg: "linear-gradient(135deg,#2b5876,#4e4376)",
     badge: { text: "부스 모집중", cls: "bg-primary-container text-white" },
     icon: "precision_manufacturing",
@@ -68,7 +68,7 @@ const upcoming = [
 ];
 
 const recruiting = [
-  { to: "/event-recruiting", badge: "마감 D-3", badgeCls: "bg-error/10 text-error", title: "스마트팩토리 자동화 전시회", desc: "산업설비·로봇 분야 모집" },
+  { to: "/recruitments", badge: "마감 D-3", badgeCls: "bg-error/10 text-error", title: "스마트팩토리 자동화 전시회", desc: "산업설비·로봇 분야 모집" },
   { to: "#", badge: "모집 D-7", badgeCls: "bg-primary-container/10 text-primary-focus", title: "2026 서울 푸드테크 박람회", desc: "식품·조리기기 분야 모집" },
   { to: "#", badge: "모집 D-14", badgeCls: "bg-primary-container/10 text-primary-focus", title: "K-뷰티 & 코스메틱 전시회", desc: "뷰티·헬스케어 분야 모집" },
 ];
@@ -214,7 +214,7 @@ export default function Home() {
           <div className="max-w-[1200px] mx-auto px-lg">
             <div className="flex items-end justify-between mb-md">
               <h2 className="font-display-md text-[22px] text-on-surface">현재 모집 중인 부스 공고</h2>
-              <Link to="/event-recruiting" className="text-caption text-primary font-body-strong">전체 보기</Link>
+              <Link to="/recruitments" className="text-caption text-primary font-body-strong">전체 보기</Link>
             </div>
             <div className="flex gap-lg overflow-x-auto hide-scrollbar pb-sm">
               {recruiting.map((r, i) => {

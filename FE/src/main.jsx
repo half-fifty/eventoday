@@ -7,6 +7,9 @@ import Home from "./pages/Home.jsx";
 import Login from "./pages/Login.jsx";
 import EventOngoing from "./pages/EventOngoing.jsx";
 import EventRecruiting from "./pages/EventRecruiting.jsx";
+import RecruitmentList from "./pages/RecruitmentList.jsx";
+import RecruitmentDetail from "./pages/RecruitmentDetail.jsx";
+import RecruitmentCheck from "./pages/RecruitmentCheck.jsx";
 import BoothDetail from "./pages/BoothDetail.jsx";
 import BoothApply from "./pages/BoothApply.jsx";
 import MyPage from "./pages/MyPage.jsx";
@@ -20,6 +23,9 @@ const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
   { path: "/event-ongoing", element: <EventOngoing /> },
   { path: "/event-recruiting", element: <EventRecruiting /> },
+  { path: "/recruitments", element: <RecruitmentList /> },
+  { path: "/recruitments/:recruitmentId", element: <RecruitmentDetail /> },
+  { path: "/recruitment-check", element: <RecruitmentCheck /> },
   { path: "/booth-detail", element: <BoothDetail /> },
   { path: "/booth-apply", element: <BoothApply /> },
   {

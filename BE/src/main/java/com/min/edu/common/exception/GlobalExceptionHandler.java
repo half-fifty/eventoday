@@ -2,6 +2,7 @@ package com.min.edu.common.exception;
 
 import com.min.edu.common.response.ApiResponse;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -29,6 +30,13 @@ public class GlobalExceptionHandler {
             .map(fieldError -> fieldError.getDefaultMessage())
             .orElse(errorCode.getMessage());
         return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode, message));
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLockingFailureException(
+            ObjectOptimisticLockingFailureException e) {
+        GlobalErrorCode errorCode = GlobalErrorCode.RECRUITMENT_CONCURRENT_MODIFICATION;
+        return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
