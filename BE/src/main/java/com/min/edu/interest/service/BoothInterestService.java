@@ -26,15 +26,7 @@ public class BoothInterestService {
     }
 
     @Transactional(readOnly = true)
-    public List<InterestBoothResponse> getMyInterests(Long memberId) {
-        return boothInterestRepository.findAllByMemberId(memberId)
-                .stream()
-                .map(interest -> InterestBoothResponse.builder()
-                        .boothId(interest.getBoothId())
-                        .displayName("부스")
-                        .shortIntro("정보")
-                        .vacancyNotificationEnabled(interest.isVacancyNotificationEnabled())
-                        .build())
-                .collect(Collectors.toList());
-    }
+public List<InterestBoothResponse> getMyInterests(Long memberId) {
+    return boothInterestRepository.findInterestBoothsByMemberId(memberId);
+}
 }
