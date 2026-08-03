@@ -23,6 +23,7 @@ public enum GlobalErrorCode {
     ORDER_ACCESS_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "TICKET_401_002", "주문 접근 토큰이 유효하지 않습니다."),
     ORDER_ACCESS_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "TICKET_401_003", "주문 접근 토큰이 만료되었습니다."),
     ORDER_ACCESS_DENIED(HttpStatus.FORBIDDEN, "TICKET_403_001", "주문 조회 권한이 없습니다."),
+    NTS_BUSINESS_API_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "ORGANIZATION_503_001", "사업자 정보 확인 서비스를 이용할 수 없습니다."),
     INVALID_GUEST_BUYER_INFO(HttpStatus.BAD_REQUEST, "TICKET_400_001", "비회원 구매자 정보가 올바르지 않습니다."),
     TICKET_PURCHASE_LIMIT_EXCEEDED(HttpStatus.UNPROCESSABLE_ENTITY, "TICKET_422_001", "티켓 구매 제한 수량을 초과했습니다."),
     TICKET_SALES_NOT_OPEN(HttpStatus.UNPROCESSABLE_ENTITY, "TICKET_422_002", "현재 티켓 판매 기간이 아닙니다."),
