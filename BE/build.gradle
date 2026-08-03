@@ -58,3 +58,20 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+// 저장소 루트의 .env(로컬 개발용 DB 비밀번호 등)를 로컬 실행 시 환경변수로 주입한다.
+// gradlew bootRun만으로는 .env가 자동으로 읽히지 않아서 별도 처리 필요.
+tasks.named('bootRun') {
+    doFirst {
+        def envFile = file("${projectDir}/../.env")
+        if (envFile.exists()) {
+            envFile.readLines().each { line ->
+                line = line.trim()
+                if (line && !line.startsWith('#') && line.contains('=')) {
+                    def (key, value) = line.split('=', 2)
+                    environment(key.trim(), value.trim())
+                }
+            }
+        }
+    }
+}
