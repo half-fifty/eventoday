@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -57,6 +58,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
         log.error("처리하지 못한 예외가 발생했습니다.", e);
         GlobalErrorCode errorCode = GlobalErrorCode.INTERNAL_SERVER_ERROR;
+        return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e) {
+        GlobalErrorCode errorCode = GlobalErrorCode.FILE_SIZE_EXCEEDED;
         return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode));
     }
 }
