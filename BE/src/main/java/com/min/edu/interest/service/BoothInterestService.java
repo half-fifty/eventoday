@@ -2,11 +2,10 @@ package com.min.edu.interest.service;
 
 import com.min.edu.interest.dto.InterestBoothResponse;
 import com.min.edu.interest.repository.BoothInterestRepository;
-import com.min.edu.booth.domain.BoothInterest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.OffsetDateTime;
+
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -14,18 +13,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional
 public class BoothInterestService {
+
     private final BoothInterestRepository boothInterestRepository;
 
     public void register(Long memberId, Long boothId) {
-        if (boothInterestRepository.existsByMemberIdAndBoothId(memberId, boothId)) {
-            return;
-        }
-        boothInterestRepository.save(BoothInterest.builder()
-                .memberId(memberId)
-                .boothId(boothId)
-                .vacancyNotificationEnabled(false)
-                .createdAt(OffsetDateTime.now())
-                .build());
+        boothInterestRepository.upsertInterest(memberId, boothId);
     }
 
     public void remove(Long memberId, Long boothId) {
@@ -34,15 +26,7 @@ public class BoothInterestService {
     }
 
     @Transactional(readOnly = true)
-    public List<InterestBoothResponse> getMyInterests(Long memberId) {
-        return boothInterestRepository.findAllByMemberId(memberId)
-                .stream()
-                .map(interest -> InterestBoothResponse.builder()
-                        .boothId(interest.getBoothId())
-                        .displayName("부스 " + interest.getBoothId())
-                        .shortIntro("설명")
-                        .vacancyNotificationEnabled(interest.isVacancyNotificationEnabled())
-                        .build())
-                .collect(Collectors.toList());
-    }
+public List<InterestBoothResponse> getMyInterests(Long memberId) {
+    return boothInterestRepository.findInterestBoothsByMemberId(memberId);
+}
 }
