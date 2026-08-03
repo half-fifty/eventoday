@@ -41,7 +41,7 @@ jobs:
       - name: Build and push FE image
         run: |
           docker build \
-            --build-arg VITE_API_URL=https://eventoday.duckdns.org/api \
+            --build-arg VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} \
             -t ghcr.io/half-fifty/eventoday-fe:${{ github.sha }} \
             -t ghcr.io/half-fifty/eventoday-fe:latest \
             -f FE/Dockerfile FE
@@ -68,6 +68,12 @@ jobs:
             --from-literal=GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
             --from-literal=GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \
             --dry-run=client -o yaml | sudo kubectl apply -f -
+
+      - name: Sync backend config env vars
+        run: |
+          sudo kubectl set env deployment/eventoday-be -n eventoday \
+            FRONTEND_URL=${{ vars.FRONTEND_URL }} \
+            COOKIE_SECURE=${{ vars.COOKIE_SECURE }}
 
       - name: Restart backend to pick up secret changes
         run: sudo kubectl rollout restart deployment/eventoday-be -n eventoday
