@@ -7,6 +7,7 @@ import Home from "./pages/Home.jsx";
 import Login from "./pages/Login.jsx";
 import EventOngoing from "./pages/EventOngoing.jsx";
 import EventRecruiting from "./pages/EventRecruiting.jsx";
+import RecruitmentCheck from "./pages/RecruitmentCheck.jsx";
 import BoothDetail from "./pages/BoothDetail.jsx";
 import BoothApply from "./pages/BoothApply.jsx";
 import MyPage from "./pages/MyPage.jsx";
@@ -20,6 +21,7 @@ const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
   { path: "/event-ongoing", element: <EventOngoing /> },
   { path: "/event-recruiting", element: <EventRecruiting /> },
+  { path: "/recruitment-check", element: <RecruitmentCheck /> },
   { path: "/booth-detail", element: <BoothDetail /> },
   { path: "/booth-apply", element: <BoothApply /> },
   {
