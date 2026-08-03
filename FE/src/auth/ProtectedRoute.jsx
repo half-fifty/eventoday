@@ -2,11 +2,12 @@ import { Navigate, useLocation } from "react-router-dom";
 
 import useAuth from "../hooks/useAuth.js";
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, roles = null }) => {
   const location = useLocation();
   const {
     loading,
     isAuthenticated,
+    member,
   } = useAuth();
 
   if (loading) {
@@ -29,6 +30,13 @@ const ProtectedRoute = ({ children }) => {
         replace
       />
     );
+  }
+
+  if (
+    Array.isArray(roles) &&
+    !roles.includes(member.platformRole)
+  ) {
+    return <Navigate to="/" replace />;
   }
 
   return children;

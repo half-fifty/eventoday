@@ -31,7 +31,14 @@ const router = createBrowserRouter([
     ),
   },
   { path: "/organizer-admin", element: <OrganizerAdmin /> },
-  { path: "/platform-admin", element: <PlatformAdmin /> },
+  {
+    path: "/platform-admin",
+    element: (
+      <ProtectedRoute roles={["PLATFORM_ADMIN"]}>
+        <PlatformAdmin />
+      </ProtectedRoute>
+    ),
+  },
 ]);
 
 ReactDOM.createRoot(document.getElementById("root")).render(
