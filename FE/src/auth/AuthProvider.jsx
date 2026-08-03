@@ -37,8 +37,11 @@ const AuthProvider = ({ children }) => {
   }, [refreshMember]);
 
   const logout = useCallback(async () => {
-    await requestLogout();
-    setMember(null);
+    try {
+      await requestLogout();
+    } finally {
+      setMember(null);
+    }
   }, []);
 
   const value = useMemo(() => {
