@@ -23,4 +23,13 @@ public interface FileStorageService {
      * @return 다운로드 가능한 URL
      */
     String getDownloadUrl(String storageKey);
+
+    /**
+     * storageKey에 해당하는 파일의 Presigned URL을 생성한다.
+     * PRIVATE 파일을 일시적으로 다운로드할 수 있는 임시 URL이다.
+     *
+     * @param storageKey 저장소 내 고유 경로
+     * @return 만료 시간이 있는 Presigned URL
+     */
+    String generatePresignedUrl(String storageKey);
 }
