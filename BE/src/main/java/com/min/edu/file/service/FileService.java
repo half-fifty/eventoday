@@ -5,6 +5,7 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.file.domain.FileAccessLevel;
 import com.min.edu.file.domain.FileAsset;
 import com.min.edu.file.dto.FileUploadResponseDto;
+import com.min.edu.file.dto.FileMetaResponseDto;
 import com.min.edu.file.repository.FileAssetRepository;
 import com.min.edu.file.storage.FileStorageService;
 import lombok.RequiredArgsConstructor;
@@ -86,5 +87,30 @@ public class FileService {
     public FileAsset getFileAsset(Long fileId) {
         return fileAssetRepository.findById(fileId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.FILE_NOT_FOUND));
+    }
+
+    /**
+     * 파일 메타정보를 조회한다.
+     * - PUBLIC 파일: 로그인 회원 누구나 조회 가능
+     * - PRIVATE 파일: 업로드한 본인만 조회 가능
+     *
+     * @param fileId    조회할 파일 ID
+     * @param memberId  현재 로그인 회원 ID
+     * @return 파일 메타정보 + 다운로드 URL
+     */
+    @Transactional(readOnly = true)
+    public FileMetaResponseDto getFileMeta(Long fileId, Long memberId) {
+        FileAsset fileAsset = fileAssetRepository.findById(fileId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.FILE_NOT_FOUND));
+
+        // PRIVATE 파일은 업로드한 본인만 접근 가능
+        if (fileAsset.getAccessLevel() == FileAccessLevel.PRIVATE
+                && !fileAsset.getUploadedBy().equals(memberId)) {
+            throw new BusinessException(GlobalErrorCode.FILE_ACCESS_DENIED);
+        }
+
+        String downloadUrl = fileStorageService.getDownloadUrl(fileAsset.getStorageKey());
+
+        return FileMetaResponseDto.of(fileAsset, downloadUrl);
     }
 }
