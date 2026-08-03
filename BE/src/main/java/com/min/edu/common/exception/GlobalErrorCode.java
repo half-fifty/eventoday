@@ -27,7 +27,10 @@ public enum GlobalErrorCode {
     EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "EVENT_404_001", "행사를 찾을 수 없습니다."),
     ORDER_NUMBER_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "TICKET_500_001", "주문번호 생성에 실패했습니다."),
     EXCHANGE_CODE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "ADMISSION_500_001", "교환 코드 생성에 실패했습니다."),
-    INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_500", "서버 내부 오류가 발생했습니다.");
+    INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_500", "서버 내부 오류가 발생했습니다."),
+    RECRUITMENT_PERIOD_INVALID(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_001", "모집 종료일은 시작일 이후여야 합니다."),
+    RECRUITMENT_ALREADY_EXISTS(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_002", "이미 모집 공고가 등록된 행사입니다."),
+    RECRUITMENT_STATUS_TRANSITION_INVALID(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_003", "허용되지 않는 상태 변경입니다.");
 
     private final HttpStatus status;
     private final String code;
