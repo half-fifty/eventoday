@@ -16,7 +16,7 @@ public class ExchangeCodeGenerator {
 
     private static final int MAX_RETRY_COUNT = 5;
     private static final int CODE_GROUP_COUNT = 3;
-    private static final int CODE_GROUP_LENGTH = 4;
+    private static final int CODE_GROUP_LENGTH = 6;
 
     private final ExchangeCodeRepository exchangeCodeRepository;
     private final SecureRandom secureRandom = new SecureRandom();

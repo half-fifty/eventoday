@@ -17,7 +17,7 @@ import lombok.RequiredArgsConstructor;
 public class OrderNoGenerator {
 
     private static final int MAX_RETRY_COUNT = 5;
-    private static final int RANDOM_HEX_LENGTH = 12;
+    private static final int RANDOM_HEX_LENGTH = 16;
     private static final DateTimeFormatter DATE_FORMATTER =
         DateTimeFormatter.BASIC_ISO_DATE;
 

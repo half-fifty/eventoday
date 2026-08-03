@@ -26,7 +26,7 @@ public enum GlobalErrorCode {
     ENTITY_NOT_FOUND(HttpStatus.NOT_FOUND, "COMMON_404", "요청한 리소스를 찾을 수 없습니다."),
     EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "EVENT_404_001", "행사를 찾을 수 없습니다."),
     ORDER_NUMBER_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "TICKET_500_001", "주문번호 생성에 실패했습니다."),
-    EXCHANGE_CODE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "EXCHANGE_CODE_GENERATION_FAILED", "교환 코드 생성에 실패했습니다."),
+    EXCHANGE_CODE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "ADMISSION_500_001", "교환 코드 생성에 실패했습니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_500", "서버 내부 오류가 발생했습니다.");
 
     private final HttpStatus status;

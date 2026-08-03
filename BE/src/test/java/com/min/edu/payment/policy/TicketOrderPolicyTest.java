@@ -156,6 +156,41 @@ class TicketOrderPolicyTest {
     }
 
     @Test
+    void validate_failsWhenGuestBuyerPhoneContainsOnlyHyphens() {
+        assertBusinessException(
+            new CreateTicketOrderRequest(
+                1,
+                new GuestBuyerRequest("guest", "guest@example.com", "----")),
+            null,
+            GlobalErrorCode.INVALID_GUEST_BUYER_INFO
+        );
+    }
+
+    @Test
+    void validate_passesWhenGuestBuyerPhoneHasHyphens() {
+        assertThatCode(() -> ticketOrderPolicy.validate(
+                null,
+                new CreateTicketOrderRequest(
+                    1,
+                    new GuestBuyerRequest("guest", "guest@example.com", "02-1234-5678")),
+                event(EventStatus.PUBLISHED, null, null, 10),
+                OffsetDateTime.now()))
+            .doesNotThrowAnyException();
+    }
+
+    @Test
+    void validate_passesWhenGuestBuyerPhoneHasOnlyDigits() {
+        assertThatCode(() -> ticketOrderPolicy.validate(
+                null,
+                new CreateTicketOrderRequest(
+                    1,
+                    new GuestBuyerRequest("guest", "guest@example.com", "01012345678")),
+                event(EventStatus.PUBLISHED, null, null, 10),
+                OffsetDateTime.now()))
+            .doesNotThrowAnyException();
+    }
+
+    @Test
     void validate_passesForMemberWithoutBuyer() {
         assertThatCode(() -> ticketOrderPolicy.validate(
                 1L,

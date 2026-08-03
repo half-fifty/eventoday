@@ -19,7 +19,7 @@ public class TicketOrderPolicy {
     private static final Pattern EMAIL_PATTERN =
         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final Pattern PHONE_PATTERN =
-        Pattern.compile("^[0-9-]+$");
+        Pattern.compile("^(?:\\d{2,3}-?\\d{3,4}-?\\d{4})$");
 
     public void validate(
             Long buyerMemberId,
