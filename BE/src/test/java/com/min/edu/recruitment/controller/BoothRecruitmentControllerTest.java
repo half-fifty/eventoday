@@ -212,6 +212,82 @@ class BoothRecruitmentControllerTest {
             .andExpect(jsonPath("$.data.status").value("COMPLETED"));
     }
 
+    @Test
+    void BEFORE_OPEN_상태의_상세조회는_404이고_공개된_후에는_조회된다() throws Exception {
+        String createResponse = mockMvc.perform(post("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        long recruitmentId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
+
+        mockMvc.perform(get("/booth-recruitments/{recruitmentId}", recruitmentId))
+            .andExpect(status().isNotFound());
+
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment/closure", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/booth-recruitments/{recruitmentId}", recruitmentId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.id").value(recruitmentId))
+            .andExpect(jsonPath("$.data.status").value("CLOSED"));
+    }
+
+    @Test
+    void 담당자는_모집공고를_수정할_수_있다() throws Exception {
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isOk());
+
+        OffsetDateTime newStart = OffsetDateTime.now().plusDays(2);
+        OffsetDateTime newEnd = OffsetDateTime.now().plusDays(20);
+        String updateJson = objectMapper.writeValueAsString(new java.util.LinkedHashMap<String, Object>() {{
+            put("title", "수정된 모집 공고");
+            put("recruitmentStartAt", newStart.toString());
+            put("recruitmentEndAt", newEnd.toString());
+            put("participantTarget", "제조업 기업");
+            put("contactName", "김수정");
+            put("contactEmail", "updated@example.com");
+            put("contactPhone", "010-9999-8888");
+        }});
+
+        mockMvc.perform(patch("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.title").value("수정된 모집 공고"))
+            .andExpect(jsonPath("$.data.contactName").value("김수정"));
+
+        mockMvc.perform(get("/events/{eventId}/booth-recruitment/management", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.title").value("수정된 모집 공고"));
+    }
+
+    @Test
+    void 담당자가_아니면_수정할_수_없다() throws Exception {
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + outsiderToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("COMMON_403"));
+    }
+
     private String createRequestJson() throws Exception {
         OffsetDateTime start = OffsetDateTime.now().plusDays(1);
         OffsetDateTime end = OffsetDateTime.now().plusDays(10);
