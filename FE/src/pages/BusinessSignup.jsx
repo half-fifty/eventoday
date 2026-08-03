@@ -1,20 +1,87 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { verifyBusiness } from "../api/businessAuthApi.js";
 
 const inputClassName =
-  "h-[48px] w-full rounded-xl border border-hairline bg-white px-md text-on-surface outline-none placeholder:text-ink-muted focus:border-primary-focus focus:ring-1 focus:ring-primary-focus";
+  "h-[48px] w-full rounded-xl border border-hairline bg-white px-md text-on-surface outline-none placeholder:text-ink-muted focus:border-primary-focus focus:ring-1 focus:ring-primary-focus disabled:cursor-not-allowed disabled:bg-surface-container disabled:text-secondary";
 
 export default function BusinessSignup() {
   const [organizationType, setOrganizationType] = useState("ORGANIZER");
+  const [businessNumber, setBusinessNumber] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [representativeName, setRepresentativeName] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [verificationStatus, setVerificationStatus] = useState("idle");
+  const [verificationMessage, setVerificationMessage] = useState("");
+  const isBusinessVerified = verificationStatus === "success";
 
-  const handleVerification = () => {
-    window.alert("국세청 사업자 진위 확인 API 구현 후 연결됩니다.");
+  const resetVerification = () => {
+    setVerificationStatus("idle");
+    setVerificationMessage("");
+  };
+
+  const handleBusinessNumberChange = (event) => {
+    setBusinessNumber(event.target.value.replace(/\D/g, "").slice(0, 10));
+    resetVerification();
+  };
+
+  const handleStartDateChange = (event) => {
+    setStartDate(event.target.value.replace(/\D/g, "").slice(0, 8));
+    resetVerification();
+  };
+
+  const handleRepresentativeNameChange = (event) => {
+    setRepresentativeName(event.target.value);
+    resetVerification();
+  };
+
+  const handleVerification = async () => {
+    if (
+      businessNumber.length !== 10 ||
+      startDate.length !== 8 ||
+      representativeName.trim() === ""
+    ) {
+      setVerificationStatus("error");
+      setVerificationMessage("사업자등록번호, 개업일자, 대표자명을 확인해 주세요.");
+      return;
+    }
+
+    setVerificationStatus("loading");
+    setVerificationMessage("");
+
+    try {
+      const result = await verifyBusiness({
+        businessNumber,
+        startDate,
+        representativeName: representativeName.trim(),
+      });
+
+      if (result.valid && result.active) {
+        setVerificationStatus("success");
+        setVerificationMessage("사업자 인증이 완료됐습니다.");
+        return;
+      }
+
+      setVerificationStatus("error");
+      setVerificationMessage(
+        result.valid
+          ? "현재 영업 중인 사업자가 아닙니다."
+          : "입력한 사업자 정보를 확인할 수 없습니다."
+      );
+    } catch (error) {
+      setVerificationStatus("error");
+      setVerificationMessage(error.message || "사업자 인증 중 오류가 발생했습니다.");
+    }
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
+
+    if (verificationStatus !== "success") {
+      window.alert("사업자 인증을 먼저 완료해 주세요.");
+      return;
+    }
 
     if (password !== passwordConfirm) {
       window.alert("비밀번호가 일치하지 않습니다.");
@@ -66,19 +133,63 @@ export default function BusinessSignup() {
               <label className="block sm:col-span-2">
                 <span className="mb-xs block text-caption font-semibold">사업자등록번호</span>
                 <div className="flex gap-xs">
-                  <input name="businessNumber" inputMode="numeric" placeholder="숫자 10자리" required className={inputClassName} />
-                  <button type="button" onClick={handleVerification} className="shrink-0 rounded-xl bg-on-primary-fixed px-lg text-caption font-semibold text-white">인증하기</button>
+                  <input
+                    name="businessNumber"
+                    inputMode="numeric"
+                    placeholder="숫자 10자리"
+                    value={businessNumber}
+                    onChange={handleBusinessNumberChange}
+                    disabled={isBusinessVerified}
+                    required
+                    className={inputClassName}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVerification}
+                    disabled={verificationStatus === "loading" || isBusinessVerified}
+                    className="shrink-0 rounded-xl bg-on-primary-fixed px-lg text-caption font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {verificationStatus === "loading"
+                      ? "확인 중"
+                      : isBusinessVerified
+                        ? "인증 완료"
+                        : "인증하기"}
+                  </button>
                 </div>
               </label>
               <label className="block">
                 <span className="mb-xs block text-caption font-semibold">개업일자</span>
-                <input name="startDate" type="text" inputMode="numeric" placeholder="YYYYMMDD" required className={inputClassName} />
+                <input
+                  name="startDate"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="YYYYMMDD"
+                  value={startDate}
+                  onChange={handleStartDateChange}
+                  disabled={isBusinessVerified}
+                  required
+                  className={inputClassName}
+                />
               </label>
               <label className="block">
                 <span className="mb-xs block text-caption font-semibold">대표자명</span>
-                <input name="representativeName" type="text" placeholder="홍길동" required className={inputClassName} />
+                <input
+                  name="representativeName"
+                  type="text"
+                  placeholder="홍길동"
+                  value={representativeName}
+                  onChange={handleRepresentativeNameChange}
+                  disabled={isBusinessVerified}
+                  required
+                  className={inputClassName}
+                />
               </label>
             </div>
+            {verificationMessage && (
+              <p className={`mt-md text-[12px] ${verificationStatus === "success" ? "text-status-available" : "text-error"}`}>
+                {verificationMessage}
+              </p>
+            )}
           </section>
 
           <section className="rounded-2xl border border-hairline bg-white p-xl shadow-sm">
