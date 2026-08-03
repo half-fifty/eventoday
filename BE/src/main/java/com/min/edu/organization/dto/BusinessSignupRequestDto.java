@@ -1,7 +1,10 @@
 package com.min.edu.organization.dto;
 
+import java.nio.charset.StandardCharsets;
+
 import com.min.edu.organization.domain.OrganizationType;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -45,4 +48,13 @@ public class BusinessSignupRequestDto {
     @NotBlank(message = "비밀번호를 입력해 주세요.")
     @Size(min = 8, max = 72, message = "비밀번호는 8자 이상 72자 이하여야 합니다.")
     private String password;
+
+    @AssertTrue(message = "비밀번호는 UTF-8 기준 72바이트 이하여야 합니다.")
+    public boolean isPasswordUtf8LengthValid() {
+        if (password == null) {
+            return true;
+        }
+
+        return password.getBytes(StandardCharsets.UTF_8).length <= 72;
+    }
 }
