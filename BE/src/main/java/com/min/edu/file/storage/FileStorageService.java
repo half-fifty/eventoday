@@ -32,4 +32,11 @@ public interface FileStorageService {
      * @return 만료 시간이 있는 Presigned URL
      */
     String generatePresignedUrl(String storageKey);
+
+    /**
+     * storageKey에 해당하는 파일을 저장소에서 삭제한다.
+     *
+     * @param storageKey 저장소 내 고유 경로
+     */
+    void delete(String storageKey);
 }

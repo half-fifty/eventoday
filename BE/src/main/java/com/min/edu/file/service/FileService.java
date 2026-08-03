@@ -9,6 +9,7 @@ import com.min.edu.file.dto.FileUploadResponseDto;
 import com.min.edu.file.repository.FileAssetRepository;
 import com.min.edu.file.storage.FileStorageService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -16,17 +17,25 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.OffsetDateTime;
 import java.util.Set;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FileService {
 
-    // 실행 파일을 포함한 허용 금지 MIME 타입 목록
-    private static final Set<String> BLOCKED_MIME_TYPES = Set.of(
-            "application/x-msdownload",
-            "application/x-executable",
-            "application/x-sh",
-            "application/x-bat",
-            "application/x-msdos-program"
+    // 허용된 MIME 타입 화이트리스트 (블랙리스트는 Content-Type 조작으로 우회 가능)
+    private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/webp",
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    );
+
+    // 허용된 파일 확장자 (MIME 타입 우회 2차 방어)
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
+            "jpg", "jpeg", "png", "gif", "webp", "pdf", "doc", "docx"
     );
 
     // 파일 용도별 최대 크기: 기본 10MB
@@ -55,27 +64,44 @@ public class FileService {
             throw new BusinessException(GlobalErrorCode.FILE_SIZE_EXCEEDED);
         }
 
-        // 실행 파일 및 허용되지 않는 MIME 타입 차단
+        // MIME 타입 화이트리스트 검증
         String mimeType = file.getContentType();
-        if (mimeType == null || BLOCKED_MIME_TYPES.contains(mimeType)) {
+        if (mimeType == null || !ALLOWED_MIME_TYPES.contains(mimeType)) {
+            throw new BusinessException(GlobalErrorCode.INVALID_FILE_TYPE);
+        }
+
+        // 파일 확장자 검증
+        String originalName = file.getOriginalFilename();
+        if (originalName == null || originalName.lastIndexOf('.') == -1) {
+            throw new BusinessException(GlobalErrorCode.INVALID_FILE_TYPE);
+        }
+        String ext = originalName.substring(originalName.lastIndexOf('.') + 1).toLowerCase();
+        if (!ALLOWED_EXTENSIONS.contains(ext)) {
             throw new BusinessException(GlobalErrorCode.INVALID_FILE_TYPE);
         }
 
         // S3 업로드 후 storageKey 획득
         String storageKey = fileStorageService.upload(file);
 
-        // 파일 메타정보 DB 저장
-        FileAsset fileAsset = FileAsset.builder()
-                .uploadedBy(uploaderId)
-                .storageKey(storageKey)
-                .originalName(file.getOriginalFilename())
-                .mimeType(mimeType)
-                .fileSize(file.getSize())
-                .accessLevel(accessLevel)
-                .createdAt(OffsetDateTime.now())
-                .build();
+        // 파일 메타정보 DB 저장 — 실패 시 S3 고아 파일 보상 삭제
+        FileAsset saved;
+        try {
+            FileAsset fileAsset = FileAsset.builder()
+                    .uploadedBy(uploaderId)
+                    .storageKey(storageKey)
+                    .originalName(file.getOriginalFilename())
+                    .mimeType(mimeType)
+                    .fileSize(file.getSize())
+                    .accessLevel(accessLevel)
+                    .createdAt(OffsetDateTime.now())
+                    .build();
 
-        FileAsset saved = fileAssetRepository.save(fileAsset);
+            saved = fileAssetRepository.save(fileAsset);
+        } catch (Exception e) {
+            log.error("DB 저장 실패로 S3 파일 보상 삭제. storageKey={}", storageKey, e);
+            fileStorageService.delete(storageKey);
+            throw new BusinessException(GlobalErrorCode.FILE_UPLOAD_FAILED);
+        }
 
         return FileUploadResponseDto.from(saved);
     }
