@@ -1,5 +1,5 @@
 package com.min.edu.interest.controller;
-
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import com.min.edu.interest.dto.InterestBoothResponse;
 import com.min.edu.interest.service.BoothInterestService;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +16,7 @@ public class BoothInterestController {
     @PostMapping("/{boothId}/interests")
     public ResponseEntity<Void> register(
             @PathVariable Long boothId,
-            @RequestParam Long memberId) {
+            @AuthenticationPrincipal Long memberId) {
         boothInterestService.register(memberId, boothId);
         return ResponseEntity.ok().build();
     }
