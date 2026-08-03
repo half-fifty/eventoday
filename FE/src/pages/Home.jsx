@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import TopNav from "../components/TopNav.jsx";
 import Footer from "../components/Footer.jsx";
 import Icon from "../components/Icon.jsx";
+import { eventApi } from "../api/eventApi.js";
+import { advertisementApi } from "../api/advertisementApi.js";
 
 const heroSlides = [
   {
@@ -88,7 +90,49 @@ const notices = [
 
 export default function Home() {
   const [heroIdx, setHeroIdx] = useState(0);
-  const slideCount = heroSlides.length;
+  const [events, setEvents] = useState([]);
+  const [activeAds, setActiveAds] = useState([]);
+  const [keyword, setKeyword] = useState("");
+  const [eventType, setEventType] = useState("");
+  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [eventError, setEventError] = useState("");
+  const displayedSlides = activeAds.length > 0 ? activeAds.map((ad) => ({
+    tag: ad.eventId ? "행사 광고" : "부스 광고",
+    title: ad.adText || "진행 중인 행사 광고",
+    desc: ad.eventId ? `행사 #${ad.eventId}` : `부스 #${ad.boothId}`,
+    cta: "자세히 보기",
+    to: ad.eventId ? `/event-ongoing?eventId=${ad.eventId}` : "/booth-detail",
+    bg: "linear-gradient(135deg,#2b5876,#4e4376)",
+  })) : heroSlides;
+  const slideCount = displayedSlides.length;
+  const displayedEvents = events.map((event) => ({
+    to: `/events/${event.id}`,
+    bg: "linear-gradient(135deg,#11998e,#38ef7d)",
+    badge: { text: new Date(event.startAt) <= new Date() ? "진행중" : "예정", cls: "bg-status-assigned text-white" },
+    icon: "event",
+    category: event.eventType,
+    title: event.name,
+    place: `${event.venueName} · ${new Date(event.startAt).toLocaleDateString("ko-KR")}`,
+    price: Number(event.ticketPrice) === 0 ? "무료" : `${Number(event.ticketPrice).toLocaleString("ko-KR")}원`,
+    priceCls: Number(event.ticketPrice) === 0 ? "text-primary" : "",
+  }));
+
+  const loadEvents = async (filters = {}) => {
+    setLoadingEvents(true);
+    setEventError("");
+    try {
+      const [eventResult, adResult] = await Promise.all([
+        eventApi.list({ size: 6, sort: "startAt,asc", ...filters }),
+        advertisementApi.active(),
+      ]);
+      setEvents(eventResult?.data?.content || []);
+      setActiveAds(adResult?.data || []);
+    } catch (error) {
+      setEventError(error.message || "행사 정보를 불러오지 못했습니다.");
+    } finally {
+      setLoadingEvents(false);
+    }
+  };
 
   const moveHero = (dir) => setHeroIdx((i) => (i + dir + slideCount) % slideCount);
 
@@ -96,6 +140,13 @@ export default function Home() {
     const id = setInterval(() => setHeroIdx((i) => (i + 1) % slideCount), 5000);
     return () => clearInterval(id);
   }, [slideCount]);
+
+  useEffect(() => { loadEvents(); }, []);
+
+  const searchEvents = () => loadEvents({
+    ...(keyword.trim() ? { keyword: keyword.trim() } : {}),
+    ...(eventType ? { eventType } : {}),
+  });
 
   return (
     <div className="bg-surface text-on-surface">
@@ -112,7 +163,7 @@ export default function Home() {
             className="flex h-full transition-transform duration-500 ease-out"
             style={{ transform: `translateX(-${heroIdx * 100}%)` }}
           >
-            {heroSlides.map((s, i) => (
+            {displayedSlides.map((s, i) => (
               <div
                 key={i}
                 className="min-w-full h-full flex items-center justify-center text-center px-lg"
@@ -142,7 +193,7 @@ export default function Home() {
             <Icon name="chevron_right" />
           </button>
           <div className="absolute bottom-lg left-0 right-0 flex justify-center gap-xs">
-            {heroSlides.map((_, i) => (
+            {displayedSlides.map((_, i) => (
               <div key={i} className={i === heroIdx ? "w-5 h-2 rounded-full bg-white transition-all" : "w-2 h-2 rounded-full bg-white/40 transition-all"} />
             ))}
           </div>
@@ -154,14 +205,14 @@ export default function Home() {
           <div className="bg-white border border-hairline rounded-2xl p-lg shadow-sm">
             <div className="flex items-center gap-sm bg-surface-pearl border border-hairline rounded-full px-lg h-[48px] mb-md">
               <Icon name="search" className="text-ink-muted text-[20px]" />
-              <input type="text" placeholder="행사명으로 검색" className="flex-1 bg-transparent outline-none text-body" />
+              <input value={keyword} onChange={(event) => setKeyword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && searchEvents()} type="text" placeholder="행사명으로 검색" className="flex-1 bg-transparent outline-none text-body" />
             </div>
             <div className="flex flex-wrap gap-sm">
               <select className="h-[40px] rounded-full border border-hairline px-md text-caption bg-white outline-none focus:border-primary-focus">
                 <option>지역 전체</option><option>서울</option><option>경기</option><option>인천</option><option>대구</option><option>부산</option>
               </select>
-              <select className="h-[40px] rounded-full border border-hairline px-md text-caption bg-white outline-none focus:border-primary-focus">
-                <option>행사 유형</option><option>박람회</option><option>전시회</option><option>세미나</option><option>컨퍼런스</option>
+              <select value={eventType} onChange={(event) => setEventType(event.target.value)} className="h-[40px] rounded-full border border-hairline px-md text-caption bg-white outline-none focus:border-primary-focus">
+                <option value="">행사 유형</option><option value="EXPO">박람회</option><option value="EXHIBITION">전시회</option><option value="SEMINAR">세미나</option><option value="CONFERENCE">컨퍼런스</option>
               </select>
               <select className="h-[40px] rounded-full border border-hairline px-md text-caption bg-white outline-none focus:border-primary-focus">
                 <option>무료·유료</option><option>무료</option><option>유료</option>
@@ -169,7 +220,7 @@ export default function Home() {
               <button className="h-[40px] px-md rounded-full border border-hairline text-caption font-body-strong hover:bg-surface-container transition-colors flex items-center gap-1">
                 <Icon name="storefront" className="text-[16px]" /> 부스 모집 중만
               </button>
-              <button className="h-[40px] px-xl rounded-full bg-primary-container text-white text-caption font-body-strong active:scale-95 transition-transform ml-auto">검색</button>
+              <button onClick={searchEvents} className="h-[40px] px-xl rounded-full bg-primary-container text-white text-caption font-body-strong active:scale-95 transition-transform ml-auto">검색</button>
             </div>
           </div>
         </section>
@@ -181,7 +232,10 @@ export default function Home() {
             <a href="#" className="text-caption text-primary font-body-strong">전체 보기</a>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-lg">
-            {upcoming.map((e, i) => {
+            {loadingEvents && <p className="col-span-full text-caption text-ink-muted">행사를 불러오는 중입니다.</p>}
+            {eventError && <p className="col-span-full text-caption text-error">{eventError}</p>}
+            {!loadingEvents && !eventError && displayedEvents.length === 0 && <p className="col-span-full text-caption text-ink-muted">조건에 맞는 공개 행사가 없습니다.</p>}
+            {(displayedEvents.length > 0 ? displayedEvents : (!loadingEvents && eventError ? upcoming : [])).map((e, i) => {
               const inner = (
                 <>
                   <div className="h-[150px] relative flex items-center justify-center text-white" style={{ background: e.bg }}>

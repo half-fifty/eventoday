@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
+import { eventApi } from "../api/eventApi.js";
+import { advertisementApi } from "../api/advertisementApi.js";
 
 const navItems = [
   { key: "dashboard", label: "전체 대시보드", icon: "dashboard" },
@@ -30,25 +32,77 @@ const accTabs = ["전체", "행사 개최자", "참가기업", "회원 관람객
 export default function PlatformAdmin() {
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [requests, setRequests] = useState(initialRequests);
+  const [requests, setRequests] = useState([]);
   const [accounts, setAccounts] = useState(initialAccounts);
   const [accFilter, setAccFilter] = useState("전체");
-  const [ads, setAds] = useState(initialAds);
+  const [ads, setAds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const pendingReq = useMemo(() => requests.filter((r) => r.status === "pending"), [requests]);
   const activeAccounts = accounts.filter((a) => a.active).length;
   const pendingAds = ads.filter((a) => a.status === "pending").length;
   const accountList = accFilter === "전체" ? accounts : accounts.filter((a) => a.role === accFilter);
 
-  const approveReq = (id) => setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status: "approved" } : r)));
-  const rejectReq = (id) => {
+  const loadAdminData = async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const [eventResult, adResult] = await Promise.all([
+        eventApi.adminList({ size: 100, sort: "createdAt,desc" }),
+        advertisementApi.adminList({ size: 100, sort: "createdAt,desc" }),
+      ]);
+      setRequests((eventResult?.data?.content || []).map((event) => ({
+        id: event.id,
+        name: event.name,
+        organizer: `조직 #${event.organizerOrganizationId || "-"}`,
+        submitted: event.updatedAt ? new Date(event.updatedAt).toLocaleDateString("ko-KR") : "-",
+        place: `${event.venueName || "장소 미정"} · ${event.address || ""}`,
+        booth: event.boothRecruitmentEnabled ? "부스 모집 사용" : "부스 모집 미사용",
+        status: event.status === "APPROVED" || event.status === "PUBLISHED" ? "approved"
+          : event.status === "REJECTED" ? "rejected" : "pending",
+        reason: event.rejectionReason,
+      })));
+      setAds((adResult?.data?.content || []).map((ad) => ({
+        id: ad.id,
+        target: ad.eventId ? `행사 #${ad.eventId}` : `부스 #${ad.boothId}`,
+        type: ad.eventId ? "행사 광고" : "부스 광고",
+        amount: ad.eventId ? "결제 연동" : "무료",
+        payment: ["PAID", "REVIEW_PENDING", "APPROVED", "SCHEDULED", "ACTIVE", "ENDED"].includes(ad.status)
+          ? "confirmed" : "pending",
+        status: ["APPROVED", "SCHEDULED", "ACTIVE", "ENDED"].includes(ad.status)
+          ? "approved" : ad.status === "REJECTED" ? "rejected" : "pending",
+        rawStatus: ad.status,
+      })));
+    } catch (error) {
+      setLoadError(error.message || "관리 데이터를 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadAdminData(); }, []);
+
+  const approveReq = async (id) => {
+    await eventApi.approve(id);
+    await loadAdminData();
+  };
+  const rejectReq = async (id) => {
     const reason = window.prompt("반려 사유를 입력하세요");
     if (!reason) return;
-    setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status: "rejected", reason } : r)));
+    await eventApi.reject(id, reason);
+    await loadAdminData();
   };
   const toggleAccount = (id) => setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, active: !a.active } : a)));
-  const confirmPayment = (id) => setAds((prev) => prev.map((a) => (a.id === id ? { ...a, payment: "confirmed" } : a)));
-  const decideAd = (id, decision) => setAds((prev) => prev.map((a) => (a.id === id ? { ...a, status: decision } : a)));
+  const decideAd = async (id, decision) => {
+    if (decision === "approved") await advertisementApi.approve(id);
+    else {
+      const reason = window.prompt("반려 사유를 입력하세요");
+      if (!reason) return;
+      await advertisementApi.reject(id, reason);
+    }
+    await loadAdminData();
+  };
 
   const gotoPage = (key) => {
     setPage(key);
@@ -92,6 +146,12 @@ export default function PlatformAdmin() {
         </header>
 
         <div className="p-lg md:p-xl space-y-section max-w-[1200px] mx-auto">
+          {loading && <div className="bg-white border border-hairline rounded-xl p-lg text-caption text-ink-muted">관리 데이터를 불러오는 중입니다.</div>}
+          {loadError && (
+            <div className="bg-error/10 border border-error/20 rounded-xl p-lg text-caption text-error flex justify-between">
+              <span>{loadError}</span><button onClick={loadAdminData} className="font-body-strong">다시 시도</button>
+            </div>
+          )}
           {/* DASHBOARD */}
           {page === "dashboard" && (
             <section className="space-y-lg">
@@ -217,7 +277,7 @@ export default function PlatformAdmin() {
                             <button onClick={() => decideAd(a.id, "rejected")} className="w-8 h-8 rounded-full bg-status-visited/10 text-status-visited flex items-center justify-center"><Icon name="close" className="text-[16px]" /></button>
                           </div>
                         ) : (
-                          <button onClick={() => confirmPayment(a.id)} className="px-md py-1.5 border border-hairline rounded-full text-caption font-body-strong">입금 확인</button>
+                          <span className="px-md py-1.5 border border-hairline rounded-full text-caption text-ink-muted">결제 대기</span>
                         )
                       ) : (
                         <span className={`text-[11px] font-bold px-sm py-1 rounded-full ${a.status === "approved" ? "bg-status-available/10 text-status-available" : "bg-status-visited/10 text-status-visited"}`}>

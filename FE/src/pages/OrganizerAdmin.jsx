@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import RecruitmentManagementPanel from "../components/RecruitmentManagementPanel.jsx";
+import { eventApi } from "../api/eventApi.js";
 
 const navItems = [
   { key: "dashboard", label: "대시보드", icon: "dashboard" },
@@ -30,6 +31,43 @@ export default function OrganizerAdmin() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [applications, setApplications] = useState(initialApplications);
   const [assignBooths, setAssignBooths] = useState(initialAssignBooths);
+  const query = new URLSearchParams(window.location.search);
+  const organizationId = query.get("organizationId") || localStorage.getItem("organizationId");
+  const [managedEvents, setManagedEvents] = useState([]);
+  const [selectedEventId, setSelectedEventId] = useState(query.get("eventId") || "");
+  const [eventLoadError, setEventLoadError] = useState("");
+  const [submittingEvent, setSubmittingEvent] = useState(false);
+
+  useEffect(() => {
+    if (!organizationId) {
+      setEventLoadError("URL에 organizationId가 필요합니다.");
+      return;
+    }
+    eventApi.organizationList(organizationId, { size: 100, sort: "createdAt,desc" })
+      .then((result) => {
+        const list = result?.data?.content || [];
+        setManagedEvents(list);
+        if (!selectedEventId && list.length > 0) setSelectedEventId(String(list[0].id));
+      })
+      .catch((error) => setEventLoadError(error.message || "행사 목록을 불러오지 못했습니다."));
+  }, [organizationId]);
+
+  const selectedEvent = managedEvents.find((event) => String(event.id) === String(selectedEventId));
+
+  const submitSelectedEvent = async () => {
+    if (!selectedEventId) return;
+    setSubmittingEvent(true);
+    setEventLoadError("");
+    try {
+      await eventApi.submit(selectedEventId);
+      setManagedEvents((previous) => previous.map((event) =>
+        String(event.id) === String(selectedEventId) ? { ...event, status: "SUBMITTED" } : event));
+    } catch (error) {
+      setEventLoadError(error.message || "승인 요청에 실패했습니다.");
+    } finally {
+      setSubmittingEvent(false);
+    }
+  };
 
   const pending = useMemo(() => applications.filter((a) => a.status === "pending"), [applications]);
   const assignedCount = assignBooths.filter((b) => b.status === "assigned").length;
@@ -107,7 +145,7 @@ export default function OrganizerAdmin() {
             <button onClick={() => setSidebarOpen(true)} className="md:hidden"><Icon name="menu" /></button>
             <h2 className="font-display-md text-[20px] text-on-surface">{navItems.find((n) => n.key === page).label}</h2>
           </div>
-          <button className="px-md py-xs bg-primary text-white text-caption rounded-full font-body-strong active:scale-95 transition-transform">+ 새 전시회 등록</button>
+          <Link to={`/organizer-admin/events/new?organizationId=${organizationId || ""}`} className="px-md py-xs bg-primary text-white text-caption rounded-full font-body-strong active:scale-95 transition-transform">+ 새 전시회 등록</Link>
         </header>
 
         <div className="p-lg md:p-xl space-y-section max-w-[1200px] mx-auto">
@@ -209,14 +247,26 @@ export default function OrganizerAdmin() {
           {page === "approval" && (
             <section className="space-y-lg">
               <h1 className="font-display-lg text-[26px]">행사 등록 승인 요청</h1>
+              <div className="bg-white border border-hairline rounded-xl p-lg">
+                <label className="text-caption text-ink-muted block mb-xs">승인 요청 행사</label>
+                <select value={selectedEventId} onChange={(event) => setSelectedEventId(event.target.value)} className="w-full h-10 border border-hairline rounded-lg px-md bg-white">
+                  <option value="">행사를 선택하세요</option>
+                  {managedEvents.map((event) => <option key={event.id} value={event.id}>{event.name} · {event.status}</option>)}
+                </select>
+                {eventLoadError && <p className="text-caption text-error mt-sm">{eventLoadError}</p>}
+                {selectedEventId && <div className="flex gap-sm mt-md">
+                  <Link to={`/organizer-admin/events/${selectedEventId}/edit?organizationId=${organizationId || ""}`} className="text-caption px-md py-xs border border-hairline rounded-full">행사 수정</Link>
+                  <Link to={`/organizer-admin/events/${selectedEventId}/members?organizationId=${organizationId || ""}`} className="text-caption px-md py-xs border border-hairline rounded-full">담당자 관리</Link>
+                </div>}
+              </div>
               <div className="bg-primary-fixed/20 border border-primary-fixed rounded-xl p-lg flex items-center justify-between gap-lg flex-wrap">
                 <div>
-                  <p className="font-body-strong">아직 승인 요청 가능 조건이 충족되지 않았습니다</p>
+                  <p className="font-body-strong">{selectedEvent ? `${selectedEvent.name} · ${selectedEvent.status}` : "행사를 선택해주세요"}</p>
                   <p className="text-caption text-ink-muted mt-1">
                     {allReviewed ? "모든 신청서 검토가 완료되어 승인 요청이 가능합니다." : `검토되지 않은 신청서가 ${pending.length}건 있습니다.`}
                   </p>
                 </div>
-                <button disabled={!allReviewed} className="px-xl py-sm bg-primary text-white rounded-full font-body-strong disabled:opacity-40 disabled:cursor-not-allowed">승인 요청하기</button>
+                <button onClick={submitSelectedEvent} disabled={!allReviewed || !selectedEventId || submittingEvent || !["PREPARING", "REJECTED"].includes(selectedEvent?.status)} className="px-xl py-sm bg-primary text-white rounded-full font-body-strong disabled:opacity-40 disabled:cursor-not-allowed">{submittingEvent ? "요청 중..." : "승인 요청하기"}</button>
               </div>
               <div className="bg-white border border-hairline rounded-xl divide-y divide-divider-soft">
                 <div className="flex items-center gap-sm p-lg"><span className="w-6 h-6 rounded-full bg-status-available text-white flex items-center justify-center"><Icon name="check" className="text-[14px]" /></span>행사 기본정보 등록 <span className="text-ink-muted text-caption ml-auto">완료</span></div>

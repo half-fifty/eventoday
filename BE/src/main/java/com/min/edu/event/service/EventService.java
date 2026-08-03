@@ -1,0 +1,274 @@
+package com.min.edu.event.service;
+
+import com.min.edu.auth.dto.AuthenticatedMemberDto;
+import com.min.edu.booth.domain.BoothRecruitmentStatus;
+import com.min.edu.common.exception.BusinessException;
+import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.domain.Event;
+import com.min.edu.event.domain.EventMember;
+import com.min.edu.event.domain.EventRole;
+import com.min.edu.event.domain.EventStatus;
+import com.min.edu.event.dto.EventDtos;
+import com.min.edu.event.repository.EventMemberRepository;
+import com.min.edu.event.repository.EventBoothRecruitmentRepository;
+import com.min.edu.event.repository.EventOrganizationMemberRepository;
+import com.min.edu.event.repository.EventOrganizationRepository;
+import com.min.edu.event.repository.EventRepository;
+import com.min.edu.member.domain.PlatformRole;
+import com.min.edu.organization.domain.OrganizationMemberStatus;
+import com.min.edu.organization.domain.OrganizationRole;
+import jakarta.persistence.criteria.Predicate;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional(readOnly = true)
+public class EventService {
+    private static final List<OrganizationRole> MANAGER_ROLES =
+            List.of(OrganizationRole.OWNER, OrganizationRole.MANAGER);
+
+    private final EventRepository eventRepository;
+    private final EventMemberRepository eventMemberRepository;
+    private final EventOrganizationMemberRepository organizationMemberRepository;
+    private final EventOrganizationRepository organizationRepository;
+    private final EventBoothRecruitmentRepository boothRecruitmentRepository;
+
+    public EventService(EventRepository eventRepository, EventMemberRepository eventMemberRepository,
+            EventOrganizationMemberRepository organizationMemberRepository,
+            EventOrganizationRepository organizationRepository,
+            EventBoothRecruitmentRepository boothRecruitmentRepository) {
+        this.eventRepository = eventRepository;
+        this.eventMemberRepository = eventMemberRepository;
+        this.organizationMemberRepository = organizationMemberRepository;
+        this.organizationRepository = organizationRepository;
+        this.boothRecruitmentRepository = boothRecruitmentRepository;
+    }
+
+    public List<EventDtos.ManagedOrganization> findManagedOrganizations(AuthenticatedMemberDto actor) {
+        requireAuthenticated(actor);
+        List<Long> organizationIds = organizationMemberRepository
+                .findAllByMemberIdAndStatusAndOrganizationRoleIn(
+                        actor.getMemberId(), OrganizationMemberStatus.ACTIVE, MANAGER_ROLES)
+                .stream().map(member -> member.getOrganizationId()).toList();
+        if (organizationIds.isEmpty()) return List.of();
+        return organizationRepository.findAllByIdInOrderByNameAsc(organizationIds).stream()
+                .map(EventDtos.ManagedOrganization::from).toList();
+    }
+
+    public Page<EventDtos.Summary> findPublicEvents(String keyword, String eventType,
+            OffsetDateTime startFrom, OffsetDateTime startTo, Pageable pageable) {
+        Specification<Event> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("status"), EventStatus.PUBLISHED));
+            if (keyword != null && !keyword.isBlank()) {
+                predicates.add(cb.like(cb.lower(root.get("name")), "%" + keyword.toLowerCase() + "%"));
+            }
+            if (eventType != null && !eventType.isBlank()) {
+                predicates.add(cb.equal(root.get("eventType"), eventType));
+            }
+            if (startFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("startAt"), startFrom));
+            if (startTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("startAt"), startTo));
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
+        return eventRepository.findAll(spec, pageable).map(EventDtos.Summary::from);
+    }
+
+    public EventDtos.PublicDetail getPublicEvent(Long eventId) {
+        Event event = getEvent(eventId);
+        if (event.getStatus() != EventStatus.PUBLISHED) throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
+        return EventDtos.PublicDetail.from(event);
+    }
+
+    public Page<EventDtos.Summary> findOrganizationEvents(Long organizationId,
+            AuthenticatedMemberDto actor, Pageable pageable) {
+        requireOrganizationMember(organizationId, actor);
+        Specification<Event> spec = (root, query, cb) ->
+                cb.equal(root.get("organizerOrganizationId"), organizationId);
+        return eventRepository.findAll(spec, pageable).map(EventDtos.Summary::from);
+    }
+
+    public EventDtos.Detail getManagedEvent(Long organizationId, Long eventId,
+            AuthenticatedMemberDto actor) {
+        requireOrganizationMember(organizationId, actor);
+        Event event = getEvent(eventId);
+        requireEventOrganization(event, organizationId);
+        return EventDtos.Detail.from(event);
+    }
+
+    @Transactional
+    public EventDtos.Detail create(Long organizationId, EventDtos.SaveRequest request,
+            AuthenticatedMemberDto actor) {
+        requireOrganizationManager(organizationId, actor);
+        validateRequest(request);
+        OffsetDateTime now = OffsetDateTime.now();
+        Event event = Event.builder()
+                .organizerOrganizationId(organizationId).name(request.name())
+                .eventType(request.eventType()).shortDescription(request.shortDescription())
+                .description(request.description()).venueName(request.venueName()).address(request.address())
+                .postalCode(request.postalCode()).addressDetail(request.addressDetail())
+                .latitude(request.latitude()).longitude(request.longitude()).kakaoPlaceId(request.kakaoPlaceId())
+                .startAt(request.startAt()).endAt(request.endAt())
+                .ticketSalesStartAt(request.ticketSalesStartAt()).ticketSalesEndAt(request.ticketSalesEndAt())
+                .ticketPrice(request.ticketPrice()).ticketTotalQuantity(request.ticketTotalQuantity())
+                .ticketSoldQuantity(0).ticketPurchaseLimit(request.ticketPurchaseLimit())
+                .representativeFileId(request.representativeFileId()).status(EventStatus.PREPARING)
+                .boothRecruitmentEnabled(request.boothRecruitmentEnabled())
+                .venueMapEnabled(request.venueMapEnabled()).boothReservationEnabled(request.boothReservationEnabled())
+                .noShowGraceMinutes(request.noShowGraceMinutes()).createdAt(now).updatedAt(now).build();
+        return EventDtos.Detail.from(eventRepository.save(event));
+    }
+
+    @Transactional
+    public EventDtos.Detail update(Long organizationId, Long eventId, EventDtos.SaveRequest request,
+            AuthenticatedMemberDto actor) {
+        requireOrganizationManager(organizationId, actor);
+        validateRequest(request);
+        Event event = getEvent(eventId);
+        requireEventOrganization(event, organizationId);
+        event.update(request.name(), request.eventType(), request.shortDescription(), request.description(),
+                request.venueName(), request.address(), request.postalCode(), request.addressDetail(),
+                request.latitude(), request.longitude(), request.kakaoPlaceId(),
+                request.startAt(), request.endAt(),
+                request.ticketSalesStartAt(), request.ticketSalesEndAt(), request.ticketPrice(),
+                request.ticketTotalQuantity(), request.ticketPurchaseLimit(), request.representativeFileId(),
+                request.boothRecruitmentEnabled(), request.venueMapEnabled(), request.boothReservationEnabled(),
+                request.noShowGraceMinutes(), OffsetDateTime.now());
+        return EventDtos.Detail.from(event);
+    }
+
+    @Transactional public void submit(Long eventId, AuthenticatedMemberDto actor) {
+        Event event = getEvent(eventId); requireEventManager(event, actor);
+        if (event.isBoothRecruitmentEnabled()
+                && !boothRecruitmentRepository.existsByEventIdAndStatus(
+                        eventId, BoothRecruitmentStatus.COMPLETED)) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+        transition(() -> event.submit(OffsetDateTime.now()));
+    }
+    @Transactional public void publish(Long eventId, AuthenticatedMemberDto actor) {
+        Event event = getEvent(eventId); requireEventManager(event, actor);
+        transition(() -> event.publish(OffsetDateTime.now()));
+    }
+    @Transactional public void cancel(Long eventId, AuthenticatedMemberDto actor) {
+        Event event = getEvent(eventId); requireEventManager(event, actor);
+        transition(() -> event.cancel(OffsetDateTime.now()));
+    }
+    @Transactional public void approve(Long eventId, AuthenticatedMemberDto actor) {
+        requireAdmin(actor); Event event = getEvent(eventId);
+        transition(() -> event.approve(OffsetDateTime.now()));
+    }
+    @Transactional public void reject(Long eventId, String reason, AuthenticatedMemberDto actor) {
+        requireAdmin(actor); Event event = getEvent(eventId);
+        transition(() -> event.reject(reason, OffsetDateTime.now()));
+    }
+    @Transactional public void suspend(Long eventId, AuthenticatedMemberDto actor) {
+        requireAdmin(actor); Event event = getEvent(eventId);
+        transition(() -> event.suspend(OffsetDateTime.now()));
+    }
+
+    public Page<EventDtos.Summary> findAdminEvents(EventStatus status, AuthenticatedMemberDto actor,
+            Pageable pageable) {
+        requireAdmin(actor);
+        Specification<Event> spec = status == null ? null :
+                (root, query, cb) -> cb.equal(root.get("status"), status);
+        return eventRepository.findAll(spec, pageable).map(EventDtos.Summary::from);
+    }
+
+    public EventDtos.Detail getAdminEvent(Long eventId, AuthenticatedMemberDto actor) {
+        requireAdmin(actor); return EventDtos.Detail.from(getEvent(eventId));
+    }
+
+    public List<EventDtos.MemberResponse> getMembers(Long eventId, AuthenticatedMemberDto actor) {
+        Event event = getEvent(eventId); requireEventManager(event, actor);
+        return eventMemberRepository.findAllByEventIdOrderByCreatedAtAsc(eventId).stream()
+                .map(EventDtos.MemberResponse::from).toList();
+    }
+
+    @Transactional
+    public EventDtos.MemberResponse addMember(Long eventId, EventDtos.MemberRequest request,
+            AuthenticatedMemberDto actor) {
+        Event event = getEvent(eventId); requireEventManager(event, actor);
+        EventMember member = eventMemberRepository.findByEventIdAndMemberId(eventId, request.memberId())
+                .orElseGet(() -> EventMember.builder().eventId(eventId).memberId(request.memberId())
+                        .createdAt(OffsetDateTime.now()).build());
+        member.update(request.eventRole(), true);
+        return EventDtos.MemberResponse.from(eventMemberRepository.save(member));
+    }
+
+    @Transactional
+    public EventDtos.MemberResponse updateMember(Long eventId, Long memberId,
+            EventDtos.MemberUpdateRequest request, AuthenticatedMemberDto actor) {
+        Event event = getEvent(eventId); requireEventManager(event, actor);
+        EventMember member = getMember(eventId, memberId);
+        member.update(request.eventRole(), request.active());
+        return EventDtos.MemberResponse.from(member);
+    }
+
+    @Transactional
+    public void removeMember(Long eventId, Long memberId, AuthenticatedMemberDto actor) {
+        Event event = getEvent(eventId); requireEventManager(event, actor);
+        eventMemberRepository.delete(getMember(eventId, memberId));
+    }
+
+    private Event getEvent(Long eventId) {
+        return eventRepository.findById(eventId).orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+    }
+    private EventMember getMember(Long eventId, Long memberId) {
+        return eventMemberRepository.findByEventIdAndMemberId(eventId, memberId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+    }
+    private void requireEventOrganization(Event event, Long organizationId) {
+        if (!event.getOrganizerOrganizationId().equals(organizationId)) throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+    }
+    private void requireOrganizationMember(Long organizationId, AuthenticatedMemberDto actor) {
+        requireAuthenticated(actor);
+        if (!organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatus(
+                organizationId, actor.getMemberId(), OrganizationMemberStatus.ACTIVE))
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+    }
+    private void requireOrganizationManager(Long organizationId, AuthenticatedMemberDto actor) {
+        requireAuthenticated(actor);
+        if (!organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
+                organizationId, actor.getMemberId(), OrganizationMemberStatus.ACTIVE, MANAGER_ROLES))
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+    }
+    private void requireEventManager(Event event, AuthenticatedMemberDto actor) {
+        requireAuthenticated(actor);
+        boolean organizerManager = organizationMemberRepository
+                .existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
+                        event.getOrganizerOrganizationId(), actor.getMemberId(),
+                        OrganizationMemberStatus.ACTIVE, MANAGER_ROLES);
+        boolean assigned = eventMemberRepository.existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
+                event.getId(), actor.getMemberId(), EventRole.EVENT_MANAGER);
+        if (!organizerManager && !assigned) throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+    }
+    private void requireAdmin(AuthenticatedMemberDto actor) {
+        requireAuthenticated(actor);
+        if (actor.getPlatformRole() != PlatformRole.PLATFORM_ADMIN) throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+    }
+    private void requireAuthenticated(AuthenticatedMemberDto actor) {
+        if (actor == null) throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+    }
+    private void validateRequest(EventDtos.SaveRequest request) {
+        if (!request.startAt().isBefore(request.endAt())) throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        if (request.ticketSalesStartAt() != null && request.ticketSalesEndAt() != null
+                && !request.ticketSalesStartAt().isBefore(request.ticketSalesEndAt()))
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        if (request.ticketTotalQuantity() < request.ticketPurchaseLimit())
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+    }
+
+    private void transition(Runnable action) {
+        try {
+            action.run();
+        } catch (IllegalStateException exception) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+}

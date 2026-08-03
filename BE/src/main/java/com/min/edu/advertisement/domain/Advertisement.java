@@ -71,4 +71,63 @@ public class Advertisement {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public void update(Long bannerFileId, String adText, OffsetDateTime startAt,
+            OffsetDateTime endAt, OffsetDateTime now) {
+        if (status != AdvertisementStatus.PAYMENT_PENDING
+                && status != AdvertisementStatus.REVIEW_PENDING) {
+            throw new IllegalStateException("심사 전 광고만 수정할 수 있습니다.");
+        }
+        this.bannerFileId = bannerFileId;
+        this.adText = adText;
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.updatedAt = now;
+    }
+
+    public void approve(Long reviewerId, OffsetDateTime now) {
+        if (status != AdvertisementStatus.REVIEW_PENDING && status != AdvertisementStatus.PAID) {
+            throw new IllegalStateException("심사 대기 또는 결제 완료 광고만 승인할 수 있습니다.");
+        }
+        this.status = startAt.isAfter(now) ? AdvertisementStatus.SCHEDULED : AdvertisementStatus.ACTIVE;
+        this.reviewedBy = reviewerId;
+        this.approvedAt = now;
+        this.rejectionReason = null;
+        this.updatedAt = now;
+    }
+
+    public void reject(Long reviewerId, String reason, OffsetDateTime now) {
+        if (status != AdvertisementStatus.REVIEW_PENDING && status != AdvertisementStatus.PAID) {
+            throw new IllegalStateException("심사 가능한 광고가 아닙니다.");
+        }
+        this.status = AdvertisementStatus.REJECTED;
+        this.reviewedBy = reviewerId;
+        this.rejectionReason = reason;
+        this.updatedAt = now;
+    }
+
+    public void cancel(OffsetDateTime now) {
+        if (status == AdvertisementStatus.ACTIVE || status == AdvertisementStatus.ENDED
+                || status == AdvertisementStatus.CANCELLED) {
+            throw new IllegalStateException("현재 상태의 광고는 취소할 수 없습니다.");
+        }
+        this.status = AdvertisementStatus.CANCELLED;
+        this.updatedAt = now;
+    }
+
+    public void activate(OffsetDateTime now) {
+        if (status != AdvertisementStatus.SCHEDULED) {
+            throw new IllegalStateException("예약된 광고만 활성화할 수 있습니다.");
+        }
+        this.status = AdvertisementStatus.ACTIVE;
+        this.updatedAt = now;
+    }
+
+    public void end(OffsetDateTime now) {
+        if (status != AdvertisementStatus.ACTIVE && status != AdvertisementStatus.SCHEDULED) {
+            throw new IllegalStateException("승인된 광고만 종료할 수 있습니다.");
+        }
+        this.status = AdvertisementStatus.ENDED;
+        this.updatedAt = now;
+    }
 }
