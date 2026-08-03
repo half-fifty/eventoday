@@ -64,4 +64,29 @@ public class PaymentOrder {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public static PaymentOrder createTicketOrder(
+            String orderNo,
+            Long buyerMemberId,
+            String buyerName,
+            String buyerEmail,
+            String buyerPhone,
+            BigDecimal totalAmount,
+            PaymentOrderStatus status,
+            OffsetDateTime expiresAt,
+            OffsetDateTime now) {
+        return PaymentOrder.builder()
+            .orderNo(orderNo)
+            .buyerMemberId(buyerMemberId)
+            .buyerName(buyerName)
+            .buyerEmail(buyerEmail)
+            .buyerPhone(buyerPhone)
+            .orderType(PaymentOrderType.EVENT_TICKET)
+            .totalAmount(totalAmount)
+            .status(status.name())
+            .expiresAt(expiresAt)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+    }
 }

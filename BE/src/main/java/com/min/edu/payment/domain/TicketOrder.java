@@ -51,4 +51,24 @@ public class TicketOrder {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public static TicketOrder create(
+            Long paymentOrderId,
+            Long eventId,
+            BigDecimal unitPrice,
+            Integer totalQuantity,
+            TicketOrderStatus status,
+            OffsetDateTime confirmedAt,
+            OffsetDateTime now) {
+        return TicketOrder.builder()
+            .paymentOrderId(paymentOrderId)
+            .eventId(eventId)
+            .unitPrice(unitPrice)
+            .totalQuantity(totalQuantity)
+            .status(status.name())
+            .confirmedAt(confirmedAt)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+    }
 }
