@@ -18,6 +18,7 @@ public enum GlobalErrorCode {
     OAUTH_LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "AUTH_401_010", "소셜 로그인에 실패했습니다."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "COMMON_403", "접근 권한이 없습니다."),
     MEMBER_LOGIN_RESTRICTED(HttpStatus.FORBIDDEN, "AUTH_403_001", "로그인이 제한된 회원입니다."),
+    OAUTH_EMAIL_NOT_VERIFIED(HttpStatus.FORBIDDEN, "AUTH_403_002", "검증된 이메일로만 소셜 로그인을 이용할 수 있습니다."),
     ENTITY_NOT_FOUND(HttpStatus.NOT_FOUND, "COMMON_404", "요청한 리소스를 찾을 수 없습니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_500", "서버 내부 오류가 발생했습니다.");
 

@@ -25,6 +25,12 @@ public class OAuth2ProfileMapper {
         String email = getRequiredValue(attributes, "email");
         String displayName = getOptionalValue(attributes, "name");
 
+        if (!Boolean.TRUE.equals(attributes.get("email_verified"))) {
+            throw new OAuth2LoginException(
+                GlobalErrorCode.OAUTH_EMAIL_NOT_VERIFIED
+            );
+        }
+
         if (displayName == null || displayName.isBlank()) {
             displayName = "사용자";
         }
