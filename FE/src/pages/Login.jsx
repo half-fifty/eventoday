@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import { loginWithGoogle } from "../api/authApi.js";
@@ -26,6 +26,9 @@ const getSafeRedirect = (redirect) => {
 export default function Login() {
   const [params] = useSearchParams();
   const { loading, isAuthenticated } = useAuth();
+  const [loginType, setLoginType] = useState("social");
+  const [businessNumber, setBusinessNumber] = useState("");
+  const [password, setPassword] = useState("");
   const reason = params.get("reason");
   const requestedRedirect = getSafeRedirect(
     params.get("redirect")
@@ -52,6 +55,11 @@ export default function Login() {
     loginWithGoogle();
   };
 
+  const handleBusinessLogin = (event) => {
+    event.preventDefault();
+    window.alert("사업자 로그인 API 구현 후 연결됩니다.");
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -71,55 +79,93 @@ export default function Login() {
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center px-lg py-xxl">
-        <div className="w-full max-w-[380px]">
-          <div className="text-center mb-xxl">
+        <div className="w-full max-w-[420px]">
+          <div className="text-center mb-xl">
             <Icon name="confirmation_number" className="text-[40px] text-primary-on-dark mb-md block" />
-            <h1 className="font-hero-display text-[28px] font-semibold mb-sm">간편하게 시작하기</h1>
+            <h1 className="font-hero-display text-[28px] font-semibold mb-sm">로그인</h1>
             <p className="text-white/60 text-caption">{contextMsg}</p>
           </div>
 
-          <div className="space-y-sm">
-            <button disabled className="w-full h-[52px] rounded-xl bg-[#FEE500] text-black font-body-strong flex items-center justify-center gap-sm opacity-40 cursor-not-allowed">
-              <Icon name="chat_bubble" className="text-[20px]" /> 카카오 로그인 준비 중
-            </button>
-            <button disabled className="w-full h-[52px] rounded-xl bg-[#03C75A] text-white font-body-strong flex items-center justify-center gap-sm opacity-40 cursor-not-allowed">
-              <Icon name="language" className="text-[20px]" /> 네이버 로그인 준비 중
+          <div className="mb-lg grid grid-cols-2 rounded-xl bg-white/10 p-1">
+            <button
+              type="button"
+              onClick={() => setLoginType("social")}
+              className={`h-10 rounded-lg text-caption font-semibold transition-colors ${loginType === "social" ? "bg-white text-black" : "text-white/60 hover:text-white"}`}
+            >
+              일반 사용자
             </button>
             <button
               type="button"
-              onClick={handleGoogleLogin}
-              className="group relative h-10 w-full min-w-min max-w-[400px] select-none appearance-none overflow-hidden whitespace-nowrap rounded-[20px] border border-[#747775] bg-white p-0 text-center align-middle [font-family:Roboto,Arial,sans-serif] text-[14px] tracking-[0.25px] text-[#1f1f1f] outline-none transition-[background-color,border-color,box-shadow] duration-[218ms] hover:shadow-[0_1px_2px_0_rgba(60,64,67,0.30),0_1px_3px_1px_rgba(60,64,67,0.15)] focus-visible:ring-2 focus-visible:ring-[#1a73e8] focus-visible:ring-offset-2 active:scale-[0.99] disabled:cursor-default disabled:border-[#1f1f1f1f] disabled:bg-[#ffffff61]"
+              onClick={() => setLoginType("business")}
+              className={`h-10 rounded-lg text-caption font-semibold transition-colors ${loginType === "business" ? "bg-white text-black" : "text-white/60 hover:text-white"}`}
             >
-              <span className="absolute inset-0 opacity-0 transition-opacity duration-[218ms] group-hover:bg-[#303030] group-hover:opacity-[0.08] group-focus:bg-[#303030] group-focus:opacity-[0.12] group-active:bg-[#303030] group-active:opacity-[0.12]" />
-              <span className="relative flex h-full w-full flex-row flex-nowrap items-center justify-between">
-                <span className="h-10 w-10 min-w-10 p-[9px]">
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 18 18"
-                    className="h-5 w-5"
-                  >
-                    <path fill="#EA4335" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.797 2.715v2.258h2.909c1.702-1.567 2.684-3.875 2.684-6.613Z" />
-                    <path fill="#4285F4" d="M9 18c2.43 0 4.467-.806 5.956-2.182l-2.909-2.258c-.806.54-1.835.859-3.047.859-2.344 0-4.328-1.585-5.037-3.714H.956v2.333A9 9 0 0 0 9 18Z" />
-                    <path fill="#FBBC05" d="M3.963 10.705A5.413 5.413 0 0 1 3.682 9c0-.592.102-1.167.281-1.705V4.962H.956A9 9 0 0 0 0 9c0 1.452.347 2.827.956 4.038l3.007-2.333Z" />
-                    <path fill="#34A853" d="M9 3.58c1.322 0 2.508.454 3.441 1.346l2.582-2.582C13.463.892 11.426 0 9 0A9 9 0 0 0 .956 4.962l3.007 2.333C4.672 5.166 6.656 3.58 9 3.58Z" />
-                  </svg>
-                </span>
-                <span className="grow overflow-hidden text-ellipsis font-medium align-top">
-                  Google로 계속하기
-                </span>
-                <span className="h-10 w-10 min-w-10" aria-hidden="true" />
-              </span>
+              사업자
             </button>
           </div>
 
-          <p className="text-center text-[11px] text-white/40 mt-lg leading-relaxed">
+          {loginType === "social" ? (
+            <div>
+              <p className="mb-md text-center text-caption text-white/60">일반 회원은 소셜 계정으로 로그인해 주세요.</p>
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                className="group relative h-10 w-full select-none appearance-none overflow-hidden whitespace-nowrap rounded-[20px] border border-[#747775] bg-white p-0 text-center align-middle [font-family:Roboto,Arial,sans-serif] text-[14px] tracking-[0.25px] text-[#1f1f1f] outline-none transition-[background-color,border-color,box-shadow] duration-[218ms] hover:shadow-[0_1px_2px_0_rgba(60,64,67,0.30),0_1px_3px_1px_rgba(60,64,67,0.15)] focus-visible:ring-2 focus-visible:ring-[#1a73e8]"
+              >
+                <span className="absolute inset-0 opacity-0 transition-opacity duration-[218ms] group-hover:bg-[#303030] group-hover:opacity-[0.08]" />
+                <span className="relative flex h-full w-full items-center justify-between">
+                  <span className="h-10 w-10 p-[9px]">
+                    <svg aria-hidden="true" viewBox="0 0 18 18" className="h-5 w-5">
+                      <path fill="#EA4335" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.797 2.715v2.258h2.909c1.702-1.567 2.684-3.875 2.684-6.613Z" />
+                      <path fill="#4285F4" d="M9 18c2.43 0 4.467-.806 5.956-2.182l-2.909-2.258c-.806.54-1.835.859-3.047.859-2.344 0-4.328-1.585-5.037-3.714H.956v2.333A9 9 0 0 0 9 18Z" />
+                      <path fill="#FBBC05" d="M3.963 10.705A5.413 5.413 0 0 1 3.682 9c0-.592.102-1.167.281-1.705V4.962H.956A9 9 0 0 0 0 9c0 1.452.347 2.827.956 4.038l3.007-2.333Z" />
+                      <path fill="#34A853" d="M9 3.58c1.322 0 2.508.454 3.441 1.346l2.582-2.582C13.463.892 11.426 0 9 0A9 9 0 0 0 .956 4.962l3.007 2.333C4.672 5.166 6.656 3.58 9 3.58Z" />
+                    </svg>
+                  </span>
+                  <span className="grow overflow-hidden text-ellipsis font-medium">Google로 계속하기</span>
+                  <span className="h-10 w-10" aria-hidden="true" />
+                </span>
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleBusinessLogin} className="space-y-md">
+              <label className="block">
+                <span className="mb-xs block text-caption text-white/70">사업자등록번호</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="username"
+                  value={businessNumber}
+                  onChange={(event) => setBusinessNumber(event.target.value)}
+                  placeholder="숫자 10자리"
+                  required
+                  className="h-[48px] w-full rounded-xl border border-white/20 bg-white/10 px-md text-white outline-none placeholder:text-white/30 focus:border-primary-on-dark"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-xs block text-caption text-white/70">비밀번호</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="비밀번호 입력"
+                  required
+                  className="h-[48px] w-full rounded-xl border border-white/20 bg-white/10 px-md text-white outline-none placeholder:text-white/30 focus:border-primary-on-dark"
+                />
+              </label>
+              <button type="submit" className="h-[48px] w-full rounded-xl bg-primary-container font-semibold text-white transition-colors hover:bg-primary-focus">
+                사업자 로그인
+              </button>
+              <p className="text-center text-caption text-white/50">
+                처음 이용하시나요?{" "}
+                <Link to="/business/signup" className="font-semibold text-primary-on-dark hover:underline">사업자 회원가입</Link>
+              </p>
+            </form>
+          )}
+
+          <p className="mt-lg text-center text-[11px] leading-relaxed text-white/40">
             계속 진행 시 EXPO HUB의 <a href="#" className="underline">이용약관</a> 및 <a href="#" className="underline">개인정보처리방침</a>에 동의하는 것으로 간주됩니다.
           </p>
-
-          <div className="border-t border-white/10 mt-xxl pt-xl text-center">
-            <p className="text-caption text-white/60 mb-sm">비회원으로 발급받은 티켓이 있으신가요?</p>
-            <p className="text-[12px] text-white/40">로그인하면 기존 비회원 티켓이 자동으로 회원 계정에 연결돼요.</p>
-          </div>
         </div>
       </main>
 
