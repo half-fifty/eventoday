@@ -66,7 +66,6 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
             member.updateOAuthProfile(
                 profileDto.getEmail(),
-                profileDto.getDisplayName(),
                 now
             );
         } else {

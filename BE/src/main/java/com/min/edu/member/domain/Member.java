@@ -79,10 +79,8 @@ public class Member {
 
     public void updateOAuthProfile(
             String email,
-            String nickname,
             OffsetDateTime loginAt) {
         this.email = email;
-        this.nickname = nickname;
         this.lastLoginAt = loginAt;
         this.updatedAt = loginAt;
     }
