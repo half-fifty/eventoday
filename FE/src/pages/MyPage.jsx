@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import useAuth from "../hooks/useAuth.js";
@@ -20,14 +20,25 @@ const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 41 + 7) % 7 < 3);
 export default function MyPage() {
   const { member, logout } = useAuth();
   const isBusinessMember = member.accountType === "BUSINESS";
-  const isOrganizer =
-    member.organization?.organizationType === "ORGANIZER";
+  const organizationType = member.organization?.organizationType;
+  const isOrganizer = organizationType === "ORGANIZER";
+  const isExhibitor = organizationType === "EXHIBITOR";
+  const businessActivityLabel = isOrganizer
+    ? "행사 관리"
+    : isExhibitor
+      ? "부스 신청"
+      : "활동 관리";
+  const businessActivityIcon = isOrganizer
+    ? "event"
+    : isExhibitor
+      ? "storefront"
+      : "business_center";
   const businessTabs = [
     { key: "business-overview", label: "사업자 홈", icon: "dashboard" },
     {
       key: "business-activity",
-      label: isOrganizer ? "행사 관리" : "부스 신청",
-      icon: isOrganizer ? "event" : "storefront",
+      label: businessActivityLabel,
+      icon: businessActivityIcon,
     },
     { key: "profile", label: "회원정보", icon: "person" },
   ];
@@ -42,20 +53,43 @@ export default function MyPage() {
   const [redeemMsg, setRedeemMsg] = useState(null); // { ok, text }
   const [switches, setSwitches] = useState({ soon: true, empty: true });
   const [rating, setRating] = useState(0);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const loginDescription = isBusinessMember
     ? `${member.organization?.name || "사업자"} · 사업자 계정`
     : "일반 회원";
 
-  const organizationTypeLabel =
-    member.organization?.organizationType === "ORGANIZER"
-      ? "박람회 개최측"
-      : "부스 참가측";
+  const organizationTypeLabel = {
+    ORGANIZER: "박람회 개최측",
+    EXHIBITOR: "부스 참가측",
+  }[organizationType] || "조직 정보 없음";
 
   const organizationRoleLabel = {
     OWNER: "소유자",
     MANAGER: "관리자",
     STAFF: "실무자",
-  }[member.organization?.organizationRole];
+  }[member.organization?.organizationRole] || "권한 정보 없음";
+
+  useEffect(() => {
+    const visibleTabKeys = isBusinessMember
+      ? ["business-overview", "business-activity", "profile"]
+      : tabs.map((item) => item.key);
+
+    if (!visibleTabKeys.includes(tab)) {
+      setTab(visibleTabKeys[0]);
+    }
+  }, [isBusinessMember, tab]);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+
+    try {
+      await logout();
+    } catch {
+      window.alert("로그아웃에 실패했습니다. 다시 시도해 주세요.");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   const redeemCode = () => {
     const val = code.trim();
@@ -116,7 +150,7 @@ export default function MyPage() {
                 <div className="grid gap-0 sm:grid-cols-3 sm:divide-x sm:divide-divider-soft">
                   <div className="p-lg">
                     <p className="text-[11px] text-ink-muted">회사명</p>
-                    <p className="mt-1 font-body-strong">{member.organization?.name}</p>
+                    <p className="mt-1 font-body-strong">{member.organization?.name || "조직 정보 없음"}</p>
                   </div>
                   <div className="p-lg">
                     <p className="text-[11px] text-ink-muted">사업자 유형</p>
@@ -131,13 +165,13 @@ export default function MyPage() {
 
               <div className="bg-white rounded-2xl border border-hairline p-xl text-center">
                 <div className="mx-auto mb-sm flex h-12 w-12 items-center justify-center rounded-full bg-surface-container">
-                  <Icon name={isOrganizer ? "event" : "storefront"} className="text-[22px] text-ink-muted" />
+                  <Icon name={businessActivityIcon} className="text-[22px] text-ink-muted" />
                 </div>
                 <p className="font-body-strong">
-                  {isOrganizer ? "등록한 행사가 없습니다." : "부스 신청 내역이 없습니다."}
+                  {isOrganizer ? "등록한 행사가 없습니다." : isExhibitor ? "부스 신청 내역이 없습니다." : "조직 정보를 확인할 수 없습니다."}
                 </p>
                 <p className="mt-xs text-caption text-ink-muted">
-                  {isOrganizer ? "행사를 등록하면 여기에서 관리할 수 있어요." : "부스 참가를 신청하면 여기에 현황이 표시돼요."}
+                  {isOrganizer ? "행사를 등록하면 여기에서 관리할 수 있어요." : isExhibitor ? "부스 참가를 신청하면 여기에 현황이 표시돼요." : "조직 관리자에게 소속 정보를 확인해 주세요."}
                 </p>
               </div>
             </div>
@@ -145,12 +179,12 @@ export default function MyPage() {
 
           {tab === "business-activity" && (
             <div className="bg-white rounded-2xl border border-hairline p-xl text-center">
-              <Icon name={isOrganizer ? "event" : "storefront"} className="mb-sm text-[28px] text-ink-muted" />
+              <Icon name={businessActivityIcon} className="mb-sm text-[28px] text-ink-muted" />
               <h2 className="font-body-strong">
-                {isOrganizer ? "행사 관리" : "부스 신청 현황"}
+                {isExhibitor ? "부스 신청 현황" : businessActivityLabel}
               </h2>
               <p className="mt-xs text-caption text-ink-muted">
-                {isOrganizer ? "행사 조회 API 연결 후 등록한 행사가 표시됩니다." : "부스 신청 조회 API 연결 후 신청 내역이 표시됩니다."}
+                {isOrganizer ? "행사 조회 API 연결 후 등록한 행사가 표시됩니다." : isExhibitor ? "부스 신청 조회 API 연결 후 신청 내역이 표시됩니다." : "조직 정보를 확인한 후 이용해 주세요."}
               </p>
             </div>
           )}
@@ -314,7 +348,7 @@ export default function MyPage() {
                   <button className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center"><Icon name="check" className="text-[18px]" /></button>
                 </div>
               </div>}
-              <button onClick={logout} className="w-full h-[46px] border border-hairline rounded-full font-body-strong flex items-center justify-center gap-1"><Icon name="logout" className="text-[18px]" />로그아웃</button>
+              <button onClick={handleLogout} disabled={isLoggingOut} className="w-full h-[46px] border border-hairline rounded-full font-body-strong flex items-center justify-center gap-1 disabled:cursor-not-allowed disabled:opacity-50"><Icon name="logout" className="text-[18px]" />{isLoggingOut ? "처리 중" : "로그아웃"}</button>
             </div>
           )}
         </div>
