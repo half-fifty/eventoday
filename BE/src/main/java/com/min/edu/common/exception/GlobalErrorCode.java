@@ -19,7 +19,14 @@ public enum GlobalErrorCode {
     FORBIDDEN(HttpStatus.FORBIDDEN, "COMMON_403", "접근 권한이 없습니다."),
     MEMBER_LOGIN_RESTRICTED(HttpStatus.FORBIDDEN, "AUTH_403_001", "로그인이 제한된 회원입니다."),
     OAUTH_EMAIL_NOT_VERIFIED(HttpStatus.FORBIDDEN, "AUTH_403_002", "검증된 이메일로만 소셜 로그인을 이용할 수 있습니다."),
+    INVALID_GUEST_BUYER_INFO(HttpStatus.BAD_REQUEST, "TICKET_400_001", "비회원 구매자 정보가 올바르지 않습니다."),
+    TICKET_PURCHASE_LIMIT_EXCEEDED(HttpStatus.UNPROCESSABLE_ENTITY, "TICKET_422_001", "티켓 구매 제한 수량을 초과했습니다."),
+    TICKET_SALES_NOT_OPEN(HttpStatus.UNPROCESSABLE_ENTITY, "TICKET_422_002", "현재 티켓 판매 기간이 아닙니다."),
+    TICKET_SOLD_OUT(HttpStatus.CONFLICT, "TICKET_409_001", "티켓 재고가 부족합니다."),
     ENTITY_NOT_FOUND(HttpStatus.NOT_FOUND, "COMMON_404", "요청한 리소스를 찾을 수 없습니다."),
+    EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "EVENT_404_001", "행사를 찾을 수 없습니다."),
+    ORDER_NUMBER_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "TICKET_500_001", "주문번호 생성에 실패했습니다."),
+    EXCHANGE_CODE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "EXCHANGE_CODE_GENERATION_FAILED", "교환 코드 생성에 실패했습니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_500", "서버 내부 오류가 발생했습니다.");
 
     private final HttpStatus status;

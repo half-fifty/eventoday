@@ -59,4 +59,23 @@ public class ExchangeCode {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public static ExchangeCode createForTicketOrder(
+            Long eventId,
+            Long ticketOrderId,
+            Long holderMemberId,
+            String code,
+            OffsetDateTime expiresAt,
+            OffsetDateTime now) {
+        return ExchangeCode.builder()
+            .eventId(eventId)
+            .ticketOrderId(ticketOrderId)
+            .holderMemberId(holderMemberId)
+            .code(code)
+            .status(ExchangeCodeStatus.ISSUED)
+            .expiresAt(expiresAt)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+    }
 }
