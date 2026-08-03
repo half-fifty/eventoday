@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
+import useAuth from "../hooks/useAuth.js";
 
 const tabs = [
   { key: "tickets", label: "예매내역", icon: "confirmation_number" },
@@ -17,12 +18,78 @@ const subtabs = [
 const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 41 + 7) % 7 < 3);
 
 export default function MyPage() {
-  const [tab, setTab] = useState("tickets");
+  const { member, logout } = useAuth();
+  const isBusinessMember = member.accountType === "BUSINESS";
+  const organizationType = member.organization?.organizationType;
+  const isOrganizer = organizationType === "ORGANIZER";
+  const isExhibitor = organizationType === "EXHIBITOR";
+  const businessActivityLabel = isOrganizer
+    ? "행사 관리"
+    : isExhibitor
+      ? "부스 신청"
+      : "활동 관리";
+  const businessActivityIcon = isOrganizer
+    ? "event"
+    : isExhibitor
+      ? "storefront"
+      : "business_center";
+  const businessTabs = [
+    { key: "business-overview", label: "사업자 홈", icon: "dashboard" },
+    {
+      key: "business-activity",
+      label: businessActivityLabel,
+      icon: businessActivityIcon,
+    },
+    { key: "profile", label: "회원정보", icon: "person" },
+  ];
+  const visibleTabs = isBusinessMember
+    ? businessTabs
+    : tabs;
+  const [tab, setTab] = useState(
+    isBusinessMember ? "business-overview" : "tickets"
+  );
   const [sub, setSub] = useState("interest");
   const [code, setCode] = useState("");
   const [redeemMsg, setRedeemMsg] = useState(null); // { ok, text }
   const [switches, setSwitches] = useState({ soon: true, empty: true });
   const [rating, setRating] = useState(0);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const loginDescription = isBusinessMember
+    ? `${member.organization?.name || "사업자"} · 사업자 계정`
+    : "일반 회원";
+
+  const organizationTypeLabel = {
+    ORGANIZER: "박람회 개최측",
+    EXHIBITOR: "부스 참가측",
+  }[organizationType] || "조직 정보 없음";
+
+  const organizationRoleLabel = {
+    OWNER: "소유자",
+    MANAGER: "관리자",
+    STAFF: "실무자",
+  }[member.organization?.organizationRole] || "권한 정보 없음";
+
+  useEffect(() => {
+    const visibleTabKeys = isBusinessMember
+      ? ["business-overview", "business-activity", "profile"]
+      : tabs.map((item) => item.key);
+
+    if (!visibleTabKeys.includes(tab)) {
+      setTab(visibleTabKeys[0]);
+    }
+  }, [isBusinessMember, tab]);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+
+    try {
+      await logout();
+    } catch {
+      window.alert("로그아웃에 실패했습니다. 다시 시도해 주세요.");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   const redeemCode = () => {
     const val = code.trim();
@@ -61,12 +128,12 @@ export default function MyPage() {
             <div className="flex items-center gap-md mb-lg">
               <div className="w-12 h-12 rounded-full bg-surface-tile-dark-alt flex items-center justify-center"><Icon name="person" /></div>
               <div>
-                <p className="font-body-strong">김서연 님</p>
-                <p className="text-[12px] text-white/50">소셜 로그인 · 카카오 연동</p>
+                <p className="font-body-strong">{member.nickname} 님</p>
+                <p className="text-[12px] text-white/50">{loginDescription}</p>
               </div>
             </div>
             <div className="flex gap-xs overflow-x-auto hide-scrollbar">
-              {tabs.map((t) => (
+              {visibleTabs.map((t) => (
                 <button key={t.key} onClick={() => setTab(t.key)} className={tabBtnCls(tab === t.key)}>
                   <Icon name={t.icon} className="text-[16px]" />{t.label}
                 </button>
@@ -76,6 +143,52 @@ export default function MyPage() {
         </section>
 
         <div className="max-w-[900px] mx-auto px-lg py-xl">
+          {tab === "business-overview" && (
+            <div className="space-y-lg">
+              <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
+                <div className="p-lg font-body-strong">사업자 정보</div>
+                <div className="grid gap-0 sm:grid-cols-3 sm:divide-x sm:divide-divider-soft">
+                  <div className="p-lg">
+                    <p className="text-[11px] text-ink-muted">회사명</p>
+                    <p className="mt-1 font-body-strong">{member.organization?.name || "조직 정보 없음"}</p>
+                  </div>
+                  <div className="p-lg">
+                    <p className="text-[11px] text-ink-muted">사업자 유형</p>
+                    <p className="mt-1 font-body-strong">{organizationTypeLabel}</p>
+                  </div>
+                  <div className="p-lg">
+                    <p className="text-[11px] text-ink-muted">조직 권한</p>
+                    <p className="mt-1 font-body-strong">{organizationRoleLabel}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-hairline p-xl text-center">
+                <div className="mx-auto mb-sm flex h-12 w-12 items-center justify-center rounded-full bg-surface-container">
+                  <Icon name={businessActivityIcon} className="text-[22px] text-ink-muted" />
+                </div>
+                <p className="font-body-strong">
+                  {isOrganizer ? "등록한 행사가 없습니다." : isExhibitor ? "부스 신청 내역이 없습니다." : "조직 정보를 확인할 수 없습니다."}
+                </p>
+                <p className="mt-xs text-caption text-ink-muted">
+                  {isOrganizer ? "행사를 등록하면 여기에서 관리할 수 있어요." : isExhibitor ? "부스 참가를 신청하면 여기에 현황이 표시돼요." : "조직 관리자에게 소속 정보를 확인해 주세요."}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {tab === "business-activity" && (
+            <div className="bg-white rounded-2xl border border-hairline p-xl text-center">
+              <Icon name={businessActivityIcon} className="mb-sm text-[28px] text-ink-muted" />
+              <h2 className="font-body-strong">
+                {isExhibitor ? "부스 신청 현황" : businessActivityLabel}
+              </h2>
+              <p className="mt-xs text-caption text-ink-muted">
+                {isOrganizer ? "행사 조회 API 연결 후 등록한 행사가 표시됩니다." : isExhibitor ? "부스 신청 조회 API 연결 후 신청 내역이 표시됩니다." : "조직 정보를 확인한 후 이용해 주세요."}
+              </p>
+            </div>
+          )}
+
           {/* TICKETS */}
           {tab === "tickets" && (
             <div className="space-y-lg">
@@ -206,11 +319,18 @@ export default function MyPage() {
           {tab === "profile" && (
             <div className="space-y-lg">
               <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
-                <div className="flex items-center justify-between p-lg"><div><p className="text-[11px] text-ink-muted">닉네임</p><p className="text-body">김서연</p></div><Icon name="chevron_right" className="text-ink-muted" /></div>
-                <div className="p-lg"><p className="text-[11px] text-ink-muted">연동 계정</p><p className="text-body">카카오 (kakao_9284@kakao.com)</p></div>
-                <div className="flex items-center justify-between p-lg"><div><p className="text-[11px] text-ink-muted">연락처</p><p className="text-body">010-****-1234</p></div><Icon name="chevron_right" className="text-ink-muted" /></div>
+                <div className="p-lg"><p className="text-[11px] text-ink-muted">닉네임</p><p className="text-body">{member.nickname}</p></div>
+                <div className="p-lg"><p className="text-[11px] text-ink-muted">이메일</p><p className="text-body">{member.email}</p></div>
+                <div className="p-lg"><p className="text-[11px] text-ink-muted">계정 유형</p><p className="text-body">{isBusinessMember ? "사업자 계정" : "일반 회원"}</p></div>
+                {isBusinessMember && member.organization && (
+                  <>
+                    <div className="p-lg"><p className="text-[11px] text-ink-muted">회사명</p><p className="text-body">{member.organization.name}</p></div>
+                    <div className="p-lg"><p className="text-[11px] text-ink-muted">사업자 유형</p><p className="text-body">{organizationTypeLabel}</p></div>
+                    <div className="p-lg"><p className="text-[11px] text-ink-muted">조직 권한</p><p className="text-body">{organizationRoleLabel}</p></div>
+                  </>
+                )}
               </div>
-              <div className="bg-white rounded-2xl border border-hairline p-lg">
+              {!isBusinessMember && <div className="bg-white rounded-2xl border border-hairline p-lg">
                 <h3 className="font-body-strong text-body-strong mb-md">행사 참여내역 · 후기</h3>
                 <div className="flex justify-between items-center mb-sm">
                   <p className="font-body-strong text-caption">2026 서울 푸드테크 박람회</p>
@@ -227,8 +347,8 @@ export default function MyPage() {
                   <input type="text" placeholder="한 줄 후기를 남겨보세요" className="flex-1 h-[40px] rounded-lg border border-hairline px-sm text-caption outline-none focus:border-primary-focus" />
                   <button className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center"><Icon name="check" className="text-[18px]" /></button>
                 </div>
-              </div>
-              <button className="w-full h-[46px] border border-hairline rounded-full font-body-strong flex items-center justify-center gap-1"><Icon name="logout" className="text-[18px]" />로그아웃</button>
+              </div>}
+              <button onClick={handleLogout} disabled={isLoggingOut} className="w-full h-[46px] border border-hairline rounded-full font-body-strong flex items-center justify-center gap-1 disabled:cursor-not-allowed disabled:opacity-50"><Icon name="logout" className="text-[18px]" />{isLoggingOut ? "처리 중" : "로그아웃"}</button>
             </div>
           )}
         </div>

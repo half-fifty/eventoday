@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.OffsetDateTime;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -76,4 +77,79 @@ public class BoothRecruitment {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
+
+    public static BoothRecruitment create(
+            Long eventId,
+            String title,
+            OffsetDateTime recruitmentStartAt,
+            OffsetDateTime recruitmentEndAt,
+            String participantTarget,
+            String qualification,
+            String selectionMethod,
+            OffsetDateTime expectedDecisionAt,
+            String contactName,
+            String contactEmail,
+            String contactPhone,
+            String notice,
+            OffsetDateTime now) {
+        return BoothRecruitment.builder()
+            .eventId(eventId)
+            .title(title)
+            .recruitmentStartAt(recruitmentStartAt)
+            .recruitmentEndAt(recruitmentEndAt)
+            .participantTarget(participantTarget)
+            .qualification(qualification)
+            .selectionMethod(selectionMethod)
+            .expectedDecisionAt(expectedDecisionAt)
+            .contactName(contactName)
+            .contactEmail(contactEmail)
+            .contactPhone(contactPhone)
+            .notice(notice)
+            .status(BoothRecruitmentStatus.BEFORE_OPEN)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+    }
+
+    public void updateDetails(
+            String title,
+            OffsetDateTime recruitmentStartAt,
+            OffsetDateTime recruitmentEndAt,
+            String participantTarget,
+            String qualification,
+            String selectionMethod,
+            OffsetDateTime expectedDecisionAt,
+            String contactName,
+            String contactEmail,
+            String contactPhone,
+            String notice,
+            OffsetDateTime now) {
+        this.title = title;
+        this.recruitmentStartAt = recruitmentStartAt;
+        this.recruitmentEndAt = recruitmentEndAt;
+        this.participantTarget = participantTarget;
+        this.qualification = qualification;
+        this.selectionMethod = selectionMethod;
+        this.expectedDecisionAt = expectedDecisionAt;
+        this.contactName = contactName;
+        this.contactEmail = contactEmail;
+        this.contactPhone = contactPhone;
+        this.notice = notice;
+        this.updatedAt = now;
+    }
+
+    public void changeStatus(BoothRecruitmentStatus newStatus, OffsetDateTime now) {
+        this.status = newStatus;
+        this.updatedAt = now;
+    }
+
+    public void complete(OffsetDateTime now) {
+        this.status = BoothRecruitmentStatus.COMPLETED;
+        this.completedAt = now;
+        this.updatedAt = now;
+    }
 }

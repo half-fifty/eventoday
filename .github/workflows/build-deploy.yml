@@ -67,6 +67,7 @@ jobs:
             --from-literal=JWT_SECRET=${{ secrets.JWT_SECRET }} \
             --from-literal=GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
             --from-literal=GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \
+            --from-literal=NTS_BUSINESS_API_KEY="${{ secrets.NTS_BUSINESS_API_KEY }}" \
             --from-literal=ORDER_ACCESS_TOKEN_SECRET="${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}" \
             --dry-run=client -o yaml | sudo kubectl apply -f -
 

@@ -56,4 +56,25 @@ public class Organization {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public static Organization createBusinessOrganization(
+            OrganizationType organizationType,
+            String name,
+            String businessNumber,
+            String representativeName,
+            String contactEmail,
+            String contactPhone,
+            OffsetDateTime now) {
+        return Organization.builder()
+            .organizationType(organizationType)
+            .name(name)
+            .businessNumber(businessNumber)
+            .representativeName(representativeName)
+            .contactEmail(contactEmail)
+            .contactPhone(contactPhone)
+            .status(OrganizationStatus.ACTIVE)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+    }
 }
