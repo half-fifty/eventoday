@@ -35,7 +35,7 @@ export default function TopNav({ active = "events" }) {
         <Link className={`${linkBase} ${active === "events" ? activeCls : idleCls}`} to="/">
           전체 행사
         </Link>
-        <Link className={`${linkBase} ${active === "recruiting" ? activeCls : idleCls}`} to="/event-recruiting">
+        <Link className={`${linkBase} ${active === "recruiting" ? activeCls : idleCls}`} to="/recruitments">
           부스 모집 공고
         </Link>
         <Link className={`${linkBase} ${active === "mypage" ? activeCls : idleCls}`} to="/mypage">

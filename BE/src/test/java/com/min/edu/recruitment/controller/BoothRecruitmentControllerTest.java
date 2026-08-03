@@ -274,6 +274,30 @@ class BoothRecruitmentControllerTest {
     }
 
     @Test
+    void COMPLETED_상태의_모집공고는_수정할_수_없다() throws Exception {
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment/closure", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment/completion", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("RECRUITMENT_400_003"));
+    }
+
+    @Test
     void 담당자가_아니면_수정할_수_없다() throws Exception {
         mockMvc.perform(post("/events/{eventId}/booth-recruitment", eventId)
                 .header("Authorization", "Bearer " + eventManagerToken)

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
+import RecruitmentManagementPanel from "../components/RecruitmentManagementPanel.jsx";
 
 const navItems = [
   { key: "dashboard", label: "대시보드", icon: "dashboard" },
@@ -152,25 +153,7 @@ export default function OrganizerAdmin() {
           )}
 
           {/* RECRUITMENT */}
-          {page === "recruitment" && (
-            <section className="space-y-lg">
-              <div className="flex justify-between items-center">
-                <h1 className="font-display-lg text-[26px]">부스 모집 공고</h1>
-                <button className="px-lg py-sm bg-primary text-white rounded-full text-caption font-body-strong">+ 새 공고 등록</button>
-              </div>
-              <div className="bg-white border border-hairline rounded-xl p-lg">
-                <div className="flex justify-between items-start mb-sm">
-                  <div>
-                    <p className="font-body-strong">2026 서울 푸드테크 박람회 부스 모집</p>
-                    <p className="text-caption text-ink-muted">모집 마감 2026.08.01 · 전기·급수·인터넷 설비 안내 포함</p>
-                  </div>
-                  <span className="px-sm py-1 bg-primary-container/10 text-primary-focus text-[12px] rounded-full font-body-strong">모집중</span>
-                </div>
-                <div className="w-full h-1.5 bg-surface-container rounded-full overflow-hidden mt-md"><div className="bg-primary h-full" style={{ width: "60%" }} /></div>
-                <p className="text-caption text-ink-muted mt-xs">6 / 10 부스 배정 완료</p>
-              </div>
-            </section>
-          )}
+          {page === "recruitment" && <RecruitmentManagementPanel />}
 
           {/* APPLICATIONS */}
           {page === "applications" && (

@@ -3,6 +3,7 @@ package com.min.edu.recruitment.service;
 import java.time.OffsetDateTime;
 import java.util.List;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,7 +63,11 @@ public class BoothRecruitmentService {
             now
         );
 
-        boothRecruitmentRepository.save(recruitment);
+        try {
+            boothRecruitmentRepository.saveAndFlush(recruitment);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(GlobalErrorCode.RECRUITMENT_ALREADY_EXISTS);
+        }
 
         return BoothRecruitmentResponseDto.from(recruitment);
     }
@@ -75,6 +80,11 @@ public class BoothRecruitmentService {
         BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
 
         requireEventManager(eventId, member);
+
+        if (recruitment.getStatus() == BoothRecruitmentStatus.COMPLETED) {
+            throw new BusinessException(GlobalErrorCode.RECRUITMENT_STATUS_TRANSITION_INVALID);
+        }
+
         validatePeriod(request.getRecruitmentStartAt(), request.getRecruitmentEndAt());
 
         recruitment.updateDetails(

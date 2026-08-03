@@ -3,6 +3,7 @@ import TopNav from "../components/TopNav.jsx";
 import Icon from "../components/Icon.jsx";
 import useAuth from "../hooks/useAuth.js";
 import { ApiError } from "../api/apiClient.js";
+import { toIsoOffset, toDatetimeLocal } from "../utils/datetime.js";
 import {
   listPublicRecruitments,
   getPublicRecruitment,
@@ -34,16 +35,6 @@ const EMPTY_FORM = {
   notice: "",
 };
 
-const toIsoOffset = (datetimeLocalValue) => {
-  if (!datetimeLocalValue) return "";
-  return new Date(datetimeLocalValue).toISOString();
-};
-
-const toDatetimeLocal = (isoValue) => {
-  if (!isoValue) return "";
-  return new Date(isoValue).toISOString().slice(0, 16);
-};
-
 export default function RecruitmentCheck() {
   const { isAuthenticated, member } = useAuth();
 
@@ -60,13 +51,15 @@ export default function RecruitmentCheck() {
   const [managementError, setManagementError] = useState("");
   const [form, setForm] = useState(EMPTY_FORM);
   const [actionMessage, setActionMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const loadPublicList = useCallback(async () => {
     setPublicListError("");
     try {
       const data = await listPublicRecruitments(statusFilter || undefined);
-      setPublicList(data);
+      setPublicList(Array.isArray(data) ? data : []);
     } catch (error) {
+      setPublicList([]);
       setPublicListError(error instanceof ApiError ? error.message : "목록 조회에 실패했습니다.");
     }
   }, [statusFilter]);
@@ -129,6 +122,9 @@ export default function RecruitmentCheck() {
   });
 
   const runAction = async (actionFn, successMessage) => {
+    if (submitting) return;
+
+    setSubmitting(true);
     setManagementError("");
     setActionMessage("");
 
@@ -136,9 +132,11 @@ export default function RecruitmentCheck() {
       const data = await actionFn();
       setManagementResult(data);
       setActionMessage(successMessage);
-      loadPublicList();
+      await loadPublicList();
     } catch (error) {
       setManagementError(error instanceof ApiError ? `${error.code}: ${error.message}` : "요청에 실패했습니다.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -148,8 +146,10 @@ export default function RecruitmentCheck() {
   const handleComplete = () => runAction(() => completeRecruitment(eventId), "완료 처리되었습니다.");
 
   const handleDelete = async () => {
+    if (submitting) return;
     if (!window.confirm("이 모집 공고를 삭제할까요? 되돌릴 수 없습니다.")) return;
 
+    setSubmitting(true);
     setManagementError("");
     setActionMessage("");
 
@@ -158,9 +158,11 @@ export default function RecruitmentCheck() {
       setManagementResult(null);
       setForm(EMPTY_FORM);
       setActionMessage("삭제되었습니다.");
-      loadPublicList();
+      await loadPublicList();
     } catch (error) {
       setManagementError(error instanceof ApiError ? `${error.code}: ${error.message}` : "삭제에 실패했습니다.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -289,21 +291,21 @@ export default function RecruitmentCheck() {
               </span>
               <button
                 onClick={handleClose}
-                disabled={!["BEFORE_OPEN", "OPEN"].includes(managementResult.status)}
+                disabled={submitting || !["BEFORE_OPEN", "OPEN"].includes(managementResult.status)}
                 className="ml-auto border border-hairline rounded-full px-md py-1 disabled:opacity-40"
               >
                 조기 마감
               </button>
               <button
                 onClick={handleComplete}
-                disabled={managementResult.status !== "CLOSED"}
+                disabled={submitting || managementResult.status !== "CLOSED"}
                 className="border border-hairline rounded-full px-md py-1 disabled:opacity-40"
               >
                 완료 처리
               </button>
               <button
                 onClick={handleDelete}
-                disabled={managementResult.status !== "BEFORE_OPEN"}
+                disabled={submitting || managementResult.status !== "BEFORE_OPEN"}
                 className="border border-error text-error rounded-full px-md py-1 disabled:opacity-40 disabled:border-hairline disabled:text-ink-muted"
               >
                 삭제
@@ -381,14 +383,14 @@ export default function RecruitmentCheck() {
           <div className="flex gap-sm">
             <button
               onClick={handleCreate}
-              disabled={!isAuthenticated || !eventId}
+              disabled={submitting || !isAuthenticated || !eventId}
               className="bg-primary text-white px-lg py-sm rounded-lg font-body-strong disabled:opacity-40"
             >
               생성
             </button>
             <button
               onClick={handleUpdate}
-              disabled={!isAuthenticated || !eventId}
+              disabled={submitting || !isAuthenticated || !eventId}
               className="border border-primary text-primary px-lg py-sm rounded-lg font-body-strong disabled:opacity-40"
             >
               수정
