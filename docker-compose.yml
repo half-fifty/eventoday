@@ -15,6 +15,20 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+  minio:
+    image: minio/minio
+    container_name: eventoday_MinIO
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # 웹 콘솔
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-eventoday}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-eventoday}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
 
 volumes:
   redis_data:
+  minio_data:
