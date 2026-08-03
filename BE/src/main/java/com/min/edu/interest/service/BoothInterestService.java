@@ -39,8 +39,8 @@ public class BoothInterestService {
                 .stream()
                 .map(interest -> InterestBoothResponse.builder()
                         .boothId(interest.getBoothId())
-                        .displayName("부스 " + interest.getBoothId())
-                        .shortIntro("설명")
+                        .displayName("부스")
+                        .shortIntro("정보")
                         .vacancyNotificationEnabled(interest.isVacancyNotificationEnabled())
                         .build())
                 .collect(Collectors.toList());
