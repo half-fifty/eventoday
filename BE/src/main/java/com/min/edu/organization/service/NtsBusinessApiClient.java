@@ -1,6 +1,10 @@
 package com.min.edu.organization.service;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
+
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -18,9 +22,21 @@ public class NtsBusinessApiClient {
 
     public NtsBusinessApiClient(
             @Value("${external.nts-business-api.base-url}") String baseUrl,
+            @Value("${external.nts-business-api.connect-timeout:3s}")
+            Duration connectTimeout,
+            @Value("${external.nts-business-api.read-timeout:5s}")
+            Duration readTimeout,
             @Value("${external.nts-business-api.service-key:}") String serviceKey) {
+        HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(connectTimeout)
+            .build();
+        JdkClientHttpRequestFactory requestFactory =
+            new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(readTimeout);
+
         this.restClient = RestClient.builder()
             .baseUrl(baseUrl)
+            .requestFactory(requestFactory)
             .build();
         this.serviceKey = serviceKey;
     }
