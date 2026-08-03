@@ -57,3 +57,17 @@ jobs:
           git add k8s/backend.yaml k8s/frontend.yaml
           git commit -m "chore: bump image tag to ${{ github.sha }} [skip ci]" || echo "no changes to commit"
           git push origin HEAD:dev
+
+      - name: Sync k8s Secret
+        run: |
+          sudo kubectl create secret generic eventoday-secret \
+            --namespace eventoday \
+            --from-literal=POSTGRES_USER=expo_user \
+            --from-literal=POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
+            --from-literal=JWT_SECRET=${{ secrets.JWT_SECRET }} \
+            --from-literal=GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
+            --from-literal=GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \
+            --dry-run=client -o yaml | sudo kubectl apply -f -
+
+      - name: Restart backend to pick up secret changes
+        run: sudo kubectl rollout restart deployment/eventoday-be -n eventoday
