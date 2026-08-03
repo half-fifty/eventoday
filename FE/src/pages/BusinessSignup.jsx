@@ -62,7 +62,7 @@ export default function BusinessSignup() {
         representativeName: representativeName.trim(),
       });
 
-      if (result.valid && result.active) {
+      if (result?.valid && result?.active) {
         setVerificationStatus("success");
         setVerificationMessage("사업자 인증이 완료됐습니다.");
         return;
@@ -70,7 +70,7 @@ export default function BusinessSignup() {
 
       setVerificationStatus("error");
       setVerificationMessage(
-        result.valid
+        result?.valid
           ? "현재 영업 중인 사업자가 아닙니다."
           : "입력한 사업자 정보를 확인할 수 없습니다."
       );

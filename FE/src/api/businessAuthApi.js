@@ -1,13 +1,15 @@
 import { apiRequest } from "./apiClient.js";
 
 const loginBusiness = async (loginData) => {
-  return apiRequest("/auth/business/login", {
+  const response = await apiRequest("/auth/business/login", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(loginData),
   });
+
+  return response.data;
 };
 
 const verifyBusiness = async (verificationData) => {
