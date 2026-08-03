@@ -16,7 +16,7 @@ export default function Footer() {
           <Link className="text-caption text-on-surface-variant hover:underline" to="/">
             전체 행사
           </Link>
-          <Link className="text-caption text-on-surface-variant hover:underline" to="/event-recruiting">
+          <Link className="text-caption text-on-surface-variant hover:underline" to="/recruitments">
             부스 모집 공고
           </Link>
           <Link className="text-caption text-on-surface-variant hover:underline" to="/mypage">

@@ -51,4 +51,17 @@ public class OrganizationMember {
 
     @Column(name = "joined_at", nullable = false)
     private OffsetDateTime joinedAt;
+
+    public static OrganizationMember createOwner(
+            Long organizationId,
+            Long memberId,
+            OffsetDateTime joinedAt) {
+        return OrganizationMember.builder()
+            .organizationId(organizationId)
+            .memberId(memberId)
+            .organizationRole(OrganizationRole.OWNER)
+            .status(OrganizationMemberStatus.ACTIVE)
+            .joinedAt(joinedAt)
+            .build();
+    }
 }

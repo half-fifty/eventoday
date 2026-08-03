@@ -13,6 +13,7 @@ public record EventTicketSnapshot(
         Integer ticketSoldQuantity,
         Integer ticketPurchaseLimit,
         OffsetDateTime ticketSalesStartAt,
-        OffsetDateTime ticketSalesEndAt
+        OffsetDateTime ticketSalesEndAt,
+        OffsetDateTime endAt
 ) {
 }

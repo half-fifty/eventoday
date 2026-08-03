@@ -259,7 +259,8 @@ class TicketOrderPolicyTest {
             10 - remainingQuantity,
             5,
             salesStartAt,
-            salesEndAt
+            salesEndAt,
+            OffsetDateTime.now().plusDays(1)
         );
     }
 }
