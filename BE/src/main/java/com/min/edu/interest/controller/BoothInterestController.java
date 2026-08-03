@@ -24,14 +24,14 @@ public class BoothInterestController {
     @DeleteMapping("/{boothId}/interests")
     public ResponseEntity<Void> remove(
             @PathVariable Long boothId,
-            @RequestParam Long memberId) {
+             @AuthenticationPrincipal Long memberId) {
         boothInterestService.remove(memberId, boothId);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/interests")
     public ResponseEntity<List<InterestBoothResponse>> getMyInterests(
-            @RequestParam Long memberId) {
+             @AuthenticationPrincipal Long memberId) {
         return ResponseEntity.ok(boothInterestService.getMyInterests(memberId));
     }
 }
