@@ -34,6 +34,12 @@ const updateRecruitment = async (eventId, payload) => {
   return response.data;
 };
 
+const deleteRecruitment = async (eventId) => {
+  await apiRequest(`/events/${eventId}/booth-recruitment`, {
+    method: "DELETE",
+  });
+};
+
 const closeRecruitment = async (eventId) => {
   const response = await apiRequest(`/events/${eventId}/booth-recruitment/closure`, {
     method: "POST",
@@ -54,6 +60,7 @@ export {
   getManagementRecruitment,
   createRecruitment,
   updateRecruitment,
+  deleteRecruitment,
   closeRecruitment,
   completeRecruitment,
 };

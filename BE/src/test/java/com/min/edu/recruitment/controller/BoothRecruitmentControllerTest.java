@@ -1,5 +1,6 @@
 package com.min.edu.recruitment.controller;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -284,6 +285,55 @@ class BoothRecruitmentControllerTest {
                 .header("Authorization", "Bearer " + outsiderToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(createRequestJson()))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("COMMON_403"));
+    }
+
+    @Test
+    void BEFORE_OPEN_상태의_모집공고는_삭제할_수_있다() throws Exception {
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/events/{eventId}/booth-recruitment/management", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void OPEN_이후_상태의_모집공고는_삭제할_수_없다() throws Exception {
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment/closure", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("RECRUITMENT_400_003"));
+    }
+
+    @Test
+    void 담당자가_아니면_삭제할_수_없다() throws Exception {
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + outsiderToken))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.code").value("COMMON_403"));
     }
