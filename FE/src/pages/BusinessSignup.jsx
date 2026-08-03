@@ -1,17 +1,22 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { verifyBusiness } from "../api/businessAuthApi.js";
+import { Link, useNavigate } from "react-router-dom";
+import { signupBusiness, verifyBusiness } from "../api/businessAuthApi.js";
 
 const inputClassName =
   "h-[48px] w-full rounded-xl border border-hairline bg-white px-md text-on-surface outline-none placeholder:text-ink-muted focus:border-primary-focus focus:ring-1 focus:ring-primary-focus disabled:cursor-not-allowed disabled:bg-surface-container disabled:text-secondary";
 
 export default function BusinessSignup() {
+  const navigate = useNavigate();
   const [organizationType, setOrganizationType] = useState("ORGANIZER");
   const [businessNumber, setBusinessNumber] = useState("");
   const [startDate, setStartDate] = useState("");
   const [representativeName, setRepresentativeName] = useState("");
+  const [organizationName, setOrganizationName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [verificationStatus, setVerificationStatus] = useState("idle");
   const [verificationMessage, setVerificationMessage] = useState("");
   const isBusinessVerified = verificationStatus === "success";
@@ -75,7 +80,7 @@ export default function BusinessSignup() {
     }
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     if (verificationStatus !== "success") {
@@ -88,7 +93,27 @@ export default function BusinessSignup() {
       return;
     }
 
-    window.alert("사업자 회원가입 API 구현 후 연결됩니다.");
+    setIsSubmitting(true);
+
+    try {
+      await signupBusiness({
+        organizationType,
+        businessNumber,
+        startDate,
+        representativeName: representativeName.trim(),
+        organizationName: organizationName.trim(),
+        contactEmail: contactEmail.trim(),
+        contactPhone: contactPhone.trim(),
+        password,
+      });
+
+      window.alert("사업자 회원가입이 완료됐습니다.");
+      navigate("/login", { replace: true });
+    } catch (error) {
+      window.alert(error.message || "사업자 회원가입 중 오류가 발생했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -197,15 +222,15 @@ export default function BusinessSignup() {
             <div className="grid gap-md sm:grid-cols-2">
               <label className="block sm:col-span-2">
                 <span className="mb-xs block text-caption font-semibold">회사명</span>
-                <input name="organizationName" type="text" required className={inputClassName} />
+                <input name="organizationName" type="text" value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} required className={inputClassName} />
               </label>
               <label className="block">
                 <span className="mb-xs block text-caption font-semibold">회사 이메일</span>
-                <input name="contactEmail" type="email" autoComplete="email" required className={inputClassName} />
+                <input name="contactEmail" type="email" autoComplete="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} required className={inputClassName} />
               </label>
               <label className="block">
                 <span className="mb-xs block text-caption font-semibold">회사 전화번호</span>
-                <input name="contactPhone" type="tel" autoComplete="tel" required className={inputClassName} />
+                <input name="contactPhone" type="tel" autoComplete="tel" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} required className={inputClassName} />
               </label>
               <label className="block">
                 <span className="mb-xs block text-caption font-semibold">비밀번호</span>
@@ -218,8 +243,8 @@ export default function BusinessSignup() {
             </div>
           </section>
 
-          <button type="submit" className="h-[52px] w-full rounded-xl bg-primary text-button-large font-semibold text-white transition-colors hover:bg-primary-focus">
-            사업자 회원가입
+          <button type="submit" disabled={isSubmitting} className="h-[52px] w-full rounded-xl bg-primary text-button-large font-semibold text-white transition-colors hover:bg-primary-focus disabled:cursor-not-allowed disabled:opacity-50">
+            {isSubmitting ? "가입 중" : "사업자 회원가입"}
           </button>
         </form>
       </main>

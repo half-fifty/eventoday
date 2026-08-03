@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import { loginWithGoogle } from "../api/authApi.js";
+import { loginBusiness } from "../api/businessAuthApi.js";
 import useAuth from "../hooks/useAuth.js";
 
 const reasonMsgs = {
@@ -25,10 +26,12 @@ const getSafeRedirect = (redirect) => {
 
 export default function Login() {
   const [params] = useSearchParams();
-  const { loading, isAuthenticated } = useAuth();
+  const { loading, isAuthenticated, refreshMember } = useAuth();
   const [loginType, setLoginType] = useState("social");
   const [businessNumber, setBusinessNumber] = useState("");
   const [password, setPassword] = useState("");
+  const [businessLoginError, setBusinessLoginError] = useState("");
+  const [isBusinessLoginLoading, setIsBusinessLoginLoading] = useState(false);
   const reason = params.get("reason");
   const requestedRedirect = getSafeRedirect(
     params.get("redirect")
@@ -37,7 +40,7 @@ export default function Login() {
     sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY)
   );
   const redirectPath =
-    requestedRedirect || storedRedirect || "/mypage";
+    requestedRedirect || storedRedirect || "/";
   const contextMsg =
     (reason && reasonMsgs[reason]) || "소셜 계정으로 로그인하고 회원 전용 기능을 이용하세요.";
 
@@ -55,9 +58,22 @@ export default function Login() {
     loginWithGoogle();
   };
 
-  const handleBusinessLogin = (event) => {
+  const handleBusinessLogin = async (event) => {
     event.preventDefault();
-    window.alert("사업자 로그인 API 구현 후 연결됩니다.");
+    setBusinessLoginError("");
+    setIsBusinessLoginLoading(true);
+
+    try {
+      await loginBusiness({ businessNumber, password });
+      sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, redirectPath);
+      await refreshMember();
+    } catch (error) {
+      setBusinessLoginError(
+        error.message || "사업자 로그인에 실패했습니다."
+      );
+    } finally {
+      setIsBusinessLoginLoading(false);
+    }
   };
 
   if (loading) {
@@ -135,7 +151,7 @@ export default function Login() {
                   inputMode="numeric"
                   autoComplete="username"
                   value={businessNumber}
-                  onChange={(event) => setBusinessNumber(event.target.value)}
+                  onChange={(event) => setBusinessNumber(event.target.value.replace(/\D/g, "").slice(0, 10))}
                   placeholder="숫자 10자리"
                   required
                   className="h-[48px] w-full rounded-xl border border-white/20 bg-white/10 px-md text-white outline-none placeholder:text-white/30 focus:border-primary-on-dark"
@@ -153,8 +169,11 @@ export default function Login() {
                   className="h-[48px] w-full rounded-xl border border-white/20 bg-white/10 px-md text-white outline-none placeholder:text-white/30 focus:border-primary-on-dark"
                 />
               </label>
-              <button type="submit" className="h-[48px] w-full rounded-xl bg-primary-container font-semibold text-white transition-colors hover:bg-primary-focus">
-                사업자 로그인
+              {businessLoginError && (
+                <p className="text-[12px] text-error">{businessLoginError}</p>
+              )}
+              <button type="submit" disabled={isBusinessLoginLoading} className="h-[48px] w-full rounded-xl bg-primary-container font-semibold text-white transition-colors hover:bg-primary-focus disabled:cursor-not-allowed disabled:opacity-50">
+                {isBusinessLoginLoading ? "로그인 중" : "사업자 로그인"}
               </button>
               <p className="text-center text-caption text-white/50">
                 처음 이용하시나요?{" "}
