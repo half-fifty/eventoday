@@ -22,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.min.edu.TestcontainersConfiguration;
+import com.min.edu.booth.domain.BoothRecruitment;
+import com.min.edu.booth.domain.BoothRecruitmentStatus;
 import com.min.edu.common.security.jwt.JwtTokenProvider;
 import com.min.edu.event.domain.Event;
 import com.min.edu.event.domain.EventMember;
@@ -36,6 +38,7 @@ import com.min.edu.member.repository.MemberRepository;
 import com.min.edu.organization.domain.Organization;
 import com.min.edu.organization.domain.OrganizationStatus;
 import com.min.edu.organization.domain.OrganizationType;
+import com.min.edu.recruitment.repository.BoothRecruitmentRepository;
 
 import jakarta.persistence.EntityManager;
 
@@ -64,6 +67,9 @@ class BoothRecruitmentControllerTest {
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    @Autowired
+    private BoothRecruitmentRepository boothRecruitmentRepository;
 
     private Long eventId;
     private String eventManagerToken;
@@ -314,6 +320,68 @@ class BoothRecruitmentControllerTest {
     }
 
     @Test
+    void OPEN_상태에서는_전체_수정이_불가능하다() throws Exception {
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isOk());
+
+        openRecruitment();
+
+        mockMvc.perform(patch("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("RECRUITMENT_400_003"));
+    }
+
+    @Test
+    void OPEN_상태에서는_모집_종료일만_수정할_수_있다() throws Exception {
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isOk());
+
+        openRecruitment();
+
+        OffsetDateTime newEnd = OffsetDateTime.now().plusDays(30);
+        String endAtJson = objectMapper.writeValueAsString(new java.util.LinkedHashMap<String, Object>() {{
+            put("recruitmentEndAt", newEnd.toString());
+        }});
+
+        mockMvc.perform(patch("/events/{eventId}/booth-recruitment/end-at", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(endAtJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("OPEN"));
+    }
+
+    @Test
+    void BEFORE_OPEN_상태에서는_종료일만_수정하는_API를_쓸_수_없다() throws Exception {
+        mockMvc.perform(post("/events/{eventId}/booth-recruitment", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson()))
+            .andExpect(status().isOk());
+
+        OffsetDateTime newEnd = OffsetDateTime.now().plusDays(30);
+        String endAtJson = objectMapper.writeValueAsString(new java.util.LinkedHashMap<String, Object>() {{
+            put("recruitmentEndAt", newEnd.toString());
+        }});
+
+        mockMvc.perform(patch("/events/{eventId}/booth-recruitment/end-at", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(endAtJson))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("RECRUITMENT_400_003"));
+    }
+
+    @Test
     void BEFORE_OPEN_상태의_모집공고는_삭제할_수_있다() throws Exception {
         mockMvc.perform(post("/events/{eventId}/booth-recruitment", eventId)
                 .header("Authorization", "Bearer " + eventManagerToken)
@@ -360,6 +428,13 @@ class BoothRecruitmentControllerTest {
                 .header("Authorization", "Bearer " + outsiderToken))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.code").value("COMMON_403"));
+    }
+
+    private void openRecruitment() {
+        BoothRecruitment recruitment = boothRecruitmentRepository.findByEventId(eventId).orElseThrow();
+        recruitment.changeStatus(BoothRecruitmentStatus.OPEN, OffsetDateTime.now());
+        boothRecruitmentRepository.saveAndFlush(recruitment);
+        entityManager.clear();
     }
 
     private String createRequestJson() throws Exception {

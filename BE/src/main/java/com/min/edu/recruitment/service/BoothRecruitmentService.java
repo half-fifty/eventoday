@@ -17,6 +17,7 @@ import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.recruitment.dto.BoothRecruitmentCreateRequestDto;
+import com.min.edu.recruitment.dto.BoothRecruitmentEndAtUpdateRequestDto;
 import com.min.edu.recruitment.dto.BoothRecruitmentResponseDto;
 import com.min.edu.recruitment.dto.BoothRecruitmentUpdateRequestDto;
 import com.min.edu.recruitment.repository.BoothRecruitmentRepository;
@@ -81,7 +82,7 @@ public class BoothRecruitmentService {
 
         requireEventManager(eventId, member);
 
-        if (recruitment.getStatus() == BoothRecruitmentStatus.COMPLETED) {
+        if (recruitment.getStatus() != BoothRecruitmentStatus.BEFORE_OPEN) {
             throw new BusinessException(GlobalErrorCode.RECRUITMENT_STATUS_TRANSITION_INVALID);
         }
 
@@ -101,6 +102,26 @@ public class BoothRecruitmentService {
             request.getNotice(),
             OffsetDateTime.now()
         );
+
+        return BoothRecruitmentResponseDto.from(recruitment);
+    }
+
+    @Transactional
+    public BoothRecruitmentResponseDto updateEndAt(
+            Long eventId,
+            BoothRecruitmentEndAtUpdateRequestDto request,
+            AuthenticatedMemberDto member) {
+        BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
+
+        requireEventManager(eventId, member);
+
+        if (recruitment.getStatus() != BoothRecruitmentStatus.OPEN) {
+            throw new BusinessException(GlobalErrorCode.RECRUITMENT_STATUS_TRANSITION_INVALID);
+        }
+
+        validatePeriod(recruitment.getRecruitmentStartAt(), request.getRecruitmentEndAt());
+
+        recruitment.updateEndAt(request.getRecruitmentEndAt(), OffsetDateTime.now());
 
         return BoothRecruitmentResponseDto.from(recruitment);
     }

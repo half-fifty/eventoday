@@ -7,10 +7,15 @@ import {
   getManagementRecruitment,
   createRecruitment,
   updateRecruitment,
+  updateRecruitmentEndAt,
   deleteRecruitment,
   closeRecruitment,
   completeRecruitment,
 } from "../api/recruitmentApi.js";
+
+// BEFORE_OPEN: 전체 항목 수정 가능. OPEN: 모집 종료일만 수정 가능. CLOSED/COMPLETED: 수정 불가.
+const isFullyEditable = (recruitment) => !recruitment || recruitment.status === "BEFORE_OPEN";
+const isEndAtOnlyEditable = (recruitment) => recruitment?.status === "OPEN";
 
 const STATUS_LABEL = {
   BEFORE_OPEN: "모집 준비",
@@ -111,6 +116,11 @@ export default function RecruitmentManagementPanel() {
 
   const handleCreate = () => runAction(() => createRecruitment(eventId, buildPayload()), "모집 공고를 등록했습니다.");
   const handleUpdate = () => runAction(() => updateRecruitment(eventId, buildPayload()), "수정했습니다.");
+  const handleUpdateEndAt = () =>
+    runAction(
+      () => updateRecruitmentEndAt(eventId, toIsoOffset(form.recruitmentEndAt)),
+      "모집 종료일을 수정했습니다."
+    );
   const handleClose = () => runAction(() => closeRecruitment(eventId), "조기 마감 처리했습니다.");
   const handleComplete = () => runAction(() => completeRecruitment(eventId), "완료 처리했습니다.");
 
@@ -211,94 +221,132 @@ export default function RecruitmentManagementPanel() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-sm">
-            <input
-              placeholder="제목"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="border border-hairline rounded-lg px-md py-sm md:col-span-2"
-            />
-            <div>
-              <label className="text-caption text-ink-muted block mb-1">모집 시작</label>
-              <input
-                type="datetime-local"
-                value={form.recruitmentStartAt}
-                onChange={(e) => setForm({ ...form, recruitmentStartAt: e.target.value })}
-                className="border border-hairline rounded-lg px-md py-sm w-full"
-              />
-            </div>
-            <div>
-              <label className="text-caption text-ink-muted block mb-1">모집 종료</label>
-              <input
-                type="datetime-local"
-                value={form.recruitmentEndAt}
-                onChange={(e) => setForm({ ...form, recruitmentEndAt: e.target.value })}
-                className="border border-hairline rounded-lg px-md py-sm w-full"
-              />
-            </div>
-            <input
-              placeholder="참가 대상"
-              value={form.participantTarget}
-              onChange={(e) => setForm({ ...form, participantTarget: e.target.value })}
-              className="border border-hairline rounded-lg px-md py-sm md:col-span-2"
-            />
-            <input
-              placeholder="자격 요건 (선택)"
-              value={form.qualification}
-              onChange={(e) => setForm({ ...form, qualification: e.target.value })}
-              className="border border-hairline rounded-lg px-md py-sm"
-            />
-            <input
-              placeholder="선정 방식 (선택)"
-              value={form.selectionMethod}
-              onChange={(e) => setForm({ ...form, selectionMethod: e.target.value })}
-              className="border border-hairline rounded-lg px-md py-sm"
-            />
-            <input
-              placeholder="담당자명"
-              value={form.contactName}
-              onChange={(e) => setForm({ ...form, contactName: e.target.value })}
-              className="border border-hairline rounded-lg px-md py-sm"
-            />
-            <input
-              placeholder="담당자 이메일"
-              value={form.contactEmail}
-              onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
-              className="border border-hairline rounded-lg px-md py-sm"
-            />
-            <input
-              placeholder="담당자 연락처"
-              value={form.contactPhone}
-              onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
-              className="border border-hairline rounded-lg px-md py-sm md:col-span-2"
-            />
-            <textarea
-              placeholder="안내사항 (선택)"
-              value={form.notice}
-              onChange={(e) => setForm({ ...form, notice: e.target.value })}
-              className="border border-hairline rounded-lg px-md py-sm md:col-span-2"
-            />
-          </div>
+          {(() => {
+            const fullyEditable = isFullyEditable(recruitment);
+            const endAtOnly = isEndAtOnlyEditable(recruitment);
+            const otherFieldsDisabled = !fullyEditable;
+            const endAtDisabled = !fullyEditable && !endAtOnly;
 
-          <div className="flex gap-sm">
-            {recruitment ? (
-              <button
-                onClick={handleUpdate}
-                disabled={submitting}
-                className="px-lg py-sm bg-primary text-white rounded-full text-caption font-body-strong disabled:opacity-40"
-              >
-                수정 저장
-              </button>
-            ) : (
-              <button
-                onClick={handleCreate}
-                disabled={submitting}
-                className="px-lg py-sm bg-primary text-white rounded-full text-caption font-body-strong disabled:opacity-40"
-              >
-                + 새 공고 등록
-              </button>
-            )}
-          </div>
+            return (
+              <>
+                {!fullyEditable && (
+                  <p className="text-[11px] text-ink-muted">
+                    {endAtOnly
+                      ? "모집이 시작된 공고는 모집 종료일만 수정할 수 있습니다."
+                      : "모집이 마감된 공고는 수정할 수 없습니다."}
+                  </p>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-sm">
+                  <input
+                    placeholder="제목"
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    disabled={otherFieldsDisabled}
+                    className="border border-hairline rounded-lg px-md py-sm md:col-span-2 disabled:opacity-50 disabled:bg-surface-muted"
+                  />
+                  <div>
+                    <label className="text-caption text-ink-muted block mb-1">모집 시작</label>
+                    <input
+                      type="datetime-local"
+                      value={form.recruitmentStartAt}
+                      onChange={(e) => setForm({ ...form, recruitmentStartAt: e.target.value })}
+                      disabled={otherFieldsDisabled}
+                      className="border border-hairline rounded-lg px-md py-sm w-full disabled:opacity-50 disabled:bg-surface-muted"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-caption text-ink-muted block mb-1">모집 종료</label>
+                    <input
+                      type="datetime-local"
+                      value={form.recruitmentEndAt}
+                      onChange={(e) => setForm({ ...form, recruitmentEndAt: e.target.value })}
+                      disabled={endAtDisabled}
+                      className="border border-hairline rounded-lg px-md py-sm w-full disabled:opacity-50 disabled:bg-surface-muted"
+                    />
+                  </div>
+                  <input
+                    placeholder="참가 대상"
+                    value={form.participantTarget}
+                    onChange={(e) => setForm({ ...form, participantTarget: e.target.value })}
+                    disabled={otherFieldsDisabled}
+                    className="border border-hairline rounded-lg px-md py-sm md:col-span-2 disabled:opacity-50 disabled:bg-surface-muted"
+                  />
+                  <input
+                    placeholder="자격 요건 (선택)"
+                    value={form.qualification}
+                    onChange={(e) => setForm({ ...form, qualification: e.target.value })}
+                    disabled={otherFieldsDisabled}
+                    className="border border-hairline rounded-lg px-md py-sm disabled:opacity-50 disabled:bg-surface-muted"
+                  />
+                  <input
+                    placeholder="선정 방식 (선택)"
+                    value={form.selectionMethod}
+                    onChange={(e) => setForm({ ...form, selectionMethod: e.target.value })}
+                    disabled={otherFieldsDisabled}
+                    className="border border-hairline rounded-lg px-md py-sm disabled:opacity-50 disabled:bg-surface-muted"
+                  />
+                  <input
+                    placeholder="담당자명"
+                    value={form.contactName}
+                    onChange={(e) => setForm({ ...form, contactName: e.target.value })}
+                    disabled={otherFieldsDisabled}
+                    className="border border-hairline rounded-lg px-md py-sm disabled:opacity-50 disabled:bg-surface-muted"
+                  />
+                  <input
+                    placeholder="담당자 이메일"
+                    value={form.contactEmail}
+                    onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
+                    disabled={otherFieldsDisabled}
+                    className="border border-hairline rounded-lg px-md py-sm disabled:opacity-50 disabled:bg-surface-muted"
+                  />
+                  <input
+                    placeholder="담당자 연락처"
+                    value={form.contactPhone}
+                    onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
+                    disabled={otherFieldsDisabled}
+                    className="border border-hairline rounded-lg px-md py-sm md:col-span-2 disabled:opacity-50 disabled:bg-surface-muted"
+                  />
+                  <textarea
+                    placeholder="안내사항 (선택)"
+                    value={form.notice}
+                    onChange={(e) => setForm({ ...form, notice: e.target.value })}
+                    disabled={otherFieldsDisabled}
+                    className="border border-hairline rounded-lg px-md py-sm md:col-span-2 disabled:opacity-50 disabled:bg-surface-muted"
+                  />
+                </div>
+
+                <div className="flex gap-sm">
+                  {!recruitment && (
+                    <button
+                      onClick={handleCreate}
+                      disabled={submitting}
+                      className="px-lg py-sm bg-primary text-white rounded-full text-caption font-body-strong disabled:opacity-40"
+                    >
+                      + 새 공고 등록
+                    </button>
+                  )}
+                  {recruitment && fullyEditable && (
+                    <button
+                      onClick={handleUpdate}
+                      disabled={submitting}
+                      className="px-lg py-sm bg-primary text-white rounded-full text-caption font-body-strong disabled:opacity-40"
+                    >
+                      수정 저장
+                    </button>
+                  )}
+                  {recruitment && endAtOnly && (
+                    <button
+                      onClick={handleUpdateEndAt}
+                      disabled={submitting}
+                      className="px-lg py-sm bg-primary text-white rounded-full text-caption font-body-strong disabled:opacity-40"
+                    >
+                      마감일 수정
+                    </button>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
     </section>
