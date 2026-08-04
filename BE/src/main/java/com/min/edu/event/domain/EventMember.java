@@ -50,4 +50,9 @@ public class EventMember {
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    public void update(EventRole eventRole, boolean active) {
+        this.eventRole = eventRole;
+        this.active = active;
+    }
 }
