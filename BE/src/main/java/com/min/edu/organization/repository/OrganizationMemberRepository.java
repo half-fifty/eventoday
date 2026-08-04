@@ -20,4 +20,10 @@ public interface OrganizationMemberRepository
         Long memberId,
         OrganizationMemberStatus status
     );
+
+    boolean existsByOrganizationIdAndMemberIdAndStatus(
+        Long organizationId,
+        Long memberId,
+        OrganizationMemberStatus status
+    );
 }

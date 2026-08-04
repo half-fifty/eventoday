@@ -142,6 +142,11 @@ public class BoothRecruitment {
         this.updatedAt = now;
     }
 
+    public void updateEndAt(OffsetDateTime recruitmentEndAt, OffsetDateTime now) {
+        this.recruitmentEndAt = recruitmentEndAt;
+        this.updatedAt = now;
+    }
+
     public void changeStatus(BoothRecruitmentStatus newStatus, OffsetDateTime now) {
         this.status = newStatus;
         this.updatedAt = now;
