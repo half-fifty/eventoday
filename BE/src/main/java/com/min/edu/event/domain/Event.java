@@ -133,6 +133,9 @@ public class Event {
         if (status != EventStatus.PREPARING && status != EventStatus.REJECTED) {
             throw new IllegalStateException("준비 또는 반려 상태의 행사만 수정할 수 있습니다.");
         }
+        if (ticketTotalQuantity < ticketSoldQuantity) {
+            throw new IllegalStateException("판매된 티켓 수보다 총 티켓 수를 적게 변경할 수 없습니다.");
+        }
         this.name = name;
         this.eventType = eventType;
         this.shortDescription = shortDescription;

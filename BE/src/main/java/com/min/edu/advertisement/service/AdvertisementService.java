@@ -58,10 +58,10 @@ public class AdvertisementService {
                 List.of(AdvertisementStatus.ACTIVE, AdvertisementStatus.SCHEDULED);
         List<Advertisement> advertisements = eventId == null
                 ? advertisementRepository
-                        .findAllByStatusInAndStartAtLessThanEqualAndEndAtGreaterThanEqual(
+                        .findAllByStatusInAndStartAtLessThanEqualAndEndAtGreaterThan(
                                 statuses, now, now)
                 : advertisementRepository
-                        .findAllByEventIdAndStatusInAndStartAtLessThanEqualAndEndAtGreaterThanEqual(
+                        .findAllByEventIdAndStatusInAndStartAtLessThanEqualAndEndAtGreaterThan(
                                 eventId, statuses, now, now);
         Set<Long> eventIds = advertisements.stream().map(Advertisement::getEventId)
                 .filter(id -> id != null).collect(Collectors.toSet());

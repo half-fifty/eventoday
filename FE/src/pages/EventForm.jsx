@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { eventApi } from "../api/eventApi.js";
 import { locationApi } from "../api/locationApi.js";
@@ -15,7 +15,12 @@ const emptyForm = {
   venueMapEnabled: false, boothReservationEnabled: false, noShowGraceMinutes: 10,
 };
 
-const toInputDateTime = (value) => value ? new Date(value).toISOString().slice(0, 16) : "";
+const toInputDateTime = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 const toOffsetDateTime = (value) => value ? new Date(value).toISOString() : null;
 
 export default function EventForm() {
@@ -35,6 +40,8 @@ export default function EventForm() {
   const [places, setPlaces] = useState([]);
   const [searching, setSearching] = useState(false);
   const [placeError, setPlaceError] = useState("");
+  const placeSearchSequence = useRef(0);
+  const postalCodeSequence = useRef(0);
 
   useEffect(() => {
     eventApi.managedOrganizations()
@@ -57,31 +64,44 @@ export default function EventForm() {
   }, [requestedOrganizationId]);
 
   useEffect(() => {
-    if (!eventId || !organizationId) return;
+    if (!eventId || organizationLoading) return;
+    if (!organizationId) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
     eventApi.managedDetail(organizationId, eventId)
       .then((result) => {
+        if (cancelled) return;
         const data = result?.data;
         setForm({ ...emptyForm, ...data, startAt: toInputDateTime(data.startAt),
           endAt: toInputDateTime(data.endAt), ticketSalesStartAt: toInputDateTime(data.ticketSalesStartAt),
           ticketSalesEndAt: toInputDateTime(data.ticketSalesEndAt) });
       })
-      .catch((requestError) => setError(requestError.message || "행사를 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
-  }, [eventId, organizationId]);
+      .catch((requestError) => !cancelled && setError(requestError.message || "행사를 불러오지 못했습니다."))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [eventId, organizationId, organizationLoading]);
 
   const change = (key, value) => setForm((previous) => ({ ...previous, [key]: value }));
   const searchPlaces = async (e) => {
     e.preventDefault();
     if (placeQuery.trim().length < 2) { setPlaceError("두 글자 이상 입력해 주세요."); return; }
+    const sequence = ++placeSearchSequence.current;
     setSearching(true); setPlaceError("");
     try {
       const result = await locationApi.search(placeQuery.trim());
+      if (sequence !== placeSearchSequence.current) return;
       setPlaces(result?.data || []);
       if (!result?.data?.length) setPlaceError("검색 결과가 없습니다.");
-    } catch (requestError) { setPlaceError(requestError.message || "장소를 검색하지 못했습니다."); }
-    finally { setSearching(false); }
+    } catch (requestError) {
+      if (sequence === placeSearchSequence.current) setPlaceError(requestError.message || "장소를 검색하지 못했습니다.");
+    } finally {
+      if (sequence === placeSearchSequence.current) setSearching(false);
+    }
   };
   const selectPlace = async (place) => {
+    const sequence = ++postalCodeSequence.current;
     const selectedAddress = place.roadAddress || place.address;
     setForm((previous) => ({ ...previous, venueName: place.name,
       address: selectedAddress, postalCode: "", latitude: place.latitude,
@@ -89,9 +109,9 @@ export default function EventForm() {
     setPlaces([]); setPlaceQuery(place.name);
     try {
       const result = await locationApi.postalCode(selectedAddress);
-      change("postalCode", result?.data?.postalCode || "");
+      if (sequence === postalCodeSequence.current) change("postalCode", result?.data?.postalCode || "");
     } catch {
-      setPlaceError("장소는 선택했지만 우편번호를 자동 조회하지 못했습니다.");
+      if (sequence === postalCodeSequence.current) setPlaceError("장소는 선택했지만 우편번호를 자동 조회하지 못했습니다.");
     }
   };
   const submit = async (e) => {

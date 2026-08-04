@@ -13,9 +13,9 @@ import org.springframework.data.repository.query.Param;
 
 public interface AdvertisementRepository extends JpaRepository<Advertisement, Long>,
         JpaSpecificationExecutor<Advertisement> {
-    List<Advertisement> findAllByStatusInAndStartAtLessThanEqualAndEndAtGreaterThanEqual(
+    List<Advertisement> findAllByStatusInAndStartAtLessThanEqualAndEndAtGreaterThan(
             Collection<AdvertisementStatus> statuses, OffsetDateTime startAt, OffsetDateTime endAt);
-    List<Advertisement> findAllByEventIdAndStatusInAndStartAtLessThanEqualAndEndAtGreaterThanEqual(
+    List<Advertisement> findAllByEventIdAndStatusInAndStartAtLessThanEqualAndEndAtGreaterThan(
             Long eventId, Collection<AdvertisementStatus> statuses,
             OffsetDateTime startAt, OffsetDateTime endAt);
 

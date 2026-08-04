@@ -16,11 +16,15 @@ export default function EventDetail() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
+    setError("");
+    setEvent(null);
     eventApi.detail(eventId)
-      .then((result) => setEvent(result?.data || null))
-      .catch((requestError) => setError(requestError.message || "행사를 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .then((result) => !cancelled && setEvent(result?.data || null))
+      .catch((requestError) => !cancelled && setError(requestError.message || "행사를 불러오지 못했습니다."))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
   }, [eventId]);
 
   return (

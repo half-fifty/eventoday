@@ -13,6 +13,9 @@ const loadKakaoMap = () => {
     script.onload = () => window.kakao.maps.load(() => resolve(window.kakao.maps));
     script.onerror = () => reject(new Error("카카오맵을 불러오지 못했습니다."));
     document.head.appendChild(script);
+  }).catch((error) => {
+    sdkPromise = undefined;
+    throw error;
   });
   return sdkPromise;
 };
