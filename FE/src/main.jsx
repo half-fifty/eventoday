@@ -22,6 +22,7 @@ import EventMembers from "./pages/EventMembers.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import { AuthProvider } from "./auth/AuthProvider.jsx";
 import ProtectedRoute from "./auth/ProtectedRoute.jsx";
+import NotificationSseProvider from "./notifications/NotificationSseProvider.jsx";
 
 const router = createBrowserRouter([
   { path: "/", element: <Home /> },
@@ -61,7 +62,9 @@ const router = createBrowserRouter([
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <AuthProvider>
-      <RouterProvider router={router} />
+      <NotificationSseProvider>
+        <RouterProvider router={router} />
+      </NotificationSseProvider>
     </AuthProvider>
   </React.StrictMode>
 );

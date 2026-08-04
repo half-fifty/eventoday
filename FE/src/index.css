@@ -84,6 +84,42 @@ body {
 .pulse {
   animation: pulse-soft 1.8s infinite ease-in-out;
 }
+
+@keyframes notification-toast-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(24px, -8px, 0) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes notification-toast-progress {
+  from {
+    width: calc(100% - 4px);
+  }
+  to {
+    width: 0;
+  }
+}
+
+.notification-toast {
+  animation: notification-toast-enter 0.38s cubic-bezier(0.16, 1, 0.3, 1)
+    both;
+}
+
+.notification-toast-progress {
+  animation: notification-toast-progress 6s linear forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-toast,
+  .notification-toast-progress {
+    animation: none;
+  }
+}
 .booth-cell {
   cursor: pointer;
   transition: all 0.2s ease;
