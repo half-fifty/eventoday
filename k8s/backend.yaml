@@ -51,6 +51,10 @@ spec:
               value: "10.0.0.31"
             - name: REDIS_PORT
               value: "6379"
+            - name: FRONTEND_URL
+              value: "__FRONTEND_URL__"
+            - name: COOKIE_SECURE
+              value: "__COOKIE_SECURE__"
           envFrom:
             - secretRef:
                 name: eventoday-secret
