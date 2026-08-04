@@ -16,7 +16,9 @@ import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.BoothStatus;
 import com.min.edu.booth.dto.BoothBulkCreateRequestDto;
 import com.min.edu.booth.dto.BoothCreateRequestDto;
+import com.min.edu.booth.dto.BoothIntroUpdateRequestDto;
 import com.min.edu.booth.dto.BoothPageResponse;
+import com.min.edu.booth.dto.BoothQrResponseDto;
 import com.min.edu.booth.dto.BoothResponseDto;
 import com.min.edu.booth.dto.BoothStatusUpdateRequestDto;
 import com.min.edu.booth.dto.BoothUpdateRequestDto;
@@ -32,18 +34,19 @@ public class BoothController {
 
     private final BoothService boothService;
 
-    // WBS-067
+    // WBS-067, WBS-077
     @GetMapping("/events/{eventId}/booths")
     public ApiResponse<BoothPageResponse> list(
             @PathVariable Long eventId,
             @RequestParam(required = false) BoothStatus status,
             @RequestParam(required = false) String floorName,
             @RequestParam(required = false) String zoneName,
+            @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @AuthenticationPrincipal AuthenticatedMemberDto member) {
         return ApiResponse.success(
-            boothService.list(eventId, status, floorName, zoneName, page, size, member)
+            boothService.list(eventId, status, floorName, zoneName, keyword, page, size, member)
         );
     }
 
@@ -102,5 +105,33 @@ public class BoothController {
             @AuthenticationPrincipal AuthenticatedMemberDto member) {
         boothService.delete(eventId, boothId, member);
         return ApiResponse.success();
+    }
+
+    // WBS-074
+    @PatchMapping("/events/{eventId}/booths/{boothId}/intro")
+    public ApiResponse<BoothResponseDto> updateIntro(
+            @PathVariable Long eventId,
+            @PathVariable Long boothId,
+            @Valid @RequestBody BoothIntroUpdateRequestDto request,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        return ApiResponse.success(boothService.updateIntro(eventId, boothId, request, member));
+    }
+
+    // WBS-075
+    @PostMapping("/events/{eventId}/booths/{boothId}/qr")
+    public ApiResponse<BoothQrResponseDto> issueQr(
+            @PathVariable Long eventId,
+            @PathVariable Long boothId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        return ApiResponse.success(boothService.issueQr(eventId, boothId, member));
+    }
+
+    // WBS-076
+    @GetMapping("/events/{eventId}/booths/{boothId}/qr")
+    public ApiResponse<BoothQrResponseDto> getQr(
+            @PathVariable Long eventId,
+            @PathVariable Long boothId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        return ApiResponse.success(boothService.getQr(eventId, boothId, member));
     }
 }

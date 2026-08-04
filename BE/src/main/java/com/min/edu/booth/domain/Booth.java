@@ -194,4 +194,25 @@ public class Booth {
         this.status = status;
         this.updatedAt = now;
     }
+
+    public void updateIntro(
+            String displayName,
+            String shortIntro,
+            String description,
+            String exhibitionContent,
+            Long representativeFileId,
+            OffsetDateTime now) {
+        this.displayName = displayName;
+        this.shortIntro = shortIntro;
+        this.description = description;
+        this.exhibitionContent = exhibitionContent;
+        this.representativeFileId = representativeFileId;
+        this.updatedAt = now;
+    }
+
+    public void issueQrToken(String qrToken, OffsetDateTime now) {
+        this.qrToken = qrToken;
+        this.qrIssuedAt = now;
+        this.updatedAt = now;
+    }
 }

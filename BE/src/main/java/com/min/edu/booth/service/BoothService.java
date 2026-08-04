@@ -21,17 +21,22 @@ import com.min.edu.booth.domain.Booth;
 import com.min.edu.booth.domain.BoothStatus;
 import com.min.edu.booth.dto.BoothBulkCreateRequestDto;
 import com.min.edu.booth.dto.BoothCreateRequestDto;
+import com.min.edu.booth.dto.BoothIntroUpdateRequestDto;
 import com.min.edu.booth.dto.BoothPageResponse;
+import com.min.edu.booth.dto.BoothQrResponseDto;
 import com.min.edu.booth.dto.BoothResponseDto;
 import com.min.edu.booth.dto.BoothStatusUpdateRequestDto;
 import com.min.edu.booth.dto.BoothUpdateRequestDto;
 import com.min.edu.booth.repository.BoothRepository;
+import com.min.edu.booth.support.BoothQrTokenGenerator;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.PlatformRole;
+import com.min.edu.organization.domain.OrganizationMemberStatus;
+import com.min.edu.organization.repository.OrganizationMemberRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -44,6 +49,8 @@ public class BoothService {
     private final BoothRepository boothRepository;
     private final EventRepository eventRepository;
     private final EventMemberRepository eventMemberRepository;
+    private final OrganizationMemberRepository organizationMemberRepository;
+    private final BoothQrTokenGenerator boothQrTokenGenerator;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -212,20 +219,66 @@ public class BoothService {
         return toResponse(booth);
     }
 
+    @Transactional
+    public BoothResponseDto updateIntro(
+            Long eventId,
+            Long boothId,
+            BoothIntroUpdateRequestDto request,
+            AuthenticatedMemberDto member) {
+        Booth booth = getByIdAndEventIdOrThrow(boothId, eventId);
+        requireAssignedOrganizationMemberOrEventManager(eventId, booth, member);
+
+        if (booth.getStatus() != BoothStatus.ASSIGNED || booth.getAssignedOrganizationId() == null) {
+            throw new BusinessException(GlobalErrorCode.BOOTH_NOT_ASSIGNED);
+        }
+
+        booth.updateIntro(
+            request.getDisplayName(),
+            request.getShortIntro(),
+            request.getDescription(),
+            request.getExhibitionContent(),
+            request.getRepresentativeFileId(),
+            OffsetDateTime.now()
+        );
+
+        return toResponse(booth);
+    }
+
+    @Transactional
+    public BoothQrResponseDto issueQr(Long eventId, Long boothId, AuthenticatedMemberDto member) {
+        requireEventManager(eventId, member);
+        Booth booth = getByIdAndEventIdOrThrow(boothId, eventId);
+
+        String token = boothQrTokenGenerator.generate();
+        booth.issueQrToken(token, OffsetDateTime.now());
+
+        return new BoothQrResponseDto(booth.getId(), booth.getQrToken(), booth.getQrIssuedAt());
+    }
+
+    @Transactional(readOnly = true)
+    public BoothQrResponseDto getQr(Long eventId, Long boothId, AuthenticatedMemberDto member) {
+        Booth booth = getByIdAndEventIdOrThrow(boothId, eventId);
+        requireAssignedOrganizationMemberOrEventManager(eventId, booth, member);
+
+        return new BoothQrResponseDto(booth.getId(), booth.getQrToken(), booth.getQrIssuedAt());
+    }
+
     @Transactional(readOnly = true)
     public BoothPageResponse list(
             Long eventId,
             BoothStatus status,
             String floorName,
             String zoneName,
+            String keyword,
             int page,
             int size,
             AuthenticatedMemberDto member) {
         requireEventManager(eventId, member);
         validatePageRequest(page, size);
 
+        String normalizedKeyword = normalizeKeyword(keyword);
         Page<Booth> booths = boothRepository.search(
-            eventId, status, floorName, zoneName, PageRequest.of(page, size));
+            eventId, status, floorName, zoneName, normalizedKeyword, PageRequest.of(page, size));
 
         return new BoothPageResponse(
             booths.getContent().stream().map(this::toResponse).toList(),
@@ -265,6 +318,44 @@ public class BoothService {
         if (!isEventManager) {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
+    }
+
+    private void requireAssignedOrganizationMemberOrEventManager(
+            Long eventId, Booth booth, AuthenticatedMemberDto member) {
+        if (member.getPlatformRole() == PlatformRole.PLATFORM_ADMIN) {
+            return;
+        }
+
+        boolean isEventManager = eventMemberRepository
+            .existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
+                eventId,
+                member.getMemberId(),
+                EventRole.EVENT_MANAGER
+            );
+
+        if (isEventManager) {
+            return;
+        }
+
+        Long assignedOrganizationId = booth.getAssignedOrganizationId();
+        boolean isAssignedOrganizationMember = assignedOrganizationId != null
+            && organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatus(
+                assignedOrganizationId,
+                member.getMemberId(),
+                OrganizationMemberStatus.ACTIVE
+            );
+
+        if (!isAssignedOrganizationMember) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+    }
+
+    private String normalizeKeyword(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return null;
+        }
+
+        return "%" + keyword.trim().toLowerCase() + "%";
     }
 
     private void validatePageRequest(int page, int size) {

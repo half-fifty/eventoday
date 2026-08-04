@@ -36,6 +36,7 @@ import com.min.edu.member.domain.OauthProvider;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.member.repository.MemberRepository;
 import com.min.edu.organization.domain.Organization;
+import com.min.edu.organization.domain.OrganizationMember;
 import com.min.edu.organization.domain.OrganizationStatus;
 import com.min.edu.organization.domain.OrganizationType;
 
@@ -70,6 +71,8 @@ class BoothControllerTest {
     private Long eventId;
     private String eventManagerToken;
     private String outsiderToken;
+    private String exhibitorToken;
+    private Long exhibitorOrganizationId;
 
     @BeforeEach
     void setUp() {
@@ -120,6 +123,11 @@ class BoothControllerTest {
         );
         memberRepository.save(outsider);
 
+        Member exhibitor = Member.createOAuthMember(
+            "exhibitor@example.com", "참가기업", OauthProvider.GOOGLE, "exhibitor-sub", now
+        );
+        memberRepository.save(exhibitor);
+
         EventMember eventMember = EventMember.builder()
             .eventId(eventId)
             .memberId(eventManager.getId())
@@ -129,10 +137,37 @@ class BoothControllerTest {
             .build();
         entityManager.persist(eventMember);
 
+        Organization exhibitorOrganization = Organization.builder()
+            .organizationType(OrganizationType.EXHIBITOR)
+            .name("테스트참가기업")
+            .contactEmail("exhibitor-org@example.com")
+            .contactPhone("010-1111-2222")
+            .status(OrganizationStatus.ACTIVE)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+        entityManager.persist(exhibitorOrganization);
+        exhibitorOrganizationId = exhibitorOrganization.getId();
+
+        OrganizationMember organizationMember = OrganizationMember.createOwner(
+            exhibitorOrganizationId, exhibitor.getId(), now
+        );
+        entityManager.persist(organizationMember);
+
         entityManager.flush();
 
         eventManagerToken = jwtTokenProvider.createAccessToken(eventManager.getId(), PlatformRole.USER);
         outsiderToken = jwtTokenProvider.createAccessToken(outsider.getId(), PlatformRole.USER);
+        exhibitorToken = jwtTokenProvider.createAccessToken(exhibitor.getId(), PlatformRole.USER);
+    }
+
+    private void assignToExhibitor(Long boothId) {
+        entityManager.createQuery(
+                "UPDATE Booth b SET b.assignedOrganizationId = :orgId WHERE b.id = :boothId")
+            .setParameter("orgId", exhibitorOrganizationId)
+            .setParameter("boothId", boothId)
+            .executeUpdate();
+        entityManager.clear();
     }
 
     @Test
@@ -374,6 +409,205 @@ class BoothControllerTest {
                 .header("Authorization", "Bearer " + outsiderToken))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.code").value("COMMON_403"));
+    }
+
+    @Test
+    void 배정된_조직_구성원은_ASSIGNED_부스의_소개를_수정할_수_있다() throws Exception {
+        String createResponse = mockMvc.perform(post("/events/{eventId}/booths", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson("K-01")))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        long boothId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
+
+        mockMvc.perform(patch("/events/{eventId}/booths/{boothId}/status", eventId, boothId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"ASSIGNED\"}"))
+            .andExpect(status().isOk());
+
+        assignToExhibitor(boothId);
+
+        String introJson = objectMapper.writeValueAsString(new LinkedHashMap<String, Object>() {{
+            put("displayName", "테스트 부스");
+            put("shortIntro", "한 줄 소개");
+            put("description", "상세 소개");
+        }});
+
+        mockMvc.perform(patch("/events/{eventId}/booths/{boothId}/intro", eventId, boothId)
+                .header("Authorization", "Bearer " + exhibitorToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(introJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.displayName").value("테스트 부스"))
+            .andExpect(jsonPath("$.data.shortIntro").value("한 줄 소개"));
+    }
+
+    @Test
+    void ASSIGNED_상태가_아니면_소개를_수정할_수_없다() throws Exception {
+        String createResponse = mockMvc.perform(post("/events/{eventId}/booths", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson("K-02")))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        long boothId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
+
+        String introJson = objectMapper.writeValueAsString(new LinkedHashMap<String, Object>() {{
+            put("displayName", "테스트 부스");
+        }});
+
+        mockMvc.perform(patch("/events/{eventId}/booths/{boothId}/intro", eventId, boothId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(introJson))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("BOOTH_400_003"));
+    }
+
+    @Test
+    void 배정되지_않은_조직의_구성원은_소개를_수정할_수_없다() throws Exception {
+        String createResponse = mockMvc.perform(post("/events/{eventId}/booths", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson("K-03")))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        long boothId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
+
+        mockMvc.perform(patch("/events/{eventId}/booths/{boothId}/status", eventId, boothId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"ASSIGNED\"}"))
+            .andExpect(status().isOk());
+
+        String introJson = objectMapper.writeValueAsString(new LinkedHashMap<String, Object>() {{
+            put("displayName", "테스트 부스");
+        }});
+
+        mockMvc.perform(patch("/events/{eventId}/booths/{boothId}/intro", eventId, boothId)
+                .header("Authorization", "Bearer " + outsiderToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(introJson))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("COMMON_403"));
+    }
+
+    @Test
+    void 담당자는_QR을_발급하고_조회할_수_있다() throws Exception {
+        String createResponse = mockMvc.perform(post("/events/{eventId}/booths", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson("L-01")))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        long boothId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
+
+        String issueResponse = mockMvc.perform(post("/events/{eventId}/booths/{boothId}/qr", eventId, boothId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.qrToken").isNotEmpty())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        String firstToken = objectMapper.readTree(issueResponse).path("data").path("qrToken").asText();
+
+        mockMvc.perform(get("/events/{eventId}/booths/{boothId}/qr", eventId, boothId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.qrToken").value(firstToken));
+
+        // 재발급하면 토큰이 갱신된다.
+        mockMvc.perform(post("/events/{eventId}/booths/{boothId}/qr", eventId, boothId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.qrToken").value(org.hamcrest.Matchers.not(firstToken)));
+    }
+
+    @Test
+    void 담당자가_아니면_QR을_발급할_수_없다() throws Exception {
+        String createResponse = mockMvc.perform(post("/events/{eventId}/booths", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson("L-02")))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        long boothId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
+
+        mockMvc.perform(post("/events/{eventId}/booths/{boothId}/qr", eventId, boothId)
+                .header("Authorization", "Bearer " + outsiderToken))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("COMMON_403"));
+    }
+
+    @Test
+    void 배정된_조직_구성원도_QR을_조회할_수_있다() throws Exception {
+        String createResponse = mockMvc.perform(post("/events/{eventId}/booths", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson("L-03")))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        long boothId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
+
+        mockMvc.perform(patch("/events/{eventId}/booths/{boothId}/status", eventId, boothId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"ASSIGNED\"}"))
+            .andExpect(status().isOk());
+
+        assignToExhibitor(boothId);
+
+        mockMvc.perform(post("/events/{eventId}/booths/{boothId}/qr", eventId, boothId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/events/{eventId}/booths/{boothId}/qr", eventId, boothId)
+                .header("Authorization", "Bearer " + exhibitorToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.qrToken").isNotEmpty());
+    }
+
+    @Test
+    void 키워드로_부스를_검색할_수_있다() throws Exception {
+        mockMvc.perform(post("/events/{eventId}/booths", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson("M-01")))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/events/{eventId}/booths", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequestJson("N-01")))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/events/{eventId}/booths", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .param("keyword", "m-01"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.content.length()").value(1))
+            .andExpect(jsonPath("$.data.content[0].boothCode").value("M-01"));
     }
 
     private String createRequestJson(String boothCode) throws Exception {
