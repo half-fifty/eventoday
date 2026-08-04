@@ -49,6 +49,8 @@ jobs:
           ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
           TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
+          AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
 
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
@@ -67,6 +69,8 @@ jobs:
             ORDER_ACCESS_TOKEN_SECRET
             TOSS_SECRET_KEY
             KAKAO_MAP_REST_API_KEY
+            AWS_ACCESS_KEY
+            AWS_SECRET_KEY
             VITE_API_BASE_URL
             VITE_KAKAO_MAP_JS_KEY
             FRONTEND_URL
@@ -126,8 +130,11 @@ jobs:
       # Git에 저장된 Kubernetes manifest 이미지 태그 갱신
       # ----------------------------------------------------------------
       - name: Update manifest image tags
+        id: bump_manifest
         env:
           IMAGE_TAG: ${{ github.sha }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          COOKIE_SECURE: ${{ vars.COOKIE_SECURE }}
 
         run: |
           set -euo pipefail
@@ -140,6 +147,14 @@ jobs:
             "s|eventoday-fe:.*|eventoday-fe:${IMAGE_TAG}|" \
             k8s/frontend.yaml
 
+          sed -i \
+            "/name: FRONTEND_URL/{n;s|value: \".*\"|value: \"${FRONTEND_URL}\"|}" \
+            k8s/backend.yaml
+
+          sed -i \
+            "/name: COOKIE_SECURE/{n;s|value: \".*\"|value: \"${COOKIE_SECURE}\"|}" \
+            k8s/backend.yaml
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
@@ -150,6 +165,8 @@ jobs:
             || echo "No manifest changes to commit"
 
           git push origin HEAD:dev
+
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # ----------------------------------------------------------------
       # Kubernetes Secret 갱신
@@ -164,6 +181,8 @@ jobs:
           ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
           TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
+          AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
 
         run: |
           set -euo pipefail
@@ -178,6 +197,8 @@ jobs:
             printf 'ORDER_ACCESS_TOKEN_SECRET=%s\n' "${ORDER_ACCESS_TOKEN_SECRET}"
             printf 'TOSS_SECRET_KEY=%s\n' "${TOSS_SECRET_KEY}"
             printf 'KAKAO_MAP_REST_API_KEY=%s\n' "${KAKAO_MAP_REST_API_KEY}"
+            printf 'AWS_ACCESS_KEY=%s\n' "${AWS_ACCESS_KEY}"
+            printf 'AWS_SECRET_KEY=%s\n' "${AWS_SECRET_KEY}"
           } | sudo kubectl create secret generic eventoday-secret \
             --namespace eventoday \
             --from-env-file=/dev/stdin \
@@ -186,83 +207,44 @@ jobs:
             | sudo kubectl apply -f -
 
       # ----------------------------------------------------------------
-      # 백엔드 일반 환경변수 갱신
-      # ----------------------------------------------------------------
-      - name: Sync backend config env vars
-        env:
-          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
-          COOKIE_SECURE: ${{ vars.COOKIE_SECURE }}
-
-        run: |
-          set -euo pipefail
-
-          sudo kubectl set env deployment/eventoday-be \
-            -n eventoday \
-            FRONTEND_URL="${FRONTEND_URL}" \
-            COOKIE_SECURE="${COOKIE_SECURE}"
-
-      # ----------------------------------------------------------------
       # 핵심 변경 부분
-      # 새 백엔드 이미지를 실제 Kubernetes Deployment에 적용
+      # 배포는 ArgoCD가 유일한 주체로 수행한다.
+      # CI는 git manifest만 갱신하고, ArgoCD에게 git을 즉시 다시 읽으라고
+      # 강제(hard refresh)한 뒤, 원하는 커밋까지 동기화되고 Healthy가
+      # 될 때까지 기다린다. (kubectl로 직접 이미지를 바꾸면 ArgoCD의
+      # selfHeal과 서로 되돌리기 경쟁을 벌이게 되어 제거함)
       # ----------------------------------------------------------------
-      - name: Deploy BE image to Kubernetes
+      - name: Sync ArgoCD and wait for healthy rollout
         env:
-          BE_IMAGE: ghcr.io/half-fifty/eventoday-be:${{ github.sha }}
+          EXPECTED_REVISION: ${{ steps.bump_manifest.outputs.commit_sha }}
 
         run: |
           set -euo pipefail
 
-          BE_CONTAINER_NAME=$(sudo kubectl get deployment eventoday-be \
-            -n eventoday \
-            -o jsonpath='{.spec.template.spec.containers[0].name}')
+          sudo kubectl -n argocd annotate application eventoday \
+            argocd.argoproj.io/refresh=hard \
+            --overwrite
 
-          if [[ -z "${BE_CONTAINER_NAME}" ]]; then
-            echo "::error::Backend container name could not be resolved"
-            exit 1
-          fi
+          echo "Waiting for ArgoCD to sync to ${EXPECTED_REVISION} and become Healthy..."
 
-          echo "Backend deployment: eventoday-be"
-          echo "Backend container:  ${BE_CONTAINER_NAME}"
-          echo "Backend image:      ${BE_IMAGE}"
+          for i in $(seq 1 60); do
+            SYNCED_REVISION=$(sudo kubectl -n argocd get application eventoday \
+              -o jsonpath='{.status.sync.revision}')
+            HEALTH=$(sudo kubectl -n argocd get application eventoday \
+              -o jsonpath='{.status.health.status}')
 
-          sudo kubectl set image deployment/eventoday-be \
-            "${BE_CONTAINER_NAME}=${BE_IMAGE}" \
-            -n eventoday
+            echo "  [$i] revision=${SYNCED_REVISION} health=${HEALTH}"
 
-          sudo kubectl rollout status deployment/eventoday-be \
-            -n eventoday \
-            --timeout=300s
+            if [[ "${SYNCED_REVISION}" == "${EXPECTED_REVISION}" && "${HEALTH}" == "Healthy" ]]; then
+              echo "ArgoCD synced to ${EXPECTED_REVISION} and is Healthy."
+              exit 0
+            fi
 
-      # ----------------------------------------------------------------
-      # 새 프론트엔드 이미지를 실제 Kubernetes Deployment에 적용
-      # ----------------------------------------------------------------
-      - name: Deploy FE image to Kubernetes
-        env:
-          FE_IMAGE: ghcr.io/half-fifty/eventoday-fe:${{ github.sha }}
+            sleep 5
+          done
 
-        run: |
-          set -euo pipefail
-
-          FE_CONTAINER_NAME=$(sudo kubectl get deployment eventoday-fe \
-            -n eventoday \
-            -o jsonpath='{.spec.template.spec.containers[0].name}')
-
-          if [[ -z "${FE_CONTAINER_NAME}" ]]; then
-            echo "::error::Frontend container name could not be resolved"
-            exit 1
-          fi
-
-          echo "Frontend deployment: eventoday-fe"
-          echo "Frontend container:  ${FE_CONTAINER_NAME}"
-          echo "Frontend image:      ${FE_IMAGE}"
-
-          sudo kubectl set image deployment/eventoday-fe \
-            "${FE_CONTAINER_NAME}=${FE_IMAGE}" \
-            -n eventoday
-
-          sudo kubectl rollout status deployment/eventoday-fe \
-            -n eventoday \
-            --timeout=300s
+          echo "::error::Timed out waiting for ArgoCD to sync to ${EXPECTED_REVISION}"
+          exit 1
 
       # ----------------------------------------------------------------
       # 실제 Deployment에 원하는 이미지가 적용됐는지 검증
