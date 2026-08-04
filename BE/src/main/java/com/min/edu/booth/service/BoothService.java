@@ -23,6 +23,8 @@ import com.min.edu.booth.dto.BoothBulkCreateRequestDto;
 import com.min.edu.booth.dto.BoothCreateRequestDto;
 import com.min.edu.booth.dto.BoothIntroUpdateRequestDto;
 import com.min.edu.booth.dto.BoothPageResponse;
+import com.min.edu.booth.dto.BoothPublicPageResponse;
+import com.min.edu.booth.dto.BoothPublicResponseDto;
 import com.min.edu.booth.dto.BoothQrResponseDto;
 import com.min.edu.booth.dto.BoothResponseDto;
 import com.min.edu.booth.dto.BoothStatusUpdateRequestDto;
@@ -295,6 +297,26 @@ public class BoothService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public BoothPublicPageResponse listPublic(Long eventId, int page, int size) {
+        requireEventExists(eventId);
+        validatePageRequest(page, size);
+
+        Page<Booth> booths = boothRepository.search(
+            eventId, null, null, null, null, PageRequest.of(page, size));
+
+        return new BoothPublicPageResponse(
+            booths.getContent().stream().map(this::toPublicResponse).toList(),
+            booths.getNumber(),
+            booths.getSize(),
+            booths.getTotalElements(),
+            booths.getTotalPages(),
+            booths.isFirst(),
+            booths.isLast(),
+            booths.isEmpty()
+        );
+    }
+
     private Booth getByIdAndEventIdOrThrow(Long boothId, Long eventId) {
         return boothRepository.findByIdAndEventId(boothId, eventId)
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
@@ -396,6 +418,32 @@ public class BoothService {
             .qrIssuedAt(booth.getQrIssuedAt())
             .createdAt(booth.getCreatedAt())
             .updatedAt(booth.getUpdatedAt())
+            .build();
+    }
+
+    private BoothPublicResponseDto toPublicResponse(Booth booth) {
+        return BoothPublicResponseDto.builder()
+            .id(booth.getId())
+            .boothCode(booth.getBoothCode())
+            .boothType(booth.getBoothType())
+            .floorName(booth.getFloorName())
+            .zoneName(booth.getZoneName())
+            .locationDescription(booth.getLocationDescription())
+            .widthMeter(booth.getWidthMeter())
+            .depthMeter(booth.getDepthMeter())
+            .areaSqm(booth.getAreaSqm())
+            .basicEquipment(fromJson(booth.getBasicEquipment()))
+            .electricityAvailable(booth.isElectricityAvailable())
+            .waterAvailable(booth.isWaterAvailable())
+            .drainageAvailable(booth.isDrainageAvailable())
+            .internetAvailable(booth.isInternetAvailable())
+            .price(booth.getPrice())
+            .status(booth.getStatus())
+            .displayName(booth.getDisplayName())
+            .shortIntro(booth.getShortIntro())
+            .description(booth.getDescription())
+            .exhibitionContent(booth.getExhibitionContent())
+            .representativeFileId(booth.getRepresentativeFileId())
             .build();
     }
 

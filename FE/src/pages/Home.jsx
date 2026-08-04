@@ -5,6 +5,7 @@ import Footer from "../components/Footer.jsx";
 import Icon from "../components/Icon.jsx";
 import { eventApi } from "../api/eventApi.js";
 import { advertisementApi } from "../api/advertisementApi.js";
+import { listPublicRecruitments } from "../api/recruitmentApi.js";
 
 const heroSlides = [
   {
@@ -69,12 +70,6 @@ const upcoming = [
   },
 ];
 
-const recruiting = [
-  { to: "/recruitments", badge: "마감 D-3", badgeCls: "bg-error/10 text-error", title: "스마트팩토리 자동화 전시회", desc: "산업설비·로봇 분야 모집" },
-  { to: "#", badge: "모집 D-7", badgeCls: "bg-primary-container/10 text-primary-focus", title: "2026 서울 푸드테크 박람회", desc: "식품·조리기기 분야 모집" },
-  { to: "#", badge: "모집 D-14", badgeCls: "bg-primary-container/10 text-primary-focus", title: "K-뷰티 & 코스메틱 전시회", desc: "뷰티·헬스케어 분야 모집" },
-];
-
 const popular = [
   { rank: 1, bg: "linear-gradient(135deg,#ff9966,#ff5e62)", name: "서울 푸드테크 박람회", rating: "4.8" },
   { rank: 2, bg: "linear-gradient(135deg,#f7971e,#ffd200)", name: "반려동물 라이프스타일", rating: "4.7" },
@@ -96,6 +91,9 @@ export default function Home() {
   const [eventType, setEventType] = useState("");
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [eventError, setEventError] = useState("");
+  const [recruitments, setRecruitments] = useState([]);
+  const [loadingRecruitments, setLoadingRecruitments] = useState(true);
+  const [recruitmentError, setRecruitmentError] = useState("");
   const displayedSlides = activeAds.length > 0 ? activeAds.map((ad) => ({
     tag: ad.eventId ? "행사 광고" : "부스 광고",
     title: ad.adText || "진행 중인 행사 광고",
@@ -116,6 +114,16 @@ export default function Home() {
     price: Number(event.ticketPrice) === 0 ? "무료" : `${Number(event.ticketPrice).toLocaleString("ko-KR")}원`,
     priceCls: Number(event.ticketPrice) === 0 ? "text-primary" : "",
   }));
+  const displayedRecruiting = recruitments.map((r) => {
+    const dDay = Math.ceil((new Date(r.recruitmentEndAt) - new Date()) / (1000 * 60 * 60 * 24));
+    return {
+      to: `/recruitments/${r.id}`,
+      badge: dDay <= 3 ? `마감 D-${Math.max(dDay, 0)}` : `모집 D-${dDay}`,
+      badgeCls: dDay <= 3 ? "bg-error/10 text-error" : "bg-primary-container/10 text-primary-focus",
+      title: r.title,
+      desc: r.participantTarget,
+    };
+  });
 
   const loadEvents = async (filters = {}) => {
     setLoadingEvents(true);
@@ -135,6 +143,19 @@ export default function Home() {
     }
   };
 
+  const loadRecruitments = async () => {
+    setLoadingRecruitments(true);
+    setRecruitmentError("");
+    try {
+      const data = await listPublicRecruitments("OPEN");
+      setRecruitments(Array.isArray(data) ? data.slice(0, 6) : []);
+    } catch (error) {
+      setRecruitmentError(error.message || "모집 공고를 불러오지 못했습니다.");
+    } finally {
+      setLoadingRecruitments(false);
+    }
+  };
+
   const moveHero = (dir) => setHeroIdx((i) => (i + dir + slideCount) % slideCount);
 
   useEffect(() => {
@@ -146,7 +167,7 @@ export default function Home() {
     setHeroIdx((index) => index % slideCount);
   }, [slideCount]);
 
-  useEffect(() => { loadEvents(); }, []);
+  useEffect(() => { loadEvents(); loadRecruitments(); }, []);
 
   const searchEvents = () => loadEvents({
     ...(keyword.trim() ? { keyword: keyword.trim() } : {}),
@@ -275,22 +296,23 @@ export default function Home() {
               <h2 className="font-display-md text-[22px] text-on-surface">현재 모집 중인 부스 공고</h2>
               <Link to="/recruitments" className="text-caption text-primary font-body-strong">전체 보기</Link>
             </div>
+            {loadingRecruitments && <p className="text-caption text-ink-muted">모집 공고를 불러오는 중입니다.</p>}
+            {recruitmentError && <p className="text-caption text-error">{recruitmentError}</p>}
+            {!loadingRecruitments && !recruitmentError && displayedRecruiting.length === 0 && (
+              <p className="text-caption text-ink-muted">현재 모집 중인 부스 공고가 없습니다.</p>
+            )}
             <div className="flex gap-lg overflow-x-auto hide-scrollbar pb-sm">
-              {recruiting.map((r, i) => {
-                const inner = (
-                  <>
-                    <span className={`inline-block text-[11px] font-bold px-sm py-1 rounded-full mb-sm ${r.badgeCls}`}>{r.badge}</span>
-                    <h3 className="font-body-strong text-body-strong mb-1">{r.title}</h3>
-                    <p className="text-caption text-ink-muted">{r.desc}</p>
-                  </>
-                );
-                const cls = "min-w-[260px] bg-white border border-hairline rounded-2xl p-lg flex-shrink-0 hover:shadow-lg transition-all-custom";
-                return r.to === "#" ? (
-                  <a key={i} href="#" className={cls}>{inner}</a>
-                ) : (
-                  <Link key={i} to={r.to} className={cls}>{inner}</Link>
-                );
-              })}
+              {displayedRecruiting.map((r, i) => (
+                <Link
+                  key={i}
+                  to={r.to}
+                  className="min-w-[260px] bg-white border border-hairline rounded-2xl p-lg flex-shrink-0 hover:shadow-lg transition-all-custom"
+                >
+                  <span className={`inline-block text-[11px] font-bold px-sm py-1 rounded-full mb-sm ${r.badgeCls}`}>{r.badge}</span>
+                  <h3 className="font-body-strong text-body-strong mb-1">{r.title}</h3>
+                  <p className="text-caption text-ink-muted">{r.desc}</p>
+                </Link>
+              ))}
             </div>
           </div>
         </section>

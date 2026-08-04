@@ -18,6 +18,7 @@ import com.min.edu.booth.dto.BoothBulkCreateRequestDto;
 import com.min.edu.booth.dto.BoothCreateRequestDto;
 import com.min.edu.booth.dto.BoothIntroUpdateRequestDto;
 import com.min.edu.booth.dto.BoothPageResponse;
+import com.min.edu.booth.dto.BoothPublicPageResponse;
 import com.min.edu.booth.dto.BoothQrResponseDto;
 import com.min.edu.booth.dto.BoothResponseDto;
 import com.min.edu.booth.dto.BoothStatusUpdateRequestDto;
@@ -33,6 +34,15 @@ import lombok.RequiredArgsConstructor;
 public class BoothController {
 
     private final BoothService boothService;
+
+    // 모집 공고 상세 화면 등 비로그인 사용자에게 부스 목록을 공개하기 위한 API
+    @GetMapping("/events/{eventId}/booths/public")
+    public ApiResponse<BoothPublicPageResponse> listPublic(
+            @PathVariable Long eventId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.success(boothService.listPublic(eventId, page, size));
+    }
 
     // WBS-067, WBS-077
     @GetMapping("/events/{eventId}/booths")

@@ -15,6 +15,15 @@ const listBooths = async (eventId, params = {}) => {
   return response.data;
 };
 
+const listPublicBooths = async (eventId, params = {}) => {
+  const query = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, value]) => value !== "" && value != null))
+  );
+  const queryString = query.toString();
+  const response = await apiRequest(`/events/${eventId}/booths/public${queryString ? `?${queryString}` : ""}`);
+  return response.data;
+};
+
 const getBooth = async (eventId, boothId) => {
   const response = await apiRequest(`/events/${eventId}/booths/${boothId}`);
   return response.data;
@@ -64,6 +73,7 @@ const getBoothQr = async (eventId, boothId) => {
 
 export {
   listBooths,
+  listPublicBooths,
   getBooth,
   createBooth,
   createBoothsBulk,
