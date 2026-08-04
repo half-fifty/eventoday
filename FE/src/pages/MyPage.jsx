@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
+import NotificationBell from "../components/NotificationBell.jsx";
 import useAuth from "../hooks/useAuth.js";
+import { useNotifications } from "../notifications/NotificationContext.jsx";
 
 const tabs = [
   { key: "tickets", label: "예매내역", icon: "confirmation_number" },
@@ -19,6 +21,7 @@ const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 41 + 7) % 7 < 3);
 
 export default function MyPage() {
   const { member, logout } = useAuth();
+  const { openPanel, unreadCount } = useNotifications();
   const isBusinessMember = member.accountType === "BUSINESS";
   const organizationType = member.organization?.organizationType;
   const isOrganizer = organizationType === "ORGANIZER";
@@ -51,7 +54,6 @@ export default function MyPage() {
   const [sub, setSub] = useState("interest");
   const [code, setCode] = useState("");
   const [redeemMsg, setRedeemMsg] = useState(null); // { ok, text }
-  const [switches, setSwitches] = useState({ soon: true, empty: true });
   const [rating, setRating] = useState(0);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const loginDescription = isBusinessMember
@@ -116,9 +118,12 @@ export default function MyPage() {
       {/* Top Nav */}
       <header className="fixed top-0 w-full h-[44px] z-[100] bg-black flex justify-between items-center px-lg">
         <Link to="/" className="font-hero-display text-tagline text-white">EXPO HUB</Link>
-        <Link to="/" className="text-white/80 hover:text-white text-nav-link font-nav-link flex items-center gap-1">
-          <Icon name="home" className="text-[18px]" /> 메인으로
-        </Link>
+        <div className="flex items-center gap-sm">
+          <NotificationBell />
+          <Link to="/" className="text-white/80 hover:text-white text-nav-link font-nav-link flex items-center gap-1">
+            <Icon name="home" className="text-[18px]" /> 메인으로
+          </Link>
+        </div>
       </header>
 
       <main className="pt-[44px] pb-xxl">
@@ -134,8 +139,17 @@ export default function MyPage() {
             </div>
             <div className="flex gap-xs overflow-x-auto hide-scrollbar">
               {visibleTabs.map((t) => (
-                <button key={t.key} onClick={() => setTab(t.key)} className={tabBtnCls(tab === t.key)}>
+                <button
+                  key={t.key}
+                  onClick={() => t.key === "notif" ? openPanel() : setTab(t.key)}
+                  className={tabBtnCls(tab === t.key)}
+                >
                   <Icon name={t.icon} className="text-[16px]" />{t.label}
+                  {t.key === "notif" && unreadCount > 0 && (
+                    <span className="ml-0.5 rounded-full bg-[#ff3b30] px-1.5 text-[9px] font-bold leading-4 text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -282,36 +296,6 @@ export default function MyPage() {
                   </div>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* NOTIF */}
-          {tab === "notif" && (
-            <div className="space-y-lg">
-              <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
-                {[
-                  { key: "soon", label: "예약 임박 알림" },
-                  { key: "empty", label: "빈자리 알림" },
-                ].map((row) => {
-                  const on = switches[row.key];
-                  return (
-                    <div key={row.key} className="flex items-center justify-between p-lg">
-                      <span className="text-body">{row.label}</span>
-                      <button
-                        onClick={() => setSwitches((s) => ({ ...s, [row.key]: !s[row.key] }))}
-                        className={`w-10 h-6 rounded-full relative ${on ? "bg-status-available" : "bg-hairline"}`}
-                      >
-                        <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all" style={{ left: on ? "18px" : "2px" }} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
-                <div className="p-lg flex gap-sm"><span className="w-2 h-2 rounded-full bg-primary mt-1.5 flex-shrink-0" /><div><p className="text-body">예약하신 A03 부스 시간이 30분 후 시작돼요.</p><p className="text-[11px] text-ink-muted mt-1">3분 전</p></div></div>
-                <div className="p-lg flex gap-sm"><span className="w-2 h-2 rounded-full bg-primary mt-1.5 flex-shrink-0" /><div><p className="text-body">관심 등록한 A05 부스에 빈자리가 생겼어요.</p><p className="text-[11px] text-ink-muted mt-1">1시간 전</p></div></div>
-                <div className="p-lg flex gap-sm"><span className="w-2 h-2 rounded-full bg-transparent mt-1.5 flex-shrink-0" /><div><p className="text-body">K-뷰티 & 코스메틱 전시회 티켓 결제가 완료됐어요.</p><p className="text-[11px] text-ink-muted mt-1">어제</p></div></div>
-              </div>
             </div>
           )}
 

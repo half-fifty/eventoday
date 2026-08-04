@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
+import NotificationBell from "../components/NotificationBell.jsx";
 
 const applyBooths = [
   { id: "A01", elec: true,  water: false, status: "available", price: 3500000 },
@@ -58,9 +59,12 @@ export default function BoothApply() {
       {/* Top Nav */}
       <header className="fixed top-0 w-full h-[44px] z-[100] bg-black flex justify-between items-center px-lg">
         <Link to="/" className="font-hero-display text-tagline text-white">EXPO HUB</Link>
-        <Link to="/event-recruiting" className="text-white/80 hover:text-white text-nav-link font-nav-link flex items-center gap-1">
-          <Icon name="arrow_back" className="text-[18px]" /> 모집 공고로 돌아가기
-        </Link>
+        <div className="flex items-center gap-sm">
+          <NotificationBell />
+          <Link to="/event-recruiting" className="text-white/80 hover:text-white text-nav-link font-nav-link flex items-center gap-1">
+            <Icon name="arrow_back" className="text-[18px]" /> 모집 공고로 돌아가기
+          </Link>
+        </div>
       </header>
 
       <main className="max-w-[1200px] mx-auto min-h-screen pt-[80px] pb-section px-lg">

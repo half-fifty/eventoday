@@ -62,7 +62,7 @@ const router = createBrowserRouter([
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <AuthProvider>
-      <NotificationSseProvider>
+      <NotificationSseProvider onNavigate={(path) => router.navigate(path)}>
         <RouterProvider router={router} />
       </NotificationSseProvider>
     </AuthProvider>

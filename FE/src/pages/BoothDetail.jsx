@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
+import NotificationBell from "../components/NotificationBell.jsx";
 
 const boothData = {
   A01: { name: "맛있는 식탁", zone: "A구역 1층 · A01", congestion: 62, icon: "lunch_dining", color: "linear-gradient(135deg,#ff9966,#ff5e62)", tags: ["시식 체험", "밀키트 판매"], desc: "제철 재료로 완성하는 가정식 밀키트 브랜드입니다. 현장에서 대표 메뉴 3종을 시식할 수 있어요.", rating: 4.6 },
@@ -41,9 +42,12 @@ export default function BoothDetail() {
       {/* Top Nav */}
       <header className="fixed top-0 w-full h-[44px] z-[100] bg-black flex justify-between items-center px-lg">
         <Link to="/" className="font-hero-display text-tagline text-white">EXPO HUB</Link>
-        <Link to="/event-ongoing" className="text-white/80 hover:text-white text-nav-link font-nav-link flex items-center gap-1">
-          <Icon name="arrow_back" className="text-[18px]" /> 행사로 돌아가기
-        </Link>
+        <div className="flex items-center gap-sm">
+          <NotificationBell />
+          <Link to="/event-ongoing" className="text-white/80 hover:text-white text-nav-link font-nav-link flex items-center gap-1">
+            <Icon name="arrow_back" className="text-[18px]" /> 행사로 돌아가기
+          </Link>
+        </div>
       </header>
 
       <main className="pt-[44px] pb-xxl">
