@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import TopNav from "../components/TopNav.jsx";
 import Footer from "../components/Footer.jsx";
@@ -40,6 +40,9 @@ export default function RecruitmentDetail() {
   const [loadingMoreBooths, setLoadingMoreBooths] = useState(false);
   const [selectedBooth, setSelectedBooth] = useState(null);
   const [eventLinkAvailable, setEventLinkAvailable] = useState(false);
+  // 행사를 전환했을 때 이전 행사의 부스 목록 요청(더 보기 포함)이 늦게 도착해
+  // 현재 행사의 상태를 덮어쓰는 것을 막기 위한 세대 가드.
+  const boothGenerationRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,50 +75,49 @@ export default function RecruitmentDetail() {
 
   useEffect(() => {
     if (!recruitment?.eventId) return;
-    let cancelled = false;
+    const generation = ++boothGenerationRef.current;
 
     setLoadingBooths(true);
     setBoothError("");
     setBoothPage(0);
+    setBooths([]);
+    setBoothHasMore(false);
 
     listPublicBooths(recruitment.eventId, { page: 0, size: 50 })
       .then((data) => {
-        if (!cancelled) {
-          setBooths(data?.content || []);
-          setBoothHasMore(data ? !data.last : false);
-        }
+        if (boothGenerationRef.current !== generation) return;
+        setBooths(data?.content || []);
+        setBoothHasMore(data ? !data.last : false);
       })
       .catch((err) => {
-        if (!cancelled) {
-          setBooths([]);
-          setBoothHasMore(false);
-          setBoothError(err instanceof ApiError ? err.message : "부스 목록을 불러오지 못했습니다.");
-        }
+        if (boothGenerationRef.current !== generation) return;
+        setBooths([]);
+        setBoothHasMore(false);
+        setBoothError(err instanceof ApiError ? err.message : "부스 목록을 불러오지 못했습니다.");
       })
       .finally(() => {
-        if (!cancelled) setLoadingBooths(false);
+        if (boothGenerationRef.current === generation) setLoadingBooths(false);
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [recruitment?.eventId]);
 
   const loadMoreBooths = async () => {
     if (!recruitment?.eventId || loadingMoreBooths || !boothHasMore) return;
 
+    const generation = boothGenerationRef.current;
     const nextPage = boothPage + 1;
     setLoadingMoreBooths(true);
     setBoothError("");
     try {
       const data = await listPublicBooths(recruitment.eventId, { page: nextPage, size: 50 });
+      if (boothGenerationRef.current !== generation) return;
       setBooths((prev) => [...prev, ...(data?.content || [])]);
       setBoothHasMore(data ? !data.last : false);
       setBoothPage(nextPage);
     } catch (err) {
+      if (boothGenerationRef.current !== generation) return;
       setBoothError(err instanceof ApiError ? err.message : "부스 목록을 더 불러오지 못했습니다.");
     } finally {
-      setLoadingMoreBooths(false);
+      if (boothGenerationRef.current === generation) setLoadingMoreBooths(false);
     }
   };
 
