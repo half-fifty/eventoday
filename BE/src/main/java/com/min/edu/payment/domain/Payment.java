@@ -82,4 +82,21 @@ public class Payment {
             .updatedAt(now)
             .build();
     }
+
+    public boolean isPaid() {
+        return PaymentStatus.PAID.name().equals(status);
+    }
+
+    public boolean isRefunded() {
+        return PaymentStatus.REFUNDED.name().equals(status);
+    }
+
+    public void markRefunded(OffsetDateTime now) {
+        if (!isPaid()) {
+            throw new IllegalStateException("Payment is not paid.");
+        }
+
+        this.status = PaymentStatus.REFUNDED.name();
+        this.updatedAt = now;
+    }
 }

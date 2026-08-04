@@ -80,6 +80,10 @@ public class TicketOrder {
         return TicketOrderStatus.CONFIRMED.name().equals(status);
     }
 
+    public boolean isRefunded() {
+        return TicketOrderStatus.REFUNDED.name().equals(status);
+    }
+
     public void confirm(OffsetDateTime approvedAt, OffsetDateTime updatedAt) {
         if (!isPendingPayment()) {
             throw new IllegalStateException("Ticket order is not pending payment.");
@@ -88,5 +92,14 @@ public class TicketOrder {
         this.status = TicketOrderStatus.CONFIRMED.name();
         this.confirmedAt = approvedAt;
         this.updatedAt = updatedAt;
+    }
+
+    public void refund(OffsetDateTime now) {
+        if (!isConfirmed()) {
+            throw new IllegalStateException("Ticket order is not confirmed.");
+        }
+
+        this.status = TicketOrderStatus.REFUNDED.name();
+        this.updatedAt = now;
     }
 }

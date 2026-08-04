@@ -78,4 +78,25 @@ public class ExchangeCode {
             .updatedAt(now)
             .build();
     }
+
+    public boolean isRedeemed() {
+        return status == ExchangeCodeStatus.REDEEMED;
+    }
+
+    public boolean isCancelled() {
+        return status == ExchangeCodeStatus.CANCELLED;
+    }
+
+    public void cancel(OffsetDateTime now) {
+        if (isRedeemed()) {
+            throw new IllegalStateException("Redeemed exchange code cannot be cancelled.");
+        }
+
+        if (isCancelled()) {
+            return;
+        }
+
+        this.status = ExchangeCodeStatus.CANCELLED;
+        this.updatedAt = now;
+    }
 }

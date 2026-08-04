@@ -44,4 +44,32 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     Optional<PaymentDetailProjection> findPaymentDetailById(
         @Param("paymentId") Long paymentId
     );
+
+    @Query("""
+        SELECT
+            p.id AS paymentId,
+            p.paymentOrderId AS paymentOrderId,
+            p.paymentKey AS paymentKey,
+            p.amount AS paymentAmount,
+            p.status AS paymentStatus,
+            po.orderNo AS orderNo,
+            po.buyerMemberId AS buyerMemberId,
+            po.totalAmount AS totalAmount,
+            po.status AS paymentOrderStatus,
+            t.id AS ticketOrderId,
+            t.eventId AS eventId,
+            e.name AS eventName,
+            e.startAt AS eventStartAt,
+            t.totalQuantity AS quantity,
+            t.status AS ticketOrderStatus
+        FROM Payment p
+        JOIN PaymentOrder po ON po.id = p.paymentOrderId
+        JOIN TicketOrder t ON t.paymentOrderId = po.id
+        JOIN Event e ON e.id = t.eventId
+        WHERE p.id = :paymentId
+            AND po.orderType = com.min.edu.payment.domain.PaymentOrderType.EVENT_TICKET
+        """)
+    Optional<RefundPaymentProjection> findRefundPaymentById(
+        @Param("paymentId") Long paymentId
+    );
 }

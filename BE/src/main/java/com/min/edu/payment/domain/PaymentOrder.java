@@ -98,12 +98,25 @@ public class PaymentOrder {
         return PaymentOrderStatus.PENDING.name().equals(status);
     }
 
+    public boolean isRefunded() {
+        return PaymentOrderStatus.REFUNDED.name().equals(status);
+    }
+
     public void markPaid(OffsetDateTime now) {
         if (!isPending()) {
             throw new IllegalStateException("Payment order is not pending.");
         }
 
         this.status = PaymentOrderStatus.PAID.name();
+        this.updatedAt = now;
+    }
+
+    public void markRefunded(OffsetDateTime now) {
+        if (!isPaid()) {
+            throw new IllegalStateException("Payment order is not paid.");
+        }
+
+        this.status = PaymentOrderStatus.REFUNDED.name();
         this.updatedAt = now;
     }
 }
