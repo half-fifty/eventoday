@@ -10,9 +10,17 @@ on:
       - 'docs/**'
       - '**.md'
 
+  # Actions 화면에서 수동 실행도 가능하게 설정
+  workflow_dispatch:
+
 permissions:
   contents: write
   packages: write
+
+# 여러 배포가 동시에 실행되어 서로 덮어쓰는 문제 방지
+concurrency:
+  group: eventoday-dev-deploy
+  cancel-in-progress: true
 
 jobs:
   build-and-push:
@@ -21,6 +29,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -39,17 +49,30 @@ jobs:
           ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
           TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
+
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
           FRONTEND_URL: ${{ vars.FRONTEND_URL }}
           COOKIE_SECURE: ${{ vars.COOKIE_SECURE }}
+
         run: |
+          set -euo pipefail
+
           required=(
-            POSTGRES_PASSWORD JWT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET
-            NTS_BUSINESS_API_KEY ORDER_ACCESS_TOKEN_SECRET TOSS_SECRET_KEY
+            POSTGRES_PASSWORD
+            JWT_SECRET
+            GOOGLE_CLIENT_ID
+            GOOGLE_CLIENT_SECRET
+            NTS_BUSINESS_API_KEY
+            ORDER_ACCESS_TOKEN_SECRET
+            TOSS_SECRET_KEY
             KAKAO_MAP_REST_API_KEY
-            VITE_API_BASE_URL VITE_KAKAO_MAP_JS_KEY FRONTEND_URL COOKIE_SECURE
+            VITE_API_BASE_URL
+            VITE_KAKAO_MAP_JS_KEY
+            FRONTEND_URL
+            COOKIE_SECURE
           )
+
           for name in "${required[@]}"; do
             if [[ -z "${!name}" ]]; then
               echo "::error::Required deployment setting is missing: $name"
@@ -57,39 +80,80 @@ jobs:
             fi
           done
 
+      # ----------------------------------------------------------------
+      # 백엔드 이미지 빌드 및 GHCR 업로드
+      # ----------------------------------------------------------------
       - name: Build and push BE image
+        env:
+          BE_IMAGE: ghcr.io/half-fifty/eventoday-be:${{ github.sha }}
+
         run: |
+          set -euo pipefail
+
           docker build \
-            -t ghcr.io/half-fifty/eventoday-be:${{ github.sha }} \
+            -t "${BE_IMAGE}" \
             -t ghcr.io/half-fifty/eventoday-be:latest \
-            -f BE/Dockerfile BE
-          docker push ghcr.io/half-fifty/eventoday-be:${{ github.sha }}
+            -f BE/Dockerfile \
+            BE
+
+          docker push "${BE_IMAGE}"
           docker push ghcr.io/half-fifty/eventoday-be:latest
 
+      # ----------------------------------------------------------------
+      # 프론트엔드 이미지 빌드 및 GHCR 업로드
+      # ----------------------------------------------------------------
       - name: Build and push FE image
         env:
+          FE_IMAGE: ghcr.io/half-fifty/eventoday-fe:${{ github.sha }}
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
+
         run: |
+          set -euo pipefail
+
           docker build \
-            --build-arg "VITE_API_BASE_URL=$VITE_API_BASE_URL" \
-            --build-arg "VITE_KAKAO_MAP_JS_KEY=$VITE_KAKAO_MAP_JS_KEY" \
-            -t ghcr.io/half-fifty/eventoday-fe:${{ github.sha }} \
+            --build-arg "VITE_API_BASE_URL=${VITE_API_BASE_URL}" \
+            --build-arg "VITE_KAKAO_MAP_JS_KEY=${VITE_KAKAO_MAP_JS_KEY}" \
+            -t "${FE_IMAGE}" \
             -t ghcr.io/half-fifty/eventoday-fe:latest \
-            -f FE/Dockerfile FE
-          docker push ghcr.io/half-fifty/eventoday-fe:${{ github.sha }}
+            -f FE/Dockerfile \
+            FE
+
+          docker push "${FE_IMAGE}"
           docker push ghcr.io/half-fifty/eventoday-fe:latest
 
+      # ----------------------------------------------------------------
+      # Git에 저장된 Kubernetes manifest 이미지 태그 갱신
+      # ----------------------------------------------------------------
       - name: Update manifest image tags
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+
         run: |
-          sed -i "s|eventoday-be:.*|eventoday-be:${{ github.sha }}|" k8s/backend.yaml
-          sed -i "s|eventoday-fe:.*|eventoday-fe:${{ github.sha }}|" k8s/frontend.yaml
+          set -euo pipefail
+
+          sed -i \
+            "s|eventoday-be:.*|eventoday-be:${IMAGE_TAG}|" \
+            k8s/backend.yaml
+
+          sed -i \
+            "s|eventoday-fe:.*|eventoday-fe:${IMAGE_TAG}|" \
+            k8s/frontend.yaml
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git add k8s/backend.yaml k8s/frontend.yaml
-          git commit -m "chore: bump image tag to ${{ github.sha }} [skip ci]" || echo "no changes to commit"
+
+          git commit \
+            -m "chore: bump image tag to ${IMAGE_TAG} [skip ci]" \
+            || echo "No manifest changes to commit"
+
           git push origin HEAD:dev
 
+      # ----------------------------------------------------------------
+      # Kubernetes Secret 갱신
+      # ----------------------------------------------------------------
       - name: Sync k8s Secret
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
@@ -100,30 +164,154 @@ jobs:
           ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
           TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
+
         run: |
+          set -euo pipefail
+
           {
             printf 'POSTGRES_USER=%s\n' 'expo_user'
-            printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD"
-            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
-            printf 'GOOGLE_CLIENT_ID=%s\n' "$GOOGLE_CLIENT_ID"
-            printf 'GOOGLE_CLIENT_SECRET=%s\n' "$GOOGLE_CLIENT_SECRET"
-            printf 'NTS_BUSINESS_API_KEY=%s\n' "$NTS_BUSINESS_API_KEY"
-            printf 'ORDER_ACCESS_TOKEN_SECRET=%s\n' "$ORDER_ACCESS_TOKEN_SECRET"
-            printf 'TOSS_SECRET_KEY=%s\n' "$TOSS_SECRET_KEY"
-            printf 'KAKAO_MAP_REST_API_KEY=%s\n' "$KAKAO_MAP_REST_API_KEY"
+            printf 'POSTGRES_PASSWORD=%s\n' "${POSTGRES_PASSWORD}"
+            printf 'JWT_SECRET=%s\n' "${JWT_SECRET}"
+            printf 'GOOGLE_CLIENT_ID=%s\n' "${GOOGLE_CLIENT_ID}"
+            printf 'GOOGLE_CLIENT_SECRET=%s\n' "${GOOGLE_CLIENT_SECRET}"
+            printf 'NTS_BUSINESS_API_KEY=%s\n' "${NTS_BUSINESS_API_KEY}"
+            printf 'ORDER_ACCESS_TOKEN_SECRET=%s\n' "${ORDER_ACCESS_TOKEN_SECRET}"
+            printf 'TOSS_SECRET_KEY=%s\n' "${TOSS_SECRET_KEY}"
+            printf 'KAKAO_MAP_REST_API_KEY=%s\n' "${KAKAO_MAP_REST_API_KEY}"
           } | sudo kubectl create secret generic eventoday-secret \
             --namespace eventoday \
             --from-env-file=/dev/stdin \
-            --dry-run=client -o yaml | sudo kubectl apply -f -
+            --dry-run=client \
+            -o yaml \
+            | sudo kubectl apply -f -
 
+      # ----------------------------------------------------------------
+      # 백엔드 일반 환경변수 갱신
+      # ----------------------------------------------------------------
       - name: Sync backend config env vars
         env:
           FRONTEND_URL: ${{ vars.FRONTEND_URL }}
           COOKIE_SECURE: ${{ vars.COOKIE_SECURE }}
-        run: |
-          sudo kubectl set env deployment/eventoday-be -n eventoday \
-            FRONTEND_URL="$FRONTEND_URL" \
-            COOKIE_SECURE="$COOKIE_SECURE"
 
-      - name: Restart backend to pick up secret changes
-        run: sudo kubectl rollout restart deployment/eventoday-be -n eventoday
+        run: |
+          set -euo pipefail
+
+          sudo kubectl set env deployment/eventoday-be \
+            -n eventoday \
+            FRONTEND_URL="${FRONTEND_URL}" \
+            COOKIE_SECURE="${COOKIE_SECURE}"
+
+      # ----------------------------------------------------------------
+      # 핵심 변경 부분
+      # 새 백엔드 이미지를 실제 Kubernetes Deployment에 적용
+      # ----------------------------------------------------------------
+      - name: Deploy BE image to Kubernetes
+        env:
+          BE_IMAGE: ghcr.io/half-fifty/eventoday-be:${{ github.sha }}
+
+        run: |
+          set -euo pipefail
+
+          BE_CONTAINER_NAME=$(sudo kubectl get deployment eventoday-be \
+            -n eventoday \
+            -o jsonpath='{.spec.template.spec.containers[0].name}')
+
+          if [[ -z "${BE_CONTAINER_NAME}" ]]; then
+            echo "::error::Backend container name could not be resolved"
+            exit 1
+          fi
+
+          echo "Backend deployment: eventoday-be"
+          echo "Backend container:  ${BE_CONTAINER_NAME}"
+          echo "Backend image:      ${BE_IMAGE}"
+
+          sudo kubectl set image deployment/eventoday-be \
+            "${BE_CONTAINER_NAME}=${BE_IMAGE}" \
+            -n eventoday
+
+          sudo kubectl rollout status deployment/eventoday-be \
+            -n eventoday \
+            --timeout=300s
+
+      # ----------------------------------------------------------------
+      # 새 프론트엔드 이미지를 실제 Kubernetes Deployment에 적용
+      # ----------------------------------------------------------------
+      - name: Deploy FE image to Kubernetes
+        env:
+          FE_IMAGE: ghcr.io/half-fifty/eventoday-fe:${{ github.sha }}
+
+        run: |
+          set -euo pipefail
+
+          FE_CONTAINER_NAME=$(sudo kubectl get deployment eventoday-fe \
+            -n eventoday \
+            -o jsonpath='{.spec.template.spec.containers[0].name}')
+
+          if [[ -z "${FE_CONTAINER_NAME}" ]]; then
+            echo "::error::Frontend container name could not be resolved"
+            exit 1
+          fi
+
+          echo "Frontend deployment: eventoday-fe"
+          echo "Frontend container:  ${FE_CONTAINER_NAME}"
+          echo "Frontend image:      ${FE_IMAGE}"
+
+          sudo kubectl set image deployment/eventoday-fe \
+            "${FE_CONTAINER_NAME}=${FE_IMAGE}" \
+            -n eventoday
+
+          sudo kubectl rollout status deployment/eventoday-fe \
+            -n eventoday \
+            --timeout=300s
+
+      # ----------------------------------------------------------------
+      # 실제 Deployment에 원하는 이미지가 적용됐는지 검증
+      # ----------------------------------------------------------------
+      - name: Verify deployed images
+        env:
+          EXPECTED_BE_IMAGE: ghcr.io/half-fifty/eventoday-be:${{ github.sha }}
+          EXPECTED_FE_IMAGE: ghcr.io/half-fifty/eventoday-fe:${{ github.sha }}
+
+        run: |
+          set -euo pipefail
+
+          ACTUAL_BE_IMAGE=$(sudo kubectl get deployment eventoday-be \
+            -n eventoday \
+            -o jsonpath='{.spec.template.spec.containers[0].image}')
+
+          ACTUAL_FE_IMAGE=$(sudo kubectl get deployment eventoday-fe \
+            -n eventoday \
+            -o jsonpath='{.spec.template.spec.containers[0].image}')
+
+          echo "Expected BE image: ${EXPECTED_BE_IMAGE}"
+          echo "Actual BE image:   ${ACTUAL_BE_IMAGE}"
+          echo
+          echo "Expected FE image: ${EXPECTED_FE_IMAGE}"
+          echo "Actual FE image:   ${ACTUAL_FE_IMAGE}"
+
+          if [[ "${ACTUAL_BE_IMAGE}" != "${EXPECTED_BE_IMAGE}" ]]; then
+            echo "::error::Backend deployment image does not match"
+            exit 1
+          fi
+
+          if [[ "${ACTUAL_FE_IMAGE}" != "${EXPECTED_FE_IMAGE}" ]]; then
+            echo "::error::Frontend deployment image does not match"
+            exit 1
+          fi
+
+          echo "Backend and frontend images were deployed successfully."
+
+      # ----------------------------------------------------------------
+      # 현재 배포 상태 출력
+      # ----------------------------------------------------------------
+      - name: Show deployment status
+        run: |
+          set -euo pipefail
+
+          sudo kubectl get deployments \
+            -n eventoday \
+            -o wide
+
+          sudo kubectl get pods \
+            -n eventoday \
+            -o wide
