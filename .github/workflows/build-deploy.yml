@@ -98,16 +98,18 @@ jobs:
           ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
         run: |
-          sudo kubectl create secret generic eventoday-secret \
+          {
+            printf 'POSTGRES_USER=%s\n' 'expo_user'
+            printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD"
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
+            printf 'GOOGLE_CLIENT_ID=%s\n' "$GOOGLE_CLIENT_ID"
+            printf 'GOOGLE_CLIENT_SECRET=%s\n' "$GOOGLE_CLIENT_SECRET"
+            printf 'NTS_BUSINESS_API_KEY=%s\n' "$NTS_BUSINESS_API_KEY"
+            printf 'ORDER_ACCESS_TOKEN_SECRET=%s\n' "$ORDER_ACCESS_TOKEN_SECRET"
+            printf 'KAKAO_MAP_REST_API_KEY=%s\n' "$KAKAO_MAP_REST_API_KEY"
+          } | sudo kubectl create secret generic eventoday-secret \
             --namespace eventoday \
-            --from-literal=POSTGRES_USER=expo_user \
-            --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            --from-literal=JWT_SECRET="$JWT_SECRET" \
-            --from-literal=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
-            --from-literal=GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET" \
-            --from-literal=NTS_BUSINESS_API_KEY="$NTS_BUSINESS_API_KEY" \
-            --from-literal=ORDER_ACCESS_TOKEN_SECRET="$ORDER_ACCESS_TOKEN_SECRET" \
-            --from-literal=KAKAO_MAP_REST_API_KEY="$KAKAO_MAP_REST_API_KEY" \
+            --from-env-file=/dev/stdin \
             --dry-run=client -o yaml | sudo kubectl apply -f -
 
       - name: Sync backend config env vars
