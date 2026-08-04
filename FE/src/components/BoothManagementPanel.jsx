@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import Icon from "./Icon.jsx";
 import { ApiError } from "../api/apiClient.js";
@@ -149,9 +148,7 @@ function SpecFormFields({ form, onChange, includeCode = true }) {
   );
 }
 
-export default function BoothManagementPanel() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [eventId, setEventId] = useState(searchParams.get("eventId") ?? "");
+export default function BoothManagementPanel({ eventId }) {
   const [loadedEventId, setLoadedEventId] = useState(null);
 
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -206,12 +203,17 @@ export default function BoothManagementPanel() {
     }
   };
 
-  const handleLoadClick = () => {
-    if (!eventId || loading) return;
-    setSearchParams({ eventId });
+  useEffect(() => {
     setPage(0);
-    loadBooths(eventId, filters, 0);
-  };
+    setFilters(EMPTY_FILTERS);
+    if (eventId) {
+      loadBooths(eventId, EMPTY_FILTERS, 0);
+    } else {
+      setLoadedEventId(null);
+      setPageResult(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId]);
 
   const handleSearch = () => {
     setPage(0);
@@ -337,25 +339,11 @@ export default function BoothManagementPanel() {
         <h1 className="font-display-lg text-[26px]">부스 관리</h1>
       </div>
 
-      <div className="bg-white border border-hairline rounded-xl p-lg space-y-md">
-        <div className="flex items-center gap-sm">
-          <label className="text-caption text-ink-muted whitespace-nowrap">관리할 행사 ID</label>
-          <input
-            type="number"
-            value={eventId}
-            onChange={(e) => setEventId(e.target.value)}
-            placeholder="eventId"
-            className="border border-hairline rounded-lg px-md py-1.5 text-caption w-32"
-          />
-          <button
-            onClick={handleLoadClick}
-            disabled={!eventId || loading}
-            className="px-lg py-1.5 bg-primary text-white rounded-full text-caption font-body-strong disabled:opacity-40"
-          >
-            불러오기
-          </button>
+      {!eventId && (
+        <div className="bg-white border border-hairline rounded-xl p-lg text-caption text-ink-muted">
+          상단에서 관리할 행사를 먼저 선택해 주세요.
         </div>
-      </div>
+      )}
 
       {loading && <p className="text-caption text-ink-muted">불러오는 중...</p>}
       {error && <p className="text-caption text-error">{error}</p>}
