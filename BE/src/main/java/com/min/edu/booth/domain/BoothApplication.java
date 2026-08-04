@@ -100,4 +100,50 @@ public class BoothApplication {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    /**
+     * 신청서 생성 팩토리 메서드 - BoothRecruitment.create() 패턴과 동일
+     */
+    public static BoothApplication create(
+            String applicationNo,
+            Long recruitmentId,
+            Long boothId,
+            Long applicantOrganizationId,
+            Long applicantMemberId,
+            String teamName,
+            String contactName,
+            String contactEmail,
+            String contactPhone,
+            String activityDescription,
+            String exhibitionContent,
+            Integer expectedVisitors,
+            boolean electricityRequired,
+            boolean waterRequired,
+            boolean drainageRequired,
+            boolean internetRequired,
+            String applicationReason,
+            OffsetDateTime now) {
+        return BoothApplication.builder()
+                .applicationNo(applicationNo)
+                .recruitmentId(recruitmentId)
+                .boothId(boothId)
+                .applicantOrganizationId(applicantOrganizationId)
+                .applicantMemberId(applicantMemberId)
+                .teamName(teamName)
+                .contactName(contactName)
+                .contactEmail(contactEmail)
+                .contactPhone(contactPhone)
+                .activityDescription(activityDescription)
+                .exhibitionContent(exhibitionContent)
+                .expectedVisitors(expectedVisitors)
+                .electricityRequired(electricityRequired)
+                .waterRequired(waterRequired)
+                .drainageRequired(drainageRequired)
+                .internetRequired(internetRequired)
+                .applicationReason(applicationReason)
+                .status(BoothApplicationStatus.SUBMITTED)
+                .submittedAt(now)
+                .updatedAt(now)
+                .build();
+    }
 }

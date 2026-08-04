@@ -117,4 +117,13 @@ public class Booth {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    /**
+     * 부스 신청 접수 시 상태를 APPLICATION_PENDING으로 변경
+     * updatedAt도 함께 갱신
+     */
+    public void markAsPending(OffsetDateTime now) {
+        this.status = BoothStatus.APPLICATION_PENDING;
+        this.updatedAt = now;
+    }
 }
