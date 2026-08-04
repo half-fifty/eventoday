@@ -41,6 +41,20 @@ public enum GlobalErrorCode {
     TICKET_ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "TICKET_404_002", "티켓 주문을 찾을 수 없습니다."),
     ORDER_NUMBER_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "TICKET_500_001", "주문번호 생성에 실패했습니다."),
     EXCHANGE_CODE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "ADMISSION_500_001", "교환 코드 생성에 실패했습니다."),
+    PAYMENT_AMOUNT_MISMATCH(HttpStatus.BAD_REQUEST, "PAYMENT_400_001", "결제 금액이 일치하지 않습니다."),
+    PAYMENT_NOT_REQUIRED(HttpStatus.BAD_REQUEST, "PAYMENT_400_002", "결제가 필요하지 않은 주문입니다."),
+    PAYMENT_CONFIRM_REJECTED(HttpStatus.BAD_REQUEST, "PAYMENT_400_003", "결제 승인이 거절되었습니다."),
+    PAYMENT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "PAYMENT_403_001", "결제 처리 권한이 없습니다."),
+    PAYMENT_ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_404_001", "결제 주문을 찾을 수 없습니다."),
+    PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_404_002", "결제 내역을 찾을 수 없습니다."),
+    PAYMENT_INVALID_STATE(HttpStatus.CONFLICT, "PAYMENT_409_001", "결제할 수 없는 주문 상태입니다."),
+    PAYMENT_ALREADY_PROCESSED(HttpStatus.CONFLICT, "PAYMENT_409_002", "이미 처리된 결제입니다."),
+    PAYMENT_PROCESSING_CONFLICT(HttpStatus.CONFLICT, "PAYMENT_409_003", "현재 결제를 처리하고 있습니다. 잠시 후 다시 시도해주세요."),
+    PAYMENT_DATA_INCONSISTENT(HttpStatus.CONFLICT, "PAYMENT_409_004", "결제 데이터가 일치하지 않습니다."),
+    PAYMENT_KEY_ALREADY_USED(HttpStatus.CONFLICT, "PAYMENT_409_005", "이미 사용된 결제 키입니다."),
+    PAYMENT_GATEWAY_ERROR(HttpStatus.BAD_GATEWAY, "PAYMENT_502_001", "결제 대행사 응답 처리에 실패했습니다."),
+    PAYMENT_GATEWAY_RESPONSE_INVALID(HttpStatus.BAD_GATEWAY, "PAYMENT_502_002", "결제 대행사 응답이 유효하지 않습니다."),
+    PAYMENT_GATEWAY_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "PAYMENT_504_001", "결제 대행사 응답 시간이 초과되었습니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_500", "서버 내부 오류가 발생했습니다."),
     INVALID_FILE_TYPE(HttpStatus.BAD_REQUEST, "FILE_400_001", "허용되지 않는 파일 형식입니다."),
     FILE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "FILE_400_002", "파일 크기가 허용 한도를 초과했습니다."),
@@ -54,7 +68,8 @@ public enum GlobalErrorCode {
     BOOTH_CODE_ALREADY_EXISTS(HttpStatus.BAD_REQUEST, "BOOTH_400_001", "이미 등록된 부스 번호입니다."),
     BOOTH_DELETE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "BOOTH_400_002", "신청 또는 배정 이력이 있는 부스는 삭제할 수 없습니다."),
     BOOTH_NOT_ASSIGNED(HttpStatus.BAD_REQUEST, "BOOTH_400_003", "배정된 부스만 소개를 등록할 수 있습니다."),
-    BOOTH_QR_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "BOOTH_500_001", "QR 토큰 생성에 실패했습니다.");
+    BOOTH_QR_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "BOOTH_500_001", "QR 토큰 생성에 실패했습니다."),
+    RESERVATION_SLOT_TIME_CONFLICT(HttpStatus.CONFLICT, "BOOTH_409_001", "이미 존재하는 시간대입니다.");
 
     private final HttpStatus status;
     private final String code;

@@ -89,4 +89,21 @@ public class PaymentOrder {
             .updatedAt(now)
             .build();
     }
+
+    public boolean isPaid() {
+        return PaymentOrderStatus.PAID.name().equals(status);
+    }
+
+    public boolean isPending() {
+        return PaymentOrderStatus.PENDING.name().equals(status);
+    }
+
+    public void markPaid(OffsetDateTime now) {
+        if (!isPending()) {
+            throw new IllegalStateException("Payment order is not pending.");
+        }
+
+        this.status = PaymentOrderStatus.PAID.name();
+        this.updatedAt = now;
+    }
 }

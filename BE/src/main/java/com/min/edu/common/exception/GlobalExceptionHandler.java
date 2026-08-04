@@ -4,6 +4,7 @@ import com.min.edu.common.response.ApiResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -31,6 +32,13 @@ public class GlobalExceptionHandler {
             .map(fieldError -> fieldError.getDefaultMessage())
             .orElse(errorCode.getMessage());
         return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode, message));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadableException(
+            HttpMessageNotReadableException e) {
+        GlobalErrorCode errorCode = GlobalErrorCode.INVALID_INPUT_VALUE;
+        return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode));
     }
 
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)

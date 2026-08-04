@@ -29,6 +29,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Validate deployment configuration
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          NTS_BUSINESS_API_KEY: ${{ secrets.NTS_BUSINESS_API_KEY }}
+          ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
+          TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
+          KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          COOKIE_SECURE: ${{ vars.COOKIE_SECURE }}
+        run: |
+          required=(
+            POSTGRES_PASSWORD JWT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET
+            NTS_BUSINESS_API_KEY ORDER_ACCESS_TOKEN_SECRET TOSS_SECRET_KEY
+            KAKAO_MAP_REST_API_KEY
+            VITE_API_BASE_URL VITE_KAKAO_MAP_JS_KEY FRONTEND_URL COOKIE_SECURE
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Required deployment setting is missing: $name"
+              exit 1
+            fi
+          done
+
       - name: Build and push BE image
         run: |
           docker build \
@@ -39,9 +67,13 @@ jobs:
           docker push ghcr.io/half-fifty/eventoday-be:latest
 
       - name: Build and push FE image
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
         run: |
           docker build \
-            --build-arg VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} \
+            --build-arg "VITE_API_BASE_URL=$VITE_API_BASE_URL" \
+            --build-arg "VITE_KAKAO_MAP_JS_KEY=$VITE_KAKAO_MAP_JS_KEY" \
             -t ghcr.io/half-fifty/eventoday-fe:${{ github.sha }} \
             -t ghcr.io/half-fifty/eventoday-fe:latest \
             -f FE/Dockerfile FE
@@ -59,23 +91,39 @@ jobs:
           git push origin HEAD:dev
 
       - name: Sync k8s Secret
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          NTS_BUSINESS_API_KEY: ${{ secrets.NTS_BUSINESS_API_KEY }}
+          ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
+          TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
+          KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
         run: |
-          sudo kubectl create secret generic eventoday-secret \
+          {
+            printf 'POSTGRES_USER=%s\n' 'expo_user'
+            printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD"
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
+            printf 'GOOGLE_CLIENT_ID=%s\n' "$GOOGLE_CLIENT_ID"
+            printf 'GOOGLE_CLIENT_SECRET=%s\n' "$GOOGLE_CLIENT_SECRET"
+            printf 'NTS_BUSINESS_API_KEY=%s\n' "$NTS_BUSINESS_API_KEY"
+            printf 'ORDER_ACCESS_TOKEN_SECRET=%s\n' "$ORDER_ACCESS_TOKEN_SECRET"
+            printf 'TOSS_SECRET_KEY=%s\n' "$TOSS_SECRET_KEY"
+            printf 'KAKAO_MAP_REST_API_KEY=%s\n' "$KAKAO_MAP_REST_API_KEY"
+          } | sudo kubectl create secret generic eventoday-secret \
             --namespace eventoday \
-            --from-literal=POSTGRES_USER=expo_user \
-            --from-literal=POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
-            --from-literal=JWT_SECRET=${{ secrets.JWT_SECRET }} \
-            --from-literal=GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
-            --from-literal=GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \
-            --from-literal=NTS_BUSINESS_API_KEY="${{ secrets.NTS_BUSINESS_API_KEY }}" \
-            --from-literal=ORDER_ACCESS_TOKEN_SECRET="${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}" \
+            --from-env-file=/dev/stdin \
             --dry-run=client -o yaml | sudo kubectl apply -f -
 
       - name: Sync backend config env vars
+        env:
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          COOKIE_SECURE: ${{ vars.COOKIE_SECURE }}
         run: |
           sudo kubectl set env deployment/eventoday-be -n eventoday \
-            FRONTEND_URL=${{ vars.FRONTEND_URL }} \
-            COOKIE_SECURE=${{ vars.COOKIE_SECURE }}
+            FRONTEND_URL="$FRONTEND_URL" \
+            COOKIE_SECURE="$COOKIE_SECURE"
 
       - name: Restart backend to pick up secret changes
         run: sudo kubectl rollout restart deployment/eventoday-be -n eventoday
