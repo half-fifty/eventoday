@@ -12,50 +12,88 @@ export default function EventMembers() {
   const [error, setError] = useState("");
   const [pendingMemberIds, setPendingMemberIds] = useState(() => new Set());
   const pendingMemberIdsRef = useRef(new Set());
+  const currentEventIdRef = useRef(eventId);
+  const loadSequenceByEventRef = useRef(new Map());
+  currentEventIdRef.current = eventId;
 
-  const beginMemberRequest = (id) => {
-    if (pendingMemberIdsRef.current.has(id)) return false;
+  const memberRequestKey = (targetEventId, id) => `${targetEventId}:${id}`;
+  const beginMemberRequest = (key) => {
+    if (pendingMemberIdsRef.current.has(key)) return false;
     const next = new Set(pendingMemberIdsRef.current);
-    next.add(id);
+    next.add(key);
     pendingMemberIdsRef.current = next;
     setPendingMemberIds(next);
     return true;
   };
-  const finishMemberRequest = (id) => {
+  const finishMemberRequest = (key) => {
     const next = new Set(pendingMemberIdsRef.current);
-    next.delete(id);
+    next.delete(key);
     pendingMemberIdsRef.current = next;
     setPendingMemberIds(next);
   };
 
-  const load = () => eventApi.members(eventId)
-    .then((result) => setMembers(result?.data || []))
-    .catch((requestError) => setError(requestError.message || "담당자를 불러오지 못했습니다."));
+  const load = (targetEventId = eventId) => {
+    const sequence = (loadSequenceByEventRef.current.get(targetEventId) || 0) + 1;
+    loadSequenceByEventRef.current.set(targetEventId, sequence);
+    return eventApi.members(targetEventId)
+      .then((result) => {
+        if (currentEventIdRef.current === targetEventId
+            && loadSequenceByEventRef.current.get(targetEventId) === sequence) {
+          setMembers(result?.data || []);
+        }
+      })
+      .catch((requestError) => {
+        if (currentEventIdRef.current === targetEventId
+            && loadSequenceByEventRef.current.get(targetEventId) === sequence) {
+          setError(requestError.message || "담당자를 불러오지 못했습니다.");
+        }
+      });
+  };
   useEffect(() => {
-    load();
+    setMembers([]);
+    setError("");
+    load(eventId);
   }, [eventId]);
 
   const add = async (e) => {
     e.preventDefault(); setError("");
-    try { await eventApi.addMember(eventId, { memberId: Number(memberId), eventRole }); setMemberId(""); await load(); }
-    catch (requestError) { setError(requestError.message || "담당자를 추가하지 못했습니다."); }
+    const requestEventId = eventId;
+    try {
+      await eventApi.addMember(requestEventId, { memberId: Number(memberId), eventRole });
+      if (currentEventIdRef.current === requestEventId) setMemberId("");
+      await load(requestEventId);
+    } catch (requestError) {
+      if (currentEventIdRef.current === requestEventId) {
+        setError(requestError.message || "담당자를 추가하지 못했습니다.");
+      }
+    }
   };
   const toggle = async (member) => {
-    if (!beginMemberRequest(member.memberId)) return;
+    const requestEventId = eventId;
+    const requestKey = memberRequestKey(requestEventId, member.memberId);
+    if (!beginMemberRequest(requestKey)) return;
     setError("");
     try {
-      await eventApi.updateMember(eventId, member.memberId, { eventRole: member.eventRole, active: !member.active });
-      await load();
+      await eventApi.updateMember(requestEventId, member.memberId, { eventRole: member.eventRole, active: !member.active });
+      await load(requestEventId);
     } catch (requestError) {
-      setError(requestError.message || "담당자 상태를 변경하지 못했습니다.");
-    } finally { finishMemberRequest(member.memberId); }
+      if (currentEventIdRef.current === requestEventId) {
+        setError(requestError.message || "담당자 상태를 변경하지 못했습니다.");
+      }
+    } finally { finishMemberRequest(requestKey); }
   };
   const remove = async (id) => {
-    if (!beginMemberRequest(id)) return;
+    const requestEventId = eventId;
+    const requestKey = memberRequestKey(requestEventId, id);
+    if (!beginMemberRequest(requestKey)) return;
     setError("");
-    try { await eventApi.removeMember(eventId, id); await load(); }
-    catch (requestError) { setError(requestError.message || "담당자를 제거하지 못했습니다."); }
-    finally { finishMemberRequest(id); }
+    try { await eventApi.removeMember(requestEventId, id); await load(requestEventId); }
+    catch (requestError) {
+      if (currentEventIdRef.current === requestEventId) {
+        setError(requestError.message || "담당자를 제거하지 못했습니다.");
+      }
+    }
+    finally { finishMemberRequest(requestKey); }
   };
 
   return <main className="min-h-screen bg-surface-container-low p-lg md:p-xl">
@@ -71,8 +109,8 @@ export default function EventMembers() {
         {members.length === 0 && <p className="p-lg text-ink-muted">등록된 담당자가 없습니다.</p>}
         {members.map((member)=><div key={member.memberId} className="p-lg flex items-center gap-md">
           <div className="flex-1"><p className="font-body-strong">회원 #{member.memberId}</p><p className="text-caption text-ink-muted">{member.eventRole === "EVENT_MANAGER" ? "행사 관리자" : "입장 스태프"}</p></div>
-          <button disabled={pendingMemberIds.has(member.memberId)} onClick={()=>toggle(member)} className="text-caption px-md py-xs border border-hairline rounded-full disabled:opacity-50">{member.active ? "활성" : "비활성"}</button>
-          <button disabled={pendingMemberIds.has(member.memberId)} onClick={()=>remove(member.memberId)} className="text-caption text-error disabled:opacity-50">해제</button>
+          <button disabled={pendingMemberIds.has(memberRequestKey(eventId, member.memberId))} onClick={()=>toggle(member)} className="text-caption px-md py-xs border border-hairline rounded-full disabled:opacity-50">{member.active ? "활성" : "비활성"}</button>
+          <button disabled={pendingMemberIds.has(memberRequestKey(eventId, member.memberId))} onClick={()=>remove(member.memberId)} className="text-caption text-error disabled:opacity-50">해제</button>
         </div>)}
       </div>
     </section>
