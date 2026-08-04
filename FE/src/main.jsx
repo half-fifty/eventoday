@@ -16,6 +16,10 @@ import BoothApply from "./pages/BoothApply.jsx";
 import MyPage from "./pages/MyPage.jsx";
 import OrganizerAdmin from "./pages/OrganizerAdmin.jsx";
 import PlatformAdmin from "./pages/PlatformAdmin.jsx";
+import EventDetail from "./pages/EventDetail.jsx";
+import EventForm from "./pages/EventForm.jsx";
+import EventMembers from "./pages/EventMembers.jsx";
+import NotFound from "./pages/NotFound.jsx";
 import { AuthProvider } from "./auth/AuthProvider.jsx";
 import ProtectedRoute from "./auth/ProtectedRoute.jsx";
 
@@ -28,6 +32,7 @@ const router = createBrowserRouter([
   { path: "/recruitments", element: <RecruitmentList /> },
   { path: "/recruitments/:recruitmentId", element: <RecruitmentDetail /> },
   { path: "/recruitment-check", element: <RecruitmentCheck /> },
+  { path: "/events/:eventId", element: <EventDetail /> },
   { path: "/booth-detail", element: <BoothDetail /> },
   { path: "/booth-apply", element: <BoothApply /> },
   {
@@ -39,6 +44,9 @@ const router = createBrowserRouter([
     ),
   },
   { path: "/organizer-admin", element: <OrganizerAdmin /> },
+  { path: "/organizer-admin/events/new", element: <EventForm /> },
+  { path: "/organizer-admin/events/:eventId/edit", element: <EventForm /> },
+  { path: "/organizer-admin/events/:eventId/members", element: <EventMembers /> },
   {
     path: "/platform-admin",
     element: (
@@ -47,6 +55,7 @@ const router = createBrowserRouter([
       </ProtectedRoute>
     ),
   },
+  { path: "*", element: <NotFound /> },
 ]);
 
 ReactDOM.createRoot(document.getElementById("root")).render(
