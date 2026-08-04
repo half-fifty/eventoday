@@ -15,6 +15,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -43,8 +45,15 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/reissue", "/auth/logout").permitAll()
+                        .requestMatchers(
+                                "/auth/reissue",
+                                "/auth/logout",
+                                "/auth/business/verify",
+                                "/auth/business/signup",
+                                "/auth/business/login"
+                        ).permitAll()
                         .requestMatchers("/auth/me").authenticated()
+                        .requestMatchers("/v1/files/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/booth-recruitments/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/events/*/booth-recruitment/management")
                             .authenticated()
@@ -67,6 +76,11 @@ public class SecurityConfig {
                         UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 
     @Bean
