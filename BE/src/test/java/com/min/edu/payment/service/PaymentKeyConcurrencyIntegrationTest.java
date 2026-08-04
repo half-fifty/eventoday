@@ -47,6 +47,8 @@ import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.toss.TossPaymentClient;
 import com.min.edu.payment.toss.dto.TossConfirmRequest;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
+import com.min.edu.payment.toss.dto.TossCancelRequest;
+import com.min.edu.payment.toss.dto.TossCancelResponse;
 
 @Import({
     TestcontainersConfiguration.class,
@@ -396,6 +398,11 @@ class PaymentKeyConcurrencyIntegrationTest {
 
                 @Override
                 public TossConfirmResponse getPayment(String paymentKey) {
+                    throw new UnsupportedOperationException("Not used in this test.");
+                }
+
+                @Override
+                public TossCancelResponse cancel(TossCancelRequest request) {
                     throw new UnsupportedOperationException("Not used in this test.");
                 }
             };

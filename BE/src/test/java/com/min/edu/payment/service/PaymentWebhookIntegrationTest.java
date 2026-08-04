@@ -34,6 +34,8 @@ import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.toss.TossPaymentClient;
 import com.min.edu.payment.toss.dto.TossConfirmRequest;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
+import com.min.edu.payment.toss.dto.TossCancelRequest;
+import com.min.edu.payment.toss.dto.TossCancelResponse;
 
 @Import({
     TestcontainersConfiguration.class,
@@ -345,6 +347,11 @@ class PaymentWebhookIntegrationTest {
         @Override
         public TossConfirmResponse getPayment(String paymentKey) {
             return payments.get(paymentKey);
+        }
+
+        @Override
+        public TossCancelResponse cancel(TossCancelRequest request) {
+            throw new UnsupportedOperationException("Not used in this test.");
         }
 
         void put(String paymentKey, TossConfirmResponse response) {

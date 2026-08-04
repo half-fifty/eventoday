@@ -27,4 +27,19 @@ public class JpaTicketInventoryGateway implements TicketInventoryGateway {
 
         return updatedRows == 1;
     }
+
+    @Override
+    public boolean release(Long eventId, int quantity) {
+        int updatedRows = entityManager.createQuery("""
+                update Event e
+                   set e.ticketSoldQuantity = e.ticketSoldQuantity - :quantity
+                 where e.id = :eventId
+                   and e.ticketSoldQuantity - :quantity >= 0
+                """)
+            .setParameter("eventId", eventId)
+            .setParameter("quantity", quantity)
+            .executeUpdate();
+
+        return updatedRows == 1;
+    }
 }

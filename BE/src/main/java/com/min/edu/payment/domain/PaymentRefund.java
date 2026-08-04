@@ -56,4 +56,43 @@ public class PaymentRefund {
 
     @Column(name = "pg_cancel_key", length = 200)
     private String pgCancelKey;
+
+    public static PaymentRefund requested(
+            Long paymentId,
+            Long requesterMemberId,
+            BigDecimal refundAmount,
+            String reason,
+            OffsetDateTime requestedAt) {
+        return PaymentRefund.builder()
+            .paymentId(paymentId)
+            .requesterMemberId(requesterMemberId)
+            .refundAmount(refundAmount)
+            .reason(reason)
+            .status(PaymentRefundStatus.REQUESTED)
+            .requestedAt(requestedAt)
+            .build();
+    }
+
+    public boolean isCompleted() {
+        return status == PaymentRefundStatus.COMPLETED;
+    }
+
+    public void complete(String pgCancelKey, OffsetDateTime completedAt) {
+        if (status != PaymentRefundStatus.REQUESTED) {
+            throw new IllegalStateException("Refund is not requested.");
+        }
+
+        this.status = PaymentRefundStatus.COMPLETED;
+        this.pgCancelKey = pgCancelKey;
+        this.completedAt = completedAt;
+    }
+
+    public void fail(OffsetDateTime failedAt) {
+        if (status == PaymentRefundStatus.COMPLETED) {
+            throw new IllegalStateException("Completed refund cannot fail.");
+        }
+
+        this.status = PaymentRefundStatus.FAILED;
+        this.completedAt = failedAt;
+    }
 }

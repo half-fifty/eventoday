@@ -17,6 +17,8 @@ import org.springframework.web.client.RestClientException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.toss.dto.TossConfirmRequest;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
+import com.min.edu.payment.toss.dto.TossCancelRequest;
+import com.min.edu.payment.toss.dto.TossCancelResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -25,6 +27,7 @@ public class RestClientTossPaymentClient implements TossPaymentClient {
 
     private static final String CONFIRM_PATH = "/v1/payments/confirm";
     private static final String PAYMENT_PATH = "/v1/payments/{paymentKey}";
+    private static final String CANCEL_PATH = "/v1/payments/{paymentKey}/cancel";
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
     private final RestClient confirmRestClient;
@@ -96,9 +99,67 @@ public class RestClientTossPaymentClient implements TossPaymentClient {
             .body(TossConfirmResponse.class));
     }
 
+    @Override
+    public TossCancelResponse cancel(TossCancelRequest request) {
+        return executeCancel(() -> confirmRestClient.post()
+            .uri(CANCEL_PATH, request.paymentKey())
+            .header(HttpHeaders.AUTHORIZATION, authorizationHeader())
+            .header(IDEMPOTENCY_KEY_HEADER, refundIdempotencyKey(request))
+            .body(request)
+            .retrieve()
+            .onStatus(HttpStatusCode::is4xxClientError,
+                (httpRequest, clientResponse) -> {
+                    throw new TossPaymentClientException(
+                        GlobalErrorCode.PAYMENT_CONFIRM_REJECTED,
+                        extractTossErrorCode(clientResponse)
+                    );
+                })
+            .onStatus(HttpStatusCode::is5xxServerError,
+                (httpRequest, clientResponse) -> {
+                    throw new TossPaymentClientException(
+                        GlobalErrorCode.PAYMENT_GATEWAY_ERROR
+                    );
+                })
+            .body(TossCancelResponse.class));
+    }
+
     private TossConfirmResponse execute(TossRequest tossRequest) {
         try {
             TossConfirmResponse response = tossRequest.execute();
+
+            if (response == null) {
+                throw new TossPaymentClientException(
+                    GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID
+                );
+            }
+
+            return response;
+        } catch (TossPaymentClientException exception) {
+            throw exception;
+        } catch (ResourceAccessException exception) {
+            if (isTimeout(exception)) {
+                throw new TossPaymentClientException(
+                    GlobalErrorCode.PAYMENT_GATEWAY_TIMEOUT
+                );
+            }
+
+            throw new TossPaymentClientException(GlobalErrorCode.PAYMENT_GATEWAY_ERROR);
+        } catch (RestClientException exception) {
+            if (isTimeout(exception)) {
+                throw new TossPaymentClientException(
+                    GlobalErrorCode.PAYMENT_GATEWAY_TIMEOUT
+                );
+            }
+
+            throw new TossPaymentClientException(
+                GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID
+            );
+        }
+    }
+
+    private TossCancelResponse executeCancel(TossCancelRequestExecutor tossRequest) {
+        try {
+            TossCancelResponse response = tossRequest.execute();
 
             if (response == null) {
                 throw new TossPaymentClientException(
@@ -136,6 +197,12 @@ public class RestClientTossPaymentClient implements TossPaymentClient {
         TossConfirmResponse execute();
     }
 
+    @FunctionalInterface
+    private interface TossCancelRequestExecutor {
+
+        TossCancelResponse execute();
+    }
+
     private String authorizationHeader() {
         String credential = properties.getSecretKey() + ":";
         String encoded = Base64.getEncoder()
@@ -149,6 +216,15 @@ public class RestClientTossPaymentClient implements TossPaymentClient {
             + request.orderId()
             + ":"
             + request.paymentKey();
+        return UUID.nameUUIDFromBytes(source.getBytes(StandardCharsets.UTF_8))
+            .toString();
+    }
+
+    String refundIdempotencyKey(TossCancelRequest request) {
+        String source = "payment-refund:"
+            + request.paymentKey()
+            + ":"
+            + request.cancelAmount();
         return UUID.nameUUIDFromBytes(source.getBytes(StandardCharsets.UTF_8))
             .toString();
     }

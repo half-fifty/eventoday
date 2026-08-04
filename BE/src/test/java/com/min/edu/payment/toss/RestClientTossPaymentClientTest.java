@@ -15,6 +15,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.payment.toss.dto.TossCancelRequest;
+import com.min.edu.payment.toss.dto.TossCancelResponse;
 import com.min.edu.payment.toss.dto.TossConfirmRequest;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
 import com.sun.net.httpserver.HttpExchange;
@@ -76,6 +78,60 @@ class RestClientTossPaymentClientTest {
         assertThat(capturedIdempotencyKey[0])
             .isEqualTo(client().idempotencyKey(request()));
         assertThat(response.status()).isEqualTo("DONE");
+    }
+
+    @Test
+    void cancel_sendsBasicAuthorizationIdempotencyKeyAndBodyWithoutPaymentKey() throws Exception {
+        String[] capturedAuthorization = new String[1];
+        String[] capturedIdempotencyKey = new String[1];
+        String[] capturedBody = new String[1];
+        startServer(exchange -> {
+            capturedAuthorization[0] = exchange.getRequestHeaders()
+                .getFirst("Authorization");
+            capturedIdempotencyKey[0] = exchange.getRequestHeaders()
+                .getFirst("Idempotency-Key");
+            capturedBody[0] = new String(
+                exchange.getRequestBody().readAllBytes(),
+                StandardCharsets.UTF_8
+            );
+            respond(exchange, 200, """
+                {
+                  "paymentKey":"payment-key",
+                  "orderId":"ORDER-1",
+                  "totalAmount":10000,
+                  "status":"CANCELED",
+                  "method":"CARD",
+                  "requestedAt":"2026-08-03T10:00:00+09:00",
+                  "approvedAt":"2026-08-03T10:01:00+09:00",
+                  "cancels":[{
+                    "transactionKey":"cancel-key",
+                    "cancelAmount":10000,
+                    "cancelReason":"reason",
+                    "canceledAt":"2026-08-03T10:02:00+09:00"
+                  }]
+                }
+                """);
+        });
+        TossCancelRequest request = new TossCancelRequest(
+            "payment-key",
+            "reason",
+            10000L
+        );
+
+        TossCancelResponse response = client().cancel(request);
+
+        assertThat(capturedAuthorization[0]).isEqualTo(
+            "Basic " + Base64.getEncoder()
+                .encodeToString("test-secret:".getBytes(StandardCharsets.UTF_8))
+        );
+        assertThat(capturedIdempotencyKey[0])
+            .isEqualTo(client().refundIdempotencyKey(request));
+        assertThat(capturedBody[0])
+            .contains("\"cancelReason\":\"reason\"")
+            .contains("\"cancelAmount\":10000")
+            .doesNotContain("paymentKey");
+        assertThat(response.status()).isEqualTo("CANCELED");
+        assertThat(response.cancels()).hasSize(1);
     }
 
     @Test
@@ -314,6 +370,7 @@ class RestClientTossPaymentClientTest {
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/v1/payments/confirm", exchange -> handler.handle(exchange));
         server.createContext("/v1/payments/payment-key", exchange -> handler.handle(exchange));
+        server.createContext("/v1/payments/payment-key/cancel", exchange -> handler.handle(exchange));
         executorService = Executors.newSingleThreadExecutor();
         server.setExecutor(executorService);
         server.start();
