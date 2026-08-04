@@ -37,6 +37,7 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           NTS_BUSINESS_API_KEY: ${{ secrets.NTS_BUSINESS_API_KEY }}
           ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
+          TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
@@ -45,7 +46,8 @@ jobs:
         run: |
           required=(
             POSTGRES_PASSWORD JWT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET
-            NTS_BUSINESS_API_KEY ORDER_ACCESS_TOKEN_SECRET KAKAO_MAP_REST_API_KEY
+            NTS_BUSINESS_API_KEY ORDER_ACCESS_TOKEN_SECRET TOSS_SECRET_KEY
+            KAKAO_MAP_REST_API_KEY
             VITE_API_BASE_URL VITE_KAKAO_MAP_JS_KEY FRONTEND_URL COOKIE_SECURE
           )
           for name in "${required[@]}"; do
@@ -96,6 +98,7 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           NTS_BUSINESS_API_KEY: ${{ secrets.NTS_BUSINESS_API_KEY }}
           ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
+          TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
         run: |
           {
@@ -106,6 +109,7 @@ jobs:
             printf 'GOOGLE_CLIENT_SECRET=%s\n' "$GOOGLE_CLIENT_SECRET"
             printf 'NTS_BUSINESS_API_KEY=%s\n' "$NTS_BUSINESS_API_KEY"
             printf 'ORDER_ACCESS_TOKEN_SECRET=%s\n' "$ORDER_ACCESS_TOKEN_SECRET"
+            printf 'TOSS_SECRET_KEY=%s\n' "$TOSS_SECRET_KEY"
             printf 'KAKAO_MAP_REST_API_KEY=%s\n' "$KAKAO_MAP_REST_API_KEY"
           } | sudo kubectl create secret generic eventoday-secret \
             --namespace eventoday \
