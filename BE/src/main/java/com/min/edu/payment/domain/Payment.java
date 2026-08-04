@@ -60,4 +60,26 @@ public class Payment {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public static Payment approved(
+            Long paymentOrderId,
+            String pgProvider,
+            String paymentKey,
+            String method,
+            BigDecimal amount,
+            OffsetDateTime requestedAt,
+            OffsetDateTime approvedAt,
+            OffsetDateTime now) {
+        return Payment.builder()
+            .paymentOrderId(paymentOrderId)
+            .pgProvider(pgProvider)
+            .paymentKey(paymentKey)
+            .method(method)
+            .amount(amount)
+            .status(PaymentStatus.PAID.name())
+            .requestedAt(requestedAt)
+            .approvedAt(approvedAt)
+            .updatedAt(now)
+            .build();
+    }
 }
