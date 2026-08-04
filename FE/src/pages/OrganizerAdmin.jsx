@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import RecruitmentManagementPanel from "../components/RecruitmentManagementPanel.jsx";
+import BoothManagementPanel from "../components/BoothManagementPanel.jsx";
 import { eventApi } from "../api/eventApi.js";
 import { getManagementRecruitment } from "../api/recruitmentApi.js";
 
@@ -9,7 +10,7 @@ const navItems = [
   { key: "dashboard", label: "대시보드", icon: "dashboard" },
   { key: "recruitment", label: "부스 모집 공고", icon: "campaign" },
   { key: "applications", label: "부스 신청서 검토", icon: "assignment" },
-  { key: "assignment", label: "부스 배정 현황", icon: "grid_view" },
+  { key: "assignment", label: "부스 관리", icon: "grid_view" },
   { key: "floorplan", label: "평면도 관리", icon: "map" },
   { key: "approval", label: "행사 등록 승인 요청", icon: "verified" },
 ];
@@ -25,7 +26,6 @@ const initialAssignBooths = [
   { id: "A07", status: "blocked" }, { id: "A08", status: "assigned" }, { id: "A09", status: "available" }, { id: "A10", status: "assigned" },
 ];
 const statusLabel = { available: "선택 가능", pending: "신청 대기", assigned: "배정 완료", rejected: "반려됨", approved: "승인 완료", blocked: "사용 불가" };
-const statusCls = { available: "bg-status-available", pending: "bg-status-pending", assigned: "bg-status-assigned", blocked: "bg-status-blocked" };
 
 export default function OrganizerAdmin() {
   const [page, setPage] = useState("dashboard");
@@ -280,27 +280,7 @@ export default function OrganizerAdmin() {
           )}
 
           {/* ASSIGNMENT */}
-          {page === "assignment" && (
-            <section className="space-y-lg">
-              <h1 className="font-display-lg text-[26px]">부스 배정 현황</h1>
-              <div className="bg-white border border-hairline rounded-xl p-lg">
-                <div className="grid grid-cols-5 gap-sm">
-                  {assignBooths.map((b) => (
-                    <div key={b.id} className={`h-16 rounded-lg text-white text-[11px] font-bold flex flex-col items-center justify-center ${statusCls[b.status]}`}>
-                      <span>{b.id}</span>
-                      <span className="text-[9px] opacity-85 mt-0.5">{statusLabel[b.status]}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex flex-wrap gap-md mt-lg text-caption text-on-surface-variant">
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-available" />선택 가능</span>
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-pending" />신청 대기</span>
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-assigned" />배정 완료</span>
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-blocked" />사용 불가</span>
-                </div>
-              </div>
-            </section>
-          )}
+          {page === "assignment" && <BoothManagementPanel />}
 
           {/* FLOORPLAN */}
           {page === "floorplan" && (

@@ -249,8 +249,11 @@ public class BoothService {
         requireEventManager(eventId, member);
         Booth booth = getByIdAndEventIdOrThrow(boothId, eventId);
 
-        String token = boothQrTokenGenerator.generate();
-        booth.issueQrToken(token, OffsetDateTime.now());
+        // 이미 발급된 QR이 있으면 새로 만들지 않고 그대로 반환한다(분실 시에는 재조회로 충분).
+        if (booth.getQrToken() == null) {
+            String token = boothQrTokenGenerator.generate();
+            booth.issueQrToken(token, OffsetDateTime.now());
+        }
 
         return new BoothQrResponseDto(booth.getId(), booth.getQrToken(), booth.getQrIssuedAt());
     }

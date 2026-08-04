@@ -171,6 +171,12 @@ class BoothControllerTest {
     }
 
     @Test
+    void 인증되지_않은_요청은_401이다() throws Exception {
+        mockMvc.perform(get("/events/{eventId}/booths", eventId))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void 담당자는_부스를_등록할_수_있다() throws Exception {
         mockMvc.perform(post("/events/{eventId}/booths", eventId)
                 .header("Authorization", "Bearer " + eventManagerToken)
@@ -531,11 +537,11 @@ class BoothControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.qrToken").value(firstToken));
 
-        // 재발급하면 토큰이 갱신된다.
+        // 이미 발급된 상태에서 다시 발급을 호출해도 토큰은 그대로 유지된다(분실 시 재조회 목적).
         mockMvc.perform(post("/events/{eventId}/booths/{boothId}/qr", eventId, boothId)
                 .header("Authorization", "Bearer " + eventManagerToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.qrToken").value(org.hamcrest.Matchers.not(firstToken)));
+            .andExpect(jsonPath("$.data.qrToken").value(firstToken));
     }
 
     @Test
