@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.List;
+import org.springframework.web.bind.annotation.GetMapping;
 
 @RestController
 @RequiredArgsConstructor
@@ -27,6 +29,16 @@ public class BoothApplicationController {
             @AuthenticationPrincipal AuthenticatedMemberDto member) {
         return ApiResponse.success(
                 boothApplicationService.submit(recruitmentId, request, member)
+        );
+    }
+
+    // APP-API-002
+    @GetMapping("/organizations/{organizationId}/booth-applications")
+    public ApiResponse<List<BoothApplicationResponseDto>> listByOrganization(
+            @PathVariable Long organizationId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        return ApiResponse.success(
+                boothApplicationService.listByOrganization(organizationId, member)
         );
     }
 }

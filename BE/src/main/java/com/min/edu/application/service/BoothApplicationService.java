@@ -111,6 +111,45 @@ public class BoothApplicationService {
         // 신청 파일 연결 (견적서 + 기타 파일)
         List<BoothApplicationFile> files = buildApplicationFiles(application.getId(), request.getEstimateFileId(), otherFileIds, now);
         boothApplicationFileRepository.saveAll(files);
+
+        return BoothApplicationResponseDto.from(application);
+    }
+
+    /**
+     * 참가기업 신청 목록 조회
+     * ORG_MEMBER: OWNER/MANAGER/STAFF 모두 조회 가능
+     */
+    @Transactional(readOnly = true)
+    public List<BoothApplicationResponseDto> listByOrganization(
+            Long organizationId,
+            AuthenticatedMemberDto member) {
+
+        // 해당 조직의 ACTIVE 멤버인지 검증 (역할 무관)
+        requireOrganizationMember(organizationId, member.getMemberId());
+
+        return boothApplicationRepository
+                .findAllByApplicantOrganizationIdOrderBySubmittedAtDesc(organizationId)
+                .stream()
+                .map(BoothApplicationResponseDto::from)
+                .toList();
+    }
+
+    /**
+     * 조직 소속 멤버 여부 검증 (OWNER/MANAGER/STAFF 모두 허용)
+     * requireOrganizationManager()와 구분 - ORG_MEMBER는 역할 제한 없음
+     */
+    private void requireOrganizationMember(Long organizationId, Long memberId) {
+        boolean isMember = boothOrganizationMemberRepository
+                .existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
+                        organizationId,
+                        memberId,
+                        OrganizationMemberStatus.ACTIVE,
+                        List.of(OrganizationRole.OWNER, OrganizationRole.MANAGER, OrganizationRole.STAFF)
+                );
+
+        if (!isMember) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
     }
 
     /** 모집 공고가 OPEN 상태이고 현재 모집 기간인지 검증 */
