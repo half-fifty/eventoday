@@ -14,6 +14,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.response.ApiResponse;
 import com.min.edu.notification.dto.NotificationResponseDto;
+import com.min.edu.notification.dto.NotificationUnreadCountResponseDto;
 import com.min.edu.notification.service.NotificationService;
 import com.min.edu.notification.sse.SseEmitterManager;
 
@@ -29,8 +30,17 @@ public class NotificationController {
     @GetMapping
     public ApiResponse<Page<NotificationResponseDto>> getNotifications(
             @AuthenticationPrincipal AuthenticatedMemberDto authenticatedMember, Pageable pageable) {
-        Page<NotificationResponseDto> response = notificationService.getNotifications(authenticatedMember.getMemberId(),
+        Page<NotificationResponseDto> response = notificationService.getNotifications(
+                authenticatedMember.getMemberId(),
                 pageable);
+        return ApiResponse.success(response);
+    }
+
+    @GetMapping("/unread-count")
+    public ApiResponse<NotificationUnreadCountResponseDto> getUnreadCount(
+            @AuthenticationPrincipal AuthenticatedMemberDto authenticatedMember) {
+        NotificationUnreadCountResponseDto response = notificationService.getUnreadCount(
+                authenticatedMember.getMemberId());
         return ApiResponse.success(response);
     }
 

@@ -10,6 +10,7 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.notification.domain.Notification;
 import com.min.edu.notification.dto.NotificationCreateDto;
 import com.min.edu.notification.dto.NotificationResponseDto;
+import com.min.edu.notification.dto.NotificationUnreadCountResponseDto;
 import com.min.edu.notification.repository.NotificationRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -38,8 +39,16 @@ public class NotificationService {
                 .map(NotificationResponseDto::from);
     }
 
+    @Transactional(readOnly = true)
+    public NotificationUnreadCountResponseDto getUnreadCount(Long memberId) {
+        long count = notificationRepository.countByMemberIdAndReadAtIsNull(memberId);
+        return new NotificationUnreadCountResponseDto(count);
+    }
+
     public NotificationResponseDto markAsRead(Long memberId, Long notificationId) {
-        Notification notification = notificationRepository.findByIdAndMemberId(notificationId, memberId).orElseThrow(()-> new BusinessException(GlobalErrorCode.NOTIFICATION_NOT_FOUND));
+        Notification notification = notificationRepository
+                .findByIdAndMemberId(notificationId, memberId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.NOTIFICATION_NOT_FOUND));
         notification.markAsRead();
         return NotificationResponseDto.from(notification);
     }
