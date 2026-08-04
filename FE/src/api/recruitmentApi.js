@@ -34,6 +34,15 @@ const updateRecruitment = async (eventId, payload) => {
   return response.data;
 };
 
+const updateRecruitmentEndAt = async (eventId, recruitmentEndAt) => {
+  const response = await apiRequest(`/events/${eventId}/booth-recruitment/end-at`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recruitmentEndAt }),
+  });
+  return response.data;
+};
+
 const deleteRecruitment = async (eventId) => {
   await apiRequest(`/events/${eventId}/booth-recruitment`, {
     method: "DELETE",
@@ -60,6 +69,7 @@ export {
   getManagementRecruitment,
   createRecruitment,
   updateRecruitment,
+  updateRecruitmentEndAt,
   deleteRecruitment,
   closeRecruitment,
   completeRecruitment,

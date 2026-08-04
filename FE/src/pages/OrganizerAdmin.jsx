@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import RecruitmentManagementPanel from "../components/RecruitmentManagementPanel.jsx";
+import BoothManagementPanel from "../components/BoothManagementPanel.jsx";
 import { eventApi } from "../api/eventApi.js";
 import { getManagementRecruitment } from "../api/recruitmentApi.js";
 
@@ -9,7 +10,7 @@ const navItems = [
   { key: "dashboard", label: "대시보드", icon: "dashboard" },
   { key: "recruitment", label: "부스 모집 공고", icon: "campaign" },
   { key: "applications", label: "부스 신청서 검토", icon: "assignment" },
-  { key: "assignment", label: "부스 배정 현황", icon: "grid_view" },
+  { key: "assignment", label: "부스 관리", icon: "grid_view" },
   { key: "floorplan", label: "평면도 관리", icon: "map" },
   { key: "approval", label: "행사 등록 승인 요청", icon: "verified" },
 ];
@@ -25,7 +26,6 @@ const initialAssignBooths = [
   { id: "A07", status: "blocked" }, { id: "A08", status: "assigned" }, { id: "A09", status: "available" }, { id: "A10", status: "assigned" },
 ];
 const statusLabel = { available: "선택 가능", pending: "신청 대기", assigned: "배정 완료", rejected: "반려됨", approved: "승인 완료", blocked: "사용 불가" };
-const statusCls = { available: "bg-status-available", pending: "bg-status-pending", assigned: "bg-status-assigned", blocked: "bg-status-blocked" };
 
 export default function OrganizerAdmin() {
   const [page, setPage] = useState("dashboard");
@@ -33,7 +33,8 @@ export default function OrganizerAdmin() {
   const [applications, setApplications] = useState(initialApplications);
   const [assignBooths, setAssignBooths] = useState(initialAssignBooths);
   const query = new URLSearchParams(window.location.search);
-  const organizationId = query.get("organizationId") || localStorage.getItem("organizationId");
+  const [organizationId, setOrganizationId] = useState(query.get("organizationId") || localStorage.getItem("organizationId") || "");
+  const [managedOrganizations, setManagedOrganizations] = useState([]);
   const [managedEvents, setManagedEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(query.get("eventId") || "");
   const [eventLoadError, setEventLoadError] = useState("");
@@ -42,9 +43,35 @@ export default function OrganizerAdmin() {
   const [recruitmentStatus, setRecruitmentStatus] = useState(null);
   const [recruitmentLoading, setRecruitmentLoading] = useState(false);
 
+  // 내 계정이 속한 조직 목록을 불러와, URL/localStorage의 organizationId가 없거나
+  // 더 이상 내 소속이 아니면(다른 계정으로 로그인 등) 자동으로 첫 번째 소속 조직으로 교체한다.
+  useEffect(() => {
+    eventApi.managedOrganizations()
+      .then((result) => {
+        const list = result?.data || [];
+        setManagedOrganizations(list);
+        if (list.length === 0) {
+          setOrganizationId("");
+          localStorage.removeItem("organizationId");
+          return;
+        }
+        const isValid = list.some((org) => String(org.id) === String(organizationId));
+        if (!isValid) {
+          setOrganizationId(String(list[0].id));
+          setSelectedEventId("");
+        }
+      })
+      .catch((error) => setEventLoadError(error.message || "소속 조직 정보를 불러오지 못했습니다."));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (organizationId) localStorage.setItem("organizationId", organizationId);
+  }, [organizationId]);
+
   useEffect(() => {
     if (!organizationId) {
-      setEventLoadError("URL에 organizationId가 필요합니다.");
+      setManagedEvents([]);
       return;
     }
     eventApi.organizationList(organizationId, { size: 100, sort: "createdAt,desc" })
@@ -222,6 +249,45 @@ export default function OrganizerAdmin() {
         </header>
 
         <div className="p-lg md:p-xl space-y-section max-w-[1200px] mx-auto">
+          {managedOrganizations.length > 1 && (
+            <div className="bg-white border border-hairline rounded-xl p-lg flex items-center gap-sm flex-wrap">
+              <label className="text-caption text-ink-muted whitespace-nowrap">소속 조직</label>
+              <select
+                value={organizationId}
+                onChange={(event) => {
+                  setOrganizationId(event.target.value);
+                  setSelectedEventId("");
+                }}
+                className="border border-hairline rounded-lg px-md py-1.5 text-caption bg-white min-w-[240px]"
+              >
+                {managedOrganizations.map((org) => (
+                  <option key={org.id} value={org.id}>{org.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {managedOrganizations.length === 0 && eventLoadError && (
+            <div className="bg-white border border-hairline rounded-xl p-lg text-caption text-error">
+              {eventLoadError}
+            </div>
+          )}
+          {page !== "dashboard" && (
+            <div className="bg-white border border-hairline rounded-xl p-lg flex items-center gap-sm flex-wrap">
+              <label className="text-caption text-ink-muted whitespace-nowrap">관리 중인 행사</label>
+              <select
+                value={selectedEventId}
+                onChange={(event) => setSelectedEventId(event.target.value)}
+                className="border border-hairline rounded-lg px-md py-1.5 text-caption bg-white min-w-[240px]"
+              >
+                <option value="">행사를 선택하세요</option>
+                {managedEvents.map((event) => (
+                  <option key={event.id} value={event.id}>{event.name} · {event.status}</option>
+                ))}
+              </select>
+              {eventLoadError && <span className="text-caption text-error">{eventLoadError}</span>}
+            </div>
+          )}
+
           {/* DASHBOARD */}
           {page === "dashboard" && (
             <section className="space-y-xl">
@@ -264,7 +330,7 @@ export default function OrganizerAdmin() {
           )}
 
           {/* RECRUITMENT */}
-          {page === "recruitment" && <RecruitmentManagementPanel />}
+          {page === "recruitment" && <RecruitmentManagementPanel eventId={selectedEventId} />}
 
           {/* APPLICATIONS */}
           {page === "applications" && (
@@ -280,27 +346,7 @@ export default function OrganizerAdmin() {
           )}
 
           {/* ASSIGNMENT */}
-          {page === "assignment" && (
-            <section className="space-y-lg">
-              <h1 className="font-display-lg text-[26px]">부스 배정 현황</h1>
-              <div className="bg-white border border-hairline rounded-xl p-lg">
-                <div className="grid grid-cols-5 gap-sm">
-                  {assignBooths.map((b) => (
-                    <div key={b.id} className={`h-16 rounded-lg text-white text-[11px] font-bold flex flex-col items-center justify-center ${statusCls[b.status]}`}>
-                      <span>{b.id}</span>
-                      <span className="text-[9px] opacity-85 mt-0.5">{statusLabel[b.status]}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex flex-wrap gap-md mt-lg text-caption text-on-surface-variant">
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-available" />선택 가능</span>
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-pending" />신청 대기</span>
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-assigned" />배정 완료</span>
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-blocked" />사용 불가</span>
-                </div>
-              </div>
-            </section>
-          )}
+          {page === "assignment" && <BoothManagementPanel eventId={selectedEventId} />}
 
           {/* FLOORPLAN */}
           {page === "floorplan" && (
@@ -320,18 +366,12 @@ export default function OrganizerAdmin() {
           {page === "approval" && (
             <section className="space-y-lg">
               <h1 className="font-display-lg text-[26px]">행사 등록 승인 요청</h1>
-              <div className="bg-white border border-hairline rounded-xl p-lg">
-                <label className="text-caption text-ink-muted block mb-xs">승인 요청 행사</label>
-                <select value={selectedEventId} onChange={(event) => setSelectedEventId(event.target.value)} className="w-full h-10 border border-hairline rounded-lg px-md bg-white">
-                  <option value="">행사를 선택하세요</option>
-                  {managedEvents.map((event) => <option key={event.id} value={event.id}>{event.name} · {event.status}</option>)}
-                </select>
-                {eventLoadError && <p className="text-caption text-error mt-sm">{eventLoadError}</p>}
-                {selectedEventId && <div className="flex gap-sm mt-md">
+              {selectedEventId && (
+                <div className="bg-white border border-hairline rounded-xl p-lg flex gap-sm">
                   <Link to={`/organizer-admin/events/${selectedEventId}/edit?organizationId=${organizationId || ""}`} className="text-caption px-md py-xs border border-hairline rounded-full">행사 수정</Link>
                   <Link to={`/organizer-admin/events/${selectedEventId}/members?organizationId=${organizationId || ""}`} className="text-caption px-md py-xs border border-hairline rounded-full">담당자 관리</Link>
-                </div>}
-              </div>
+                </div>
+              )}
               <div className="bg-primary-fixed/20 border border-primary-fixed rounded-xl p-lg flex items-center justify-between gap-lg flex-wrap">
                 <div>
                   <p className="font-body-strong">{selectedEvent ? `${selectedEvent.name} · ${selectedEvent.status}` : "행사를 선택해주세요"}</p>
