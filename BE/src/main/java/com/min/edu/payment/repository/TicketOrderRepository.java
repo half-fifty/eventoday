@@ -73,4 +73,6 @@ public interface TicketOrderRepository extends JpaRepository<TicketOrder, Long> 
     Optional<TicketOrderDetailProjection> findTicketOrderDetailByOrderNo(
         @Param("orderNo") String orderNo
     );
+
+    Optional<TicketOrder> findByPaymentOrderId(Long paymentOrderId);
 }

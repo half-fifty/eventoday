@@ -71,4 +71,22 @@ public class TicketOrder {
             .updatedAt(now)
             .build();
     }
+
+    public boolean isPendingPayment() {
+        return TicketOrderStatus.PENDING_PAYMENT.name().equals(status);
+    }
+
+    public boolean isConfirmed() {
+        return TicketOrderStatus.CONFIRMED.name().equals(status);
+    }
+
+    public void confirm(OffsetDateTime approvedAt) {
+        if (!isPendingPayment()) {
+            throw new IllegalStateException("Ticket order is not pending payment.");
+        }
+
+        this.status = TicketOrderStatus.CONFIRMED.name();
+        this.confirmedAt = approvedAt;
+        this.updatedAt = approvedAt;
+    }
 }
