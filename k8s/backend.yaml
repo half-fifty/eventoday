@@ -19,7 +19,7 @@ spec:
         - name: ghcr-pull-secret
       containers:
         - name: eventoday-be
-          image: ghcr.io/half-fifty/eventoday-be:1a649da136ca0e7300dd78e31cdd4340d6af4d23
+          image: ghcr.io/half-fifty/eventoday-be:00fab7f6e495e8c5937a713e30539380106b0421
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -52,9 +52,9 @@ spec:
             - name: REDIS_PORT
               value: "6379"
             - name: FRONTEND_URL
-              value: "__FRONTEND_URL__"
+              value: "https://eventoday.duckdns.org"
             - name: COOKIE_SECURE
-              value: "__COOKIE_SECURE__"
+              value: "true"
           envFrom:
             - secretRef:
                 name: eventoday-secret
