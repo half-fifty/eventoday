@@ -64,7 +64,7 @@ public class BoothReservationSlotService {
 
         BoothReservationSlot saved;
         try {
-            saved = boothReservationSlotRepository.save(slot);
+            saved = boothReservationSlotRepository.saveAndFlush(slot);
         } catch (DataIntegrityViolationException e) {
             if (isSlotUniqueConstraintViolation(e)) {
                 throw new BusinessException(GlobalErrorCode.RESERVATION_SLOT_TIME_CONFLICT, e);
