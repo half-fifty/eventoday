@@ -10,6 +10,7 @@ import com.min.edu.booth.domain.BoothApplicationFile;
 import com.min.edu.booth.domain.BoothApplicationFileType;
 import com.min.edu.booth.domain.BoothRecruitment;
 import com.min.edu.booth.domain.BoothRecruitmentStatus;
+import com.min.edu.booth.domain.BoothApplicationStatus;
 import com.min.edu.booth.domain.BoothStatus;
 import com.min.edu.booth.repository.BoothApplicationFileRepository;
 import com.min.edu.booth.repository.BoothApplicationRepository;
@@ -166,6 +167,38 @@ public class BoothApplicationService {
         }
 
         throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+    }
+
+    /**
+     * 신청 취소
+     */
+    @Transactional
+    public void cancel(Long applicationId, AuthenticatedMemberDto member) {
+
+        BoothApplication application = boothApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // 본인 조직의 신청인지 검증 (ORG_MEMBER)
+        requireOrganizationMember(application.getApplicantOrganizationId(), member.getMemberId());
+
+        // SUBMITTED 상태에서만 취소 가능 (검토 시작 이전)
+        if (application.getStatus() != BoothApplicationStatus.SUBMITTED) {
+            throw new BusinessException(GlobalErrorCode.APPLICATION_CANNOT_BE_CANCELLED);
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+
+        // 신청 취소
+        application.cancel(now);
+
+        // 부스 상태 AVAILABLE로 복원 (비관적 락으로 안전하게 복원)
+        Booth booth = boothRepository.findByIdWithLock(application.getBoothId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        booth.markAsAvailable(now);
+
+        log.info("부스 신청 취소 - applicationId: {}, boothId: {}, memberId: {}",
+                applicationId, booth.getId(), member.getMemberId());
     }
 
     /** 조직 소속 여부 확인 (권한 예외 없이 boolean 반환) */

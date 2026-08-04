@@ -51,4 +51,13 @@ public class BoothApplicationController {
                 boothApplicationService.getDetail(applicationId, member)
         );
     }
+
+    // APP-API-004
+    @PostMapping("/booth-applications/{applicationId}/cancellation")
+    public ApiResponse<Void> cancel(
+            @PathVariable Long applicationId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        boothApplicationService.cancel(applicationId, member);
+        return ApiResponse.success();
+    }
 }

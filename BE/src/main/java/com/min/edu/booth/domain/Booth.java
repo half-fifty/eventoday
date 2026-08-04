@@ -223,4 +223,12 @@ public class Booth {
         this.status = BoothStatus.APPLICATION_PENDING;
         this.updatedAt = now;
     }
+
+    /**
+     * 신청 취소/반려 시 부스 상태를 AVAILABLE로 복원
+     */
+    public void markAsAvailable(OffsetDateTime now) {
+        this.status = BoothStatus.AVAILABLE;
+        this.updatedAt = now;
+    }
 }

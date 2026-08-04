@@ -146,4 +146,13 @@ public class BoothApplication {
                 .updatedAt(now)
                 .build();
     }
+
+    /**
+     * 신청 취소 - cancelledAt 기록, 상태 CANCELLED로 변경
+     */
+    public void cancel(OffsetDateTime now) {
+        this.status = BoothApplicationStatus.CANCELLED;
+        this.cancelledAt = now;
+        this.updatedAt = now;
+    }
 }

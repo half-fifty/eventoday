@@ -76,7 +76,8 @@ public enum GlobalErrorCode {
     ESTIMATE_FILE_REQUIRED(HttpStatus.BAD_REQUEST, "BOOTH_400_001", "견적서 파일은 필수입니다."),
     BOOTH_NOT_AVAILABLE(HttpStatus.CONFLICT, "BOOTH_409_003", "해당 부스는 신청 가능한 상태가 아닙니다."),
     BOOTH_APPLICATION_CONFLICT(HttpStatus.CONFLICT, "BOOTH_409_004", "다른 신청에 의해 이미 처리되었습니다. 잠시 후 다시 시도해주세요."),
-    APPLICATION_NUMBER_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "BOOTH_500_002", "신청번호 생성에 실패했습니다.");
+    APPLICATION_NUMBER_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "BOOTH_500_002", "신청번호 생성에 실패했습니다."),
+    APPLICATION_CANNOT_BE_CANCELLED(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_003", "현재 상태에서는 신청을 취소할 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;
