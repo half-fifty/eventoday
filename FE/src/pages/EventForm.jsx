@@ -64,12 +64,24 @@ export default function EventForm() {
   }, [requestedOrganizationId]);
 
   useEffect(() => {
-    if (!eventId || organizationLoading) return;
+    if (!eventId) {
+      setForm(emptyForm);
+      setLoading(false);
+      return;
+    }
+    if (organizationLoading) {
+      setLoading(true);
+      return;
+    }
     if (!organizationId) {
+      setForm(emptyForm);
       setLoading(false);
       return;
     }
     let cancelled = false;
+    setForm(emptyForm);
+    setError("");
+    setLoading(true);
     eventApi.managedDetail(organizationId, eventId)
       .then((result) => {
         if (cancelled) return;
@@ -86,7 +98,13 @@ export default function EventForm() {
   const change = (key, value) => setForm((previous) => ({ ...previous, [key]: value }));
   const searchPlaces = async (e) => {
     e.preventDefault();
-    if (placeQuery.trim().length < 2) { setPlaceError("두 글자 이상 입력해 주세요."); return; }
+    if (placeQuery.trim().length < 2) {
+      placeSearchSequence.current += 1;
+      setPlaces([]);
+      setSearching(false);
+      setPlaceError("두 글자 이상 입력해 주세요.");
+      return;
+    }
     const sequence = ++placeSearchSequence.current;
     setSearching(true); setPlaceError("");
     try {
@@ -99,6 +117,13 @@ export default function EventForm() {
     } finally {
       if (sequence === placeSearchSequence.current) setSearching(false);
     }
+  };
+  const changePlaceQuery = (value) => {
+    placeSearchSequence.current += 1;
+    setPlaceQuery(value);
+    setPlaces([]);
+    setSearching(false);
+    setPlaceError("");
   };
   const selectPlace = async (place) => {
     const sequence = ++postalCodeSequence.current;
@@ -162,7 +187,7 @@ export default function EventForm() {
         <div><p className="text-caption text-primary mb-xs">02</p><h2 className="font-display-md text-[22px]">행사 장소</h2><p className="text-caption text-ink-muted mt-xs">시설명을 검색하면 주소와 지도 위치가 자동 입력됩니다.</p></div>
         <div className="grid lg:grid-cols-2 gap-lg">
           <div className="space-y-md">
-            <div><label>장소 검색</label><div className="flex gap-sm mt-xs"><input className={field} value={placeQuery} onChange={(e)=>setPlaceQuery(e.target.value)} onKeyDown={(e)=>{ if(e.key === "Enter") searchPlaces(e); }} placeholder="예: 코엑스, 킨텍스"/><button type="button" onClick={searchPlaces} disabled={searching} className="shrink-0 px-lg bg-primary text-white rounded-lg disabled:opacity-50"><Icon name="search"/> {searching ? "검색 중" : "검색"}</button></div></div>
+            <div><label>장소 검색</label><div className="flex gap-sm mt-xs"><input className={field} value={placeQuery} onChange={(e)=>changePlaceQuery(e.target.value)} onKeyDown={(e)=>{ if(e.key === "Enter") searchPlaces(e); }} placeholder="예: 코엑스, 킨텍스"/><button type="button" onClick={searchPlaces} disabled={searching} className="shrink-0 px-lg bg-primary text-white rounded-lg disabled:opacity-50"><Icon name="search"/> {searching ? "검색 중" : "검색"}</button></div></div>
             {placeError && <p className="text-caption text-error">{placeError}</p>}
             {places.length > 0 && <div className="border border-hairline rounded-xl divide-y divide-divider-soft max-h-64 overflow-y-auto">{places.map((place)=><button type="button" key={place.placeId} onClick={()=>selectPlace(place)} className="w-full text-left p-md hover:bg-primary/5"><p className="font-body-strong">{place.name}</p><p className="text-caption text-ink-muted">{place.roadAddress || place.address}</p><p className="text-[11px] text-ink-muted mt-xs">{place.category}</p></button>)}</div>}
             <div className="grid grid-cols-[120px_1fr] gap-md"><label>우편번호<input maxLength={10} className={field} value={form.postalCode || ""} onChange={(e)=>change("postalCode",e.target.value)}/></label><label>장소명 *<input required className={field} value={form.venueName} onChange={(e)=>change("venueName",e.target.value)}/></label></div>

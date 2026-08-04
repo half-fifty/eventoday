@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { eventApi } from "../api/eventApi.js";
 
@@ -10,7 +10,23 @@ export default function EventMembers() {
   const [memberId, setMemberId] = useState("");
   const [eventRole, setEventRole] = useState("EVENT_MANAGER");
   const [error, setError] = useState("");
-  const [pendingMemberId, setPendingMemberId] = useState(null);
+  const [pendingMemberIds, setPendingMemberIds] = useState(() => new Set());
+  const pendingMemberIdsRef = useRef(new Set());
+
+  const beginMemberRequest = (id) => {
+    if (pendingMemberIdsRef.current.has(id)) return false;
+    const next = new Set(pendingMemberIdsRef.current);
+    next.add(id);
+    pendingMemberIdsRef.current = next;
+    setPendingMemberIds(next);
+    return true;
+  };
+  const finishMemberRequest = (id) => {
+    const next = new Set(pendingMemberIdsRef.current);
+    next.delete(id);
+    pendingMemberIdsRef.current = next;
+    setPendingMemberIds(next);
+  };
 
   const load = () => eventApi.members(eventId)
     .then((result) => setMembers(result?.data || []))
@@ -25,21 +41,21 @@ export default function EventMembers() {
     catch (requestError) { setError(requestError.message || "담당자를 추가하지 못했습니다."); }
   };
   const toggle = async (member) => {
-    if (pendingMemberId === member.memberId) return;
-    setPendingMemberId(member.memberId); setError("");
+    if (!beginMemberRequest(member.memberId)) return;
+    setError("");
     try {
       await eventApi.updateMember(eventId, member.memberId, { eventRole: member.eventRole, active: !member.active });
       await load();
     } catch (requestError) {
       setError(requestError.message || "담당자 상태를 변경하지 못했습니다.");
-    } finally { setPendingMemberId(null); }
+    } finally { finishMemberRequest(member.memberId); }
   };
   const remove = async (id) => {
-    if (pendingMemberId === id) return;
-    setPendingMemberId(id); setError("");
+    if (!beginMemberRequest(id)) return;
+    setError("");
     try { await eventApi.removeMember(eventId, id); await load(); }
     catch (requestError) { setError(requestError.message || "담당자를 제거하지 못했습니다."); }
-    finally { setPendingMemberId(null); }
+    finally { finishMemberRequest(id); }
   };
 
   return <main className="min-h-screen bg-surface-container-low p-lg md:p-xl">
@@ -55,8 +71,8 @@ export default function EventMembers() {
         {members.length === 0 && <p className="p-lg text-ink-muted">등록된 담당자가 없습니다.</p>}
         {members.map((member)=><div key={member.memberId} className="p-lg flex items-center gap-md">
           <div className="flex-1"><p className="font-body-strong">회원 #{member.memberId}</p><p className="text-caption text-ink-muted">{member.eventRole === "EVENT_MANAGER" ? "행사 관리자" : "입장 스태프"}</p></div>
-          <button disabled={pendingMemberId === member.memberId} onClick={()=>toggle(member)} className="text-caption px-md py-xs border border-hairline rounded-full disabled:opacity-50">{member.active ? "활성" : "비활성"}</button>
-          <button disabled={pendingMemberId === member.memberId} onClick={()=>remove(member.memberId)} className="text-caption text-error disabled:opacity-50">해제</button>
+          <button disabled={pendingMemberIds.has(member.memberId)} onClick={()=>toggle(member)} className="text-caption px-md py-xs border border-hairline rounded-full disabled:opacity-50">{member.active ? "활성" : "비활성"}</button>
+          <button disabled={pendingMemberIds.has(member.memberId)} onClick={()=>remove(member.memberId)} className="text-caption text-error disabled:opacity-50">해제</button>
         </div>)}
       </div>
     </section>
