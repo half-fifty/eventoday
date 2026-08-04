@@ -28,6 +28,12 @@ const initialAds = [
   { id: 2, target: "A06 콜드체인 솔루션", type: "부스 광고", amount: "80,000원", payment: "pending", status: "pending" },
 ];
 const accTabs = ["전체", "행사 개최자", "참가기업", "회원 관람객"];
+const eventStatusLabel = {
+  pending: "승인 대기",
+  approved: "승인 완료",
+  rejected: "반려됨",
+  inactive: "제출 전",
+};
 
 export default function PlatformAdmin() {
   const [page, setPage] = useState("dashboard");
@@ -59,8 +65,10 @@ export default function PlatformAdmin() {
         submitted: event.updatedAt ? new Date(event.updatedAt).toLocaleDateString("ko-KR") : "-",
         place: `${event.venueName || "장소 미정"} · ${event.address || ""}`,
         booth: event.boothRecruitmentEnabled ? "부스 모집 사용" : "부스 모집 미사용",
-        status: event.status === "APPROVED" || event.status === "PUBLISHED" ? "approved"
-          : event.status === "REJECTED" ? "rejected" : "pending",
+        status: ["SUBMITTED", "UNDER_REVIEW"].includes(event.status) ? "pending"
+          : ["APPROVED", "PUBLISHED"].includes(event.status) ? "approved"
+            : event.status === "REJECTED" ? "rejected" : "inactive",
+        rawStatus: event.status,
         reason: event.rejectionReason,
       })));
       setAds((adResult?.data?.content || []).map((ad) => ({
@@ -84,14 +92,24 @@ export default function PlatformAdmin() {
   useEffect(() => { loadAdminData(); }, []);
 
   const approveReq = async (id) => {
-    await eventApi.approve(id);
-    await loadAdminData();
+    setLoadError("");
+    try {
+      await eventApi.approve(id);
+      await loadAdminData();
+    } catch (error) {
+      setLoadError(error.message || "행사 승인에 실패했습니다.");
+    }
   };
   const rejectReq = async (id) => {
     const reason = window.prompt("반려 사유를 입력하세요");
     if (!reason) return;
-    await eventApi.reject(id, reason);
-    await loadAdminData();
+    setLoadError("");
+    try {
+      await eventApi.reject(id, reason);
+      await loadAdminData();
+    } catch (error) {
+      setLoadError(error.message || "행사 반려에 실패했습니다.");
+    }
   };
   const toggleAccount = (id) => setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, active: !a.active } : a)));
   const decideAd = async (id, decision) => {
@@ -215,8 +233,8 @@ export default function PlatformAdmin() {
                           <button onClick={() => rejectReq(r.id)} className="w-9 h-9 rounded-full bg-status-visited/10 text-status-visited flex items-center justify-center"><Icon name="close" className="text-[18px]" /></button>
                         </div>
                       ) : (
-                        <span className={`text-[11px] font-bold px-sm py-1 rounded-full ${r.status === "approved" ? "bg-status-available/10 text-status-available" : "bg-status-visited/10 text-status-visited"}`}>
-                          {r.status === "approved" ? "승인 완료" : "반려됨"}
+                        <span className={`text-[11px] font-bold px-sm py-1 rounded-full ${r.status === "approved" ? "bg-status-available/10 text-status-available" : r.status === "rejected" ? "bg-status-visited/10 text-status-visited" : "bg-surface-container text-ink-muted"}`}>
+                          {eventStatusLabel[r.status] || r.rawStatus}
                         </span>
                       )}
                     </div>

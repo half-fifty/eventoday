@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import RecruitmentManagementPanel from "../components/RecruitmentManagementPanel.jsx";
 import { eventApi } from "../api/eventApi.js";
+import { getManagementRecruitment } from "../api/recruitmentApi.js";
 
 const navItems = [
   { key: "dashboard", label: "대시보드", icon: "dashboard" },
@@ -37,6 +38,9 @@ export default function OrganizerAdmin() {
   const [selectedEventId, setSelectedEventId] = useState(query.get("eventId") || "");
   const [eventLoadError, setEventLoadError] = useState("");
   const [submittingEvent, setSubmittingEvent] = useState(false);
+  const [publishingEvent, setPublishingEvent] = useState(false);
+  const [recruitmentStatus, setRecruitmentStatus] = useState(null);
+  const [recruitmentLoading, setRecruitmentLoading] = useState(false);
 
   useEffect(() => {
     if (!organizationId) {
@@ -54,6 +58,35 @@ export default function OrganizerAdmin() {
 
   const selectedEvent = managedEvents.find((event) => String(event.id) === String(selectedEventId));
 
+  useEffect(() => {
+    if (!selectedEvent) {
+      setRecruitmentStatus(null);
+      setRecruitmentLoading(false);
+      return;
+    }
+    if (!selectedEvent.boothRecruitmentEnabled) {
+      setRecruitmentStatus("NOT_REQUIRED");
+      setRecruitmentLoading(false);
+      return;
+    }
+
+    let active = true;
+    setRecruitmentStatus(null);
+    setRecruitmentLoading(true);
+    getManagementRecruitment(selectedEvent.id)
+      .then((recruitment) => {
+        if (active) setRecruitmentStatus(recruitment.status);
+      })
+      .catch((error) => {
+        if (active) setRecruitmentStatus(error.status === 404 ? "NOT_CREATED" : "UNKNOWN");
+      })
+      .finally(() => {
+        if (active) setRecruitmentLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [selectedEvent?.id, selectedEvent?.boothRecruitmentEnabled]);
+
   const submitSelectedEvent = async () => {
     if (!selectedEventId) return;
     setSubmittingEvent(true);
@@ -69,9 +102,49 @@ export default function OrganizerAdmin() {
     }
   };
 
+  const publishSelectedEvent = async () => {
+    if (!selectedEventId || selectedEvent?.status !== "APPROVED") return;
+    setPublishingEvent(true);
+    setEventLoadError("");
+    try {
+      await eventApi.publish(selectedEventId);
+      setManagedEvents((previous) => previous.map((event) =>
+        String(event.id) === String(selectedEventId) ? { ...event, status: "PUBLISHED" } : event));
+    } catch (error) {
+      setEventLoadError(error.message || "행사 공개에 실패했습니다.");
+    } finally {
+      setPublishingEvent(false);
+    }
+  };
+
   const pending = useMemo(() => applications.filter((a) => a.status === "pending"), [applications]);
   const assignedCount = assignBooths.filter((b) => b.status === "assigned").length;
   const allReviewed = pending.length === 0;
+  const requestableStatus = ["PREPARING", "REJECTED"].includes(selectedEvent?.status);
+  const platformApproved = ["APPROVED", "PUBLISHED"].includes(selectedEvent?.status);
+  const recruitmentReady = !selectedEvent?.boothRecruitmentEnabled || recruitmentStatus === "COMPLETED";
+  const approvalRequestReady = Boolean(selectedEventId) && requestableStatus && recruitmentReady && !recruitmentLoading;
+  const approvalGuide = !selectedEvent
+    ? "행사를 선택해 주세요."
+    : !requestableStatus
+      ? selectedEvent.status === "SUBMITTED" || selectedEvent.status === "UNDER_REVIEW"
+        ? "플랫폼 관리자 검토를 기다리고 있습니다."
+        : platformApproved
+          ? selectedEvent.status === "PUBLISHED"
+            ? "행사가 공개되어 사용자 행사 목록에 노출되고 있습니다."
+            : "플랫폼 관리자 승인이 완료되었습니다. 행사를 공개할 수 있습니다."
+          : `현재 ${selectedEvent.status} 상태에서는 승인 요청을 할 수 없습니다.`
+      : !selectedEvent.boothRecruitmentEnabled
+        ? "부스 모집을 사용하지 않는 행사로, 승인 요청이 가능합니다."
+        : recruitmentLoading
+          ? "부스 모집 공고 상태를 확인하고 있습니다."
+          : recruitmentStatus === "COMPLETED"
+            ? "부스 모집 공고가 완료되어 승인 요청이 가능합니다."
+            : recruitmentStatus === "NOT_CREATED"
+              ? "부스 모집 공고를 등록하고 완료 처리해야 합니다."
+              : recruitmentStatus === "UNKNOWN"
+                ? "부스 모집 공고 상태를 확인하지 못했습니다."
+                : `부스 모집 공고를 완료해야 합니다. (현재 ${recruitmentStatus || "확인 중"})`;
 
   const decide = (id, decision) => {
     setApplications((prev) => prev.map((a) => (a.id === id ? { ...a, status: decision } : a)));
@@ -263,19 +336,33 @@ export default function OrganizerAdmin() {
                 <div>
                   <p className="font-body-strong">{selectedEvent ? `${selectedEvent.name} · ${selectedEvent.status}` : "행사를 선택해주세요"}</p>
                   <p className="text-caption text-ink-muted mt-1">
-                    {allReviewed ? "모든 신청서 검토가 완료되어 승인 요청이 가능합니다." : `검토되지 않은 신청서가 ${pending.length}건 있습니다.`}
+                    {approvalGuide}
                   </p>
                 </div>
-                <button onClick={submitSelectedEvent} disabled={!allReviewed || !selectedEventId || submittingEvent || !["PREPARING", "REJECTED"].includes(selectedEvent?.status)} className="px-xl py-sm bg-primary text-white rounded-full font-body-strong disabled:opacity-40 disabled:cursor-not-allowed">{submittingEvent ? "요청 중..." : "승인 요청하기"}</button>
+                {selectedEvent?.status === "APPROVED" ? (
+                  <button onClick={publishSelectedEvent} disabled={publishingEvent} className="px-xl py-sm bg-primary text-white rounded-full font-body-strong disabled:opacity-40 disabled:cursor-not-allowed">
+                    {publishingEvent ? "공개 중..." : "행사 공개하기"}
+                  </button>
+                ) : selectedEvent?.status === "PUBLISHED" ? (
+                  <button disabled className="px-xl py-sm bg-status-available text-white rounded-full font-body-strong opacity-80 cursor-default">공개 중</button>
+                ) : (
+                  <button onClick={submitSelectedEvent} disabled={!approvalRequestReady || submittingEvent} className="px-xl py-sm bg-primary text-white rounded-full font-body-strong disabled:opacity-40 disabled:cursor-not-allowed">{submittingEvent ? "요청 중..." : "승인 요청하기"}</button>
+                )}
               </div>
               <div className="bg-white border border-hairline rounded-xl divide-y divide-divider-soft">
                 <div className="flex items-center gap-sm p-lg"><span className="w-6 h-6 rounded-full bg-status-available text-white flex items-center justify-center"><Icon name="check" className="text-[14px]" /></span>행사 기본정보 등록 <span className="text-ink-muted text-caption ml-auto">완료</span></div>
                 <div className="flex items-center gap-sm p-lg"><span className="w-6 h-6 rounded-full bg-status-available text-white flex items-center justify-center"><Icon name="check" className="text-[14px]" /></span>행사장 평면도 및 부스 좌표 등록 <span className="text-ink-muted text-caption ml-auto">완료</span></div>
                 <div className="flex items-center gap-sm p-lg">
-                  <span className={`w-6 h-6 rounded-full text-white flex items-center justify-center ${allReviewed ? "bg-status-available" : "bg-status-pending"}`}><Icon name="schedule" className="text-[14px]" /></span>
-                  부스 신청서 전체 검토 <span className="text-ink-muted text-caption ml-auto">{allReviewed ? "완료" : `${pending.length}건 대기 중`}</span>
+                  <span className={`w-6 h-6 rounded-full text-white flex items-center justify-center ${recruitmentReady ? "bg-status-available" : "bg-status-pending"}`}><Icon name={recruitmentReady ? "check" : "schedule"} className="text-[14px]" /></span>
+                  부스 모집 공고 완료 <span className="text-ink-muted text-caption ml-auto">{!selectedEvent?.boothRecruitmentEnabled ? "해당 없음" : recruitmentStatus === "COMPLETED" ? "완료" : recruitmentStatus || "확인 중"}</span>
                 </div>
-                <div className="flex items-center gap-sm p-lg"><span className="w-6 h-6 rounded-full bg-status-blocked text-white flex items-center justify-center"><Icon name="chevron_right" className="text-[14px]" /></span>플랫폼 관리자 승인 <span className="text-ink-muted text-caption ml-auto">대기</span></div>
+                <div className="flex items-center gap-sm p-lg">
+                  <span className={`w-6 h-6 rounded-full text-white flex items-center justify-center ${platformApproved ? "bg-status-available" : "bg-status-blocked"}`}>
+                    <Icon name={platformApproved ? "check" : "chevron_right"} className="text-[14px]" />
+                  </span>
+                  플랫폼 관리자 승인
+                  <span className="text-ink-muted text-caption ml-auto">{platformApproved ? "승인 완료" : selectedEvent?.status === "REJECTED" ? "반려" : "대기"}</span>
+                </div>
               </div>
             </section>
           )}
