@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
+import { eventApi } from "../api/eventApi.js";
+import { advertisementApi } from "../api/advertisementApi.js";
 
 const navItems = [
   { key: "dashboard", label: "전체 대시보드", icon: "dashboard" },
@@ -26,29 +28,119 @@ const initialAds = [
   { id: 2, target: "A06 콜드체인 솔루션", type: "부스 광고", amount: "80,000원", payment: "pending", status: "pending" },
 ];
 const accTabs = ["전체", "행사 개최자", "참가기업", "회원 관람객"];
+const eventStatusLabel = {
+  pending: "승인 대기",
+  approved: "승인 완료",
+  rejected: "반려됨",
+  inactive: "제출 전",
+  suspended: "공개 중단",
+  ended: "행사 종료",
+  cancelled: "취소됨",
+};
+const eventStatusView = {
+  PREPARING: "inactive",
+  SUBMITTED: "pending",
+  UNDER_REVIEW: "pending",
+  APPROVED: "approved",
+  PUBLISHED: "approved",
+  REJECTED: "rejected",
+  SUSPENDED: "suspended",
+  ENDED: "ended",
+  CANCELLED: "cancelled",
+};
 
 export default function PlatformAdmin() {
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [requests, setRequests] = useState(initialRequests);
+  const [requests, setRequests] = useState([]);
   const [accounts, setAccounts] = useState(initialAccounts);
   const [accFilter, setAccFilter] = useState("전체");
-  const [ads, setAds] = useState(initialAds);
+  const [ads, setAds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const pendingReq = useMemo(() => requests.filter((r) => r.status === "pending"), [requests]);
   const activeAccounts = accounts.filter((a) => a.active).length;
   const pendingAds = ads.filter((a) => a.status === "pending").length;
   const accountList = accFilter === "전체" ? accounts : accounts.filter((a) => a.role === accFilter);
 
-  const approveReq = (id) => setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status: "approved" } : r)));
-  const rejectReq = (id) => {
+  const loadAdminData = async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const [eventResult, adResult] = await Promise.allSettled([
+        eventApi.adminList({ size: 100, sort: "createdAt,desc" }),
+        advertisementApi.adminList({ size: 100, sort: "createdAt,desc" }),
+      ]);
+      if (eventResult.status === "fulfilled") setRequests((eventResult.value?.data?.content || []).map((event) => ({
+        id: event.id,
+        name: event.name,
+        organizer: `조직 #${event.organizerOrganizationId || "-"}`,
+        submitted: event.updatedAt ? new Date(event.updatedAt).toLocaleDateString("ko-KR") : "-",
+        place: `${event.venueName || "장소 미정"} · ${event.address || ""}`,
+        booth: event.boothRecruitmentEnabled ? "부스 모집 사용" : "부스 모집 미사용",
+        status: eventStatusView[event.status] || "inactive",
+        rawStatus: event.status,
+        reason: event.rejectionReason,
+      })));
+      else setLoadError(eventResult.reason?.message || "행사 목록을 불러오지 못했습니다.");
+
+      if (adResult.status === "fulfilled") setAds((adResult.value?.data?.content || []).map((ad) => ({
+        id: ad.id,
+        target: ad.eventId ? `행사 #${ad.eventId}` : `부스 #${ad.boothId}`,
+        type: ad.eventId ? "행사 광고" : "부스 광고",
+        amount: ad.eventId ? "결제 연동" : "무료",
+        payment: ["PAID", "REVIEW_PENDING", "APPROVED", "SCHEDULED", "ACTIVE", "ENDED"].includes(ad.status)
+          ? "confirmed" : "pending",
+        status: ["APPROVED", "SCHEDULED", "ACTIVE", "ENDED"].includes(ad.status)
+          ? "approved" : ad.status === "REJECTED" ? "rejected" : "pending",
+        rawStatus: ad.status,
+      })));
+      else setLoadError((current) => [current, adResult.reason?.message || "광고 목록을 불러오지 못했습니다."].filter(Boolean).join(" "));
+    } catch (error) {
+      setLoadError(error.message || "관리 데이터를 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadAdminData(); }, []);
+
+  const approveReq = async (id) => {
+    setLoadError("");
+    try {
+      await eventApi.approve(id);
+      await loadAdminData();
+    } catch (error) {
+      setLoadError(error.message || "행사 승인에 실패했습니다.");
+    }
+  };
+  const rejectReq = async (id) => {
     const reason = window.prompt("반려 사유를 입력하세요");
     if (!reason) return;
-    setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status: "rejected", reason } : r)));
+    setLoadError("");
+    try {
+      await eventApi.reject(id, reason);
+      await loadAdminData();
+    } catch (error) {
+      setLoadError(error.message || "행사 반려에 실패했습니다.");
+    }
   };
   const toggleAccount = (id) => setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, active: !a.active } : a)));
-  const confirmPayment = (id) => setAds((prev) => prev.map((a) => (a.id === id ? { ...a, payment: "confirmed" } : a)));
-  const decideAd = (id, decision) => setAds((prev) => prev.map((a) => (a.id === id ? { ...a, status: decision } : a)));
+  const decideAd = async (id, decision) => {
+    setLoadError("");
+    try {
+      if (decision === "approved") await advertisementApi.approve(id);
+      else {
+        const reason = window.prompt("반려 사유를 입력하세요");
+        if (!reason) return;
+        await advertisementApi.reject(id, reason);
+      }
+      await loadAdminData();
+    } catch (error) {
+      setLoadError(error.message || "광고 처리에 실패했습니다.");
+    }
+  };
 
   const gotoPage = (key) => {
     setPage(key);
@@ -92,6 +184,12 @@ export default function PlatformAdmin() {
         </header>
 
         <div className="p-lg md:p-xl space-y-section max-w-[1200px] mx-auto">
+          {loading && <div className="bg-white border border-hairline rounded-xl p-lg text-caption text-ink-muted">관리 데이터를 불러오는 중입니다.</div>}
+          {loadError && (
+            <div className="bg-error/10 border border-error/20 rounded-xl p-lg text-caption text-error flex justify-between">
+              <span>{loadError}</span><button onClick={loadAdminData} className="font-body-strong">다시 시도</button>
+            </div>
+          )}
           {/* DASHBOARD */}
           {page === "dashboard" && (
             <section className="space-y-lg">
@@ -155,8 +253,8 @@ export default function PlatformAdmin() {
                           <button onClick={() => rejectReq(r.id)} className="w-9 h-9 rounded-full bg-status-visited/10 text-status-visited flex items-center justify-center"><Icon name="close" className="text-[18px]" /></button>
                         </div>
                       ) : (
-                        <span className={`text-[11px] font-bold px-sm py-1 rounded-full ${r.status === "approved" ? "bg-status-available/10 text-status-available" : "bg-status-visited/10 text-status-visited"}`}>
-                          {r.status === "approved" ? "승인 완료" : "반려됨"}
+                        <span className={`text-[11px] font-bold px-sm py-1 rounded-full ${r.status === "approved" ? "bg-status-available/10 text-status-available" : r.status === "rejected" ? "bg-status-visited/10 text-status-visited" : "bg-surface-container text-ink-muted"}`}>
+                          {eventStatusLabel[r.status] || r.rawStatus}
                         </span>
                       )}
                     </div>
@@ -217,7 +315,7 @@ export default function PlatformAdmin() {
                             <button onClick={() => decideAd(a.id, "rejected")} className="w-8 h-8 rounded-full bg-status-visited/10 text-status-visited flex items-center justify-center"><Icon name="close" className="text-[16px]" /></button>
                           </div>
                         ) : (
-                          <button onClick={() => confirmPayment(a.id)} className="px-md py-1.5 border border-hairline rounded-full text-caption font-body-strong">입금 확인</button>
+                          <span className="px-md py-1.5 border border-hairline rounded-full text-caption text-ink-muted">결제 대기</span>
                         )
                       ) : (
                         <span className={`text-[11px] font-bold px-sm py-1 rounded-full ${a.status === "approved" ? "bg-status-available/10 text-status-available" : "bg-status-visited/10 text-status-visited"}`}>
