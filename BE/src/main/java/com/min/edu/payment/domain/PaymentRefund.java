@@ -77,6 +77,10 @@ public class PaymentRefund {
         return status == PaymentRefundStatus.COMPLETED;
     }
 
+    public boolean isFailed() {
+        return status == PaymentRefundStatus.FAILED;
+    }
+
     public void complete(String pgCancelKey, OffsetDateTime completedAt) {
         if (status != PaymentRefundStatus.REQUESTED) {
             throw new IllegalStateException("Refund is not requested.");
@@ -94,5 +98,23 @@ public class PaymentRefund {
 
         this.status = PaymentRefundStatus.FAILED;
         this.completedAt = failedAt;
+    }
+
+    public void retry(
+            Long requesterMemberId,
+            BigDecimal refundAmount,
+            String reason,
+            OffsetDateTime requestedAt) {
+        if (status != PaymentRefundStatus.FAILED) {
+            throw new IllegalStateException("Only failed refund can retry.");
+        }
+
+        this.requesterMemberId = requesterMemberId;
+        this.refundAmount = refundAmount;
+        this.reason = reason;
+        this.status = PaymentRefundStatus.REQUESTED;
+        this.requestedAt = requestedAt;
+        this.completedAt = null;
+        this.pgCancelKey = null;
     }
 }

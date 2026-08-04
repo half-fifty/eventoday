@@ -62,6 +62,7 @@ public enum GlobalErrorCode {
     USED_TICKET_CANNOT_BE_REFUNDED(HttpStatus.CONFLICT, "REFUND_409_003", "사용된 티켓이 있어 환불할 수 없습니다."),
     REFUND_DATA_INCONSISTENT(HttpStatus.CONFLICT, "REFUND_409_004", "환불 데이터가 일치하지 않습니다."),
     REFUND_ALREADY_PROCESSING(HttpStatus.CONFLICT, "REFUND_409_005", "현재 환불을 처리하고 있습니다. 잠시 후 다시 시도해주세요."),
+    REFUND_REJECTED(HttpStatus.BAD_REQUEST, "REFUND_400_001", "환불 요청이 거절되었습니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_500", "서버 내부 오류가 발생했습니다."),
     INVALID_FILE_TYPE(HttpStatus.BAD_REQUEST, "FILE_400_001", "허용되지 않는 파일 형식입니다."),
     FILE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "FILE_400_002", "파일 크기가 허용 한도를 초과했습니다."),

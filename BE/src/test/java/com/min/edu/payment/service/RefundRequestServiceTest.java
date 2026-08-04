@@ -3,16 +3,23 @@ package com.min.edu.payment.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.times;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import com.min.edu.admission.domain.ExchangeCodeStatus;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
@@ -26,6 +33,7 @@ import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.RefundPaymentProjection;
 import com.min.edu.payment.support.OrderAccessTokenProvider;
 import com.min.edu.payment.toss.TossPaymentClient;
+import com.min.edu.payment.toss.TossPaymentClientException;
 import com.min.edu.payment.toss.dto.TossCancelResponse;
 
 class RefundRequestServiceTest {
@@ -35,6 +43,7 @@ class RefundRequestServiceTest {
     private ExchangeCodeRepository exchangeCodeRepository;
     private OrderAccessTokenProvider orderAccessTokenProvider;
     private TossPaymentClient tossPaymentClient;
+    private RefundAttemptRecorder refundAttemptRecorder;
     private RefundFinalizer refundFinalizer;
     private RefundFinalizationExceptionTranslator exceptionTranslator;
     private RefundRequestService service;
@@ -46,14 +55,17 @@ class RefundRequestServiceTest {
         exchangeCodeRepository = org.mockito.Mockito.mock(ExchangeCodeRepository.class);
         orderAccessTokenProvider = org.mockito.Mockito.mock(OrderAccessTokenProvider.class);
         tossPaymentClient = org.mockito.Mockito.mock(TossPaymentClient.class);
+        refundAttemptRecorder = org.mockito.Mockito.mock(RefundAttemptRecorder.class);
         refundFinalizer = org.mockito.Mockito.mock(RefundFinalizer.class);
         exceptionTranslator = new RefundFinalizationExceptionTranslator();
+        given(paymentRefundRepository.findByPaymentId(any())).willReturn(Optional.empty());
         service = new RefundRequestService(
             paymentRepository,
             paymentRefundRepository,
             exchangeCodeRepository,
             orderAccessTokenProvider,
             tossPaymentClient,
+            refundAttemptRecorder,
             refundFinalizer,
             exceptionTranslator
         );
@@ -68,19 +80,27 @@ class RefundRequestServiceTest {
             2L,
             ExchangeCodeStatus.REDEEMED
         )).willReturn(false);
+        PaymentRefund preparedRefund = requestedRefund();
+        given(refundAttemptRecorder.prepare(any(), any(), any()))
+            .willReturn(preparedRefund);
         given(tossPaymentClient.cancel(any())).willReturn(tossResponse());
-        given(refundFinalizer.finalizeRefund(any(), any(), any(), any()))
+        given(refundFinalizer.finalizeRefund(any(), any(), any(), any(), any()))
             .willReturn(refundResponse());
+        CreateRefundRequest request = new CreateRefundRequest("reason");
 
         CreateRefundResponse response = service.refund(
             10L,
             null,
             1L,
-            new CreateRefundRequest("reason")
+            request
         );
 
         assertThat(response.getRefundStatus()).isEqualTo("COMPLETED");
-        verify(tossPaymentClient).cancel(any());
+        InOrder inOrder = inOrder(refundAttemptRecorder, tossPaymentClient, refundFinalizer);
+        inOrder.verify(refundAttemptRecorder).prepare(payment, 10L, request);
+        inOrder.verify(tossPaymentClient).cancel(any());
+        inOrder.verify(refundFinalizer)
+            .finalizeRefund(eq(preparedRefund.getId()), eq(1L), eq(10L), eq(request), any());
     }
 
     @Test
@@ -88,9 +108,10 @@ class RefundRequestServiceTest {
         RefundPaymentProjection payment = projection(null);
         given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
         given(orderAccessTokenProvider.getOrderNo("token")).willReturn("ORDER-1");
-        given(paymentRefundRepository.findByPaymentId(1L)).willReturn(Optional.empty());
+        given(refundAttemptRecorder.prepare(any(), any(), any()))
+            .willReturn(requestedRefund());
         given(tossPaymentClient.cancel(any())).willReturn(tossResponse());
-        given(refundFinalizer.finalizeRefund(any(), any(), any(), any()))
+        given(refundFinalizer.finalizeRefund(any(), any(), any(), any(), any()))
             .willReturn(refundResponse());
 
         CreateRefundResponse response = service.refund(
@@ -119,6 +140,49 @@ class RefundRequestServiceTest {
             .isEqualTo(GlobalErrorCode.ORDER_ACCESS_TOKEN_REQUIRED);
 
         verify(tossPaymentClient, never()).cancel(any());
+        verify(refundAttemptRecorder, never()).prepare(any(), any(), any());
+        verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void refund_failsWhenMemberIsNotOwnerBeforeRecordingRequested() {
+        given(paymentRepository.findRefundPaymentById(1L))
+            .willReturn(Optional.of(projection(10L)));
+
+        assertThatThrownBy(() -> service.refund(
+            20L,
+            null,
+            1L,
+            new CreateRefundRequest("reason")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.REFUND_ACCESS_DENIED);
+
+        verify(refundAttemptRecorder, never()).prepare(any(), any(), any());
+        verify(tossPaymentClient, never()).cancel(any());
+        verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void refund_failsWhenGuestTokenOrderNoDoesNotMatchBeforeRecordingRequested() {
+        given(paymentRepository.findRefundPaymentById(1L))
+            .willReturn(Optional.of(projection(null)));
+        given(orderAccessTokenProvider.getOrderNo("token")).willReturn("OTHER-ORDER");
+
+        assertThatThrownBy(() -> service.refund(
+            null,
+            "token",
+            1L,
+            new CreateRefundRequest("reason")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.REFUND_ACCESS_DENIED);
+
+        verify(refundAttemptRecorder, never()).prepare(any(), any(), any());
+        verify(tossPaymentClient, never()).cancel(any());
+        verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -143,6 +207,7 @@ class RefundRequestServiceTest {
             .isEqualTo(GlobalErrorCode.REFUND_NOT_ALLOWED);
 
         verify(tossPaymentClient, never()).cancel(any());
+        verify(refundAttemptRecorder, never()).prepare(any(), any(), any());
     }
 
     @Test
@@ -165,11 +230,18 @@ class RefundRequestServiceTest {
             .isEqualTo(GlobalErrorCode.USED_TICKET_CANNOT_BE_REFUNDED);
 
         verify(tossPaymentClient, never()).cancel(any());
+        verify(refundAttemptRecorder, never()).prepare(any(), any(), any());
     }
 
     @Test
     void refund_returnsExistingCompletedRefundWithoutToss() {
-        RefundPaymentProjection payment = projection(10L);
+        RefundPaymentProjection payment = projection(
+            10L,
+            "REFUNDED",
+            "REFUNDED",
+            "REFUNDED",
+            OffsetDateTime.now().plusDays(1)
+        );
         PaymentRefund refund = PaymentRefund.requested(
             1L,
             10L,
@@ -189,7 +261,240 @@ class RefundRequestServiceTest {
         );
 
         assertThat(response.getRefundStatus()).isEqualTo("COMPLETED");
+        verify(refundAttemptRecorder, never()).prepare(any(), any(), any());
         verify(tossPaymentClient, never()).cancel(any());
+        verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void refund_marksFailedWhenTossCancelFails() {
+        RefundPaymentProjection payment = projection(10L);
+        PaymentRefund preparedRefund = requestedRefund();
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        given(refundAttemptRecorder.prepare(any(), any(), any())).willReturn(preparedRefund);
+        given(tossPaymentClient.cancel(any()))
+            .willThrow(new TossPaymentClientException(GlobalErrorCode.REFUND_REJECTED));
+
+        assertThatThrownBy(() -> service.refund(
+            10L,
+            null,
+            1L,
+            new CreateRefundRequest("reason")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.REFUND_REJECTED);
+
+        verify(refundAttemptRecorder).markFailed(preparedRefund.getId());
+        verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void refund_keepsRequestedWhenTossCancelTimeoutIsUncertain() {
+        RefundPaymentProjection payment = projection(10L);
+        PaymentRefund preparedRefund = requestedRefund();
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        given(refundAttemptRecorder.prepare(any(), any(), any())).willReturn(preparedRefund);
+        given(tossPaymentClient.cancel(any()))
+            .willThrow(new TossPaymentClientException(GlobalErrorCode.PAYMENT_GATEWAY_TIMEOUT));
+
+        assertThatThrownBy(() -> service.refund(
+            10L,
+            null,
+            1L,
+            new CreateRefundRequest("reason")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.PAYMENT_GATEWAY_TIMEOUT);
+
+        verify(refundAttemptRecorder, never()).markFailed(preparedRefund.getId());
+        verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void refund_keepsRequestedWhenTossGatewayErrorIsUncertain() {
+        RefundPaymentProjection payment = projection(10L);
+        PaymentRefund preparedRefund = requestedRefund();
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        given(refundAttemptRecorder.prepare(any(), any(), any())).willReturn(preparedRefund);
+        given(tossPaymentClient.cancel(any()))
+            .willThrow(new TossPaymentClientException(GlobalErrorCode.PAYMENT_GATEWAY_ERROR));
+
+        assertThatThrownBy(() -> service.refund(
+            10L,
+            null,
+            1L,
+            new CreateRefundRequest("reason")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.PAYMENT_GATEWAY_ERROR);
+
+        verify(refundAttemptRecorder, never()).markFailed(preparedRefund.getId());
+        verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void refund_keepsRequestedWhenFinalizerFailsAfterTossSuccess() {
+        RefundPaymentProjection payment = projection(10L);
+        PaymentRefund preparedRefund = requestedRefund();
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        given(refundAttemptRecorder.prepare(any(), any(), any())).willReturn(preparedRefund);
+        given(tossPaymentClient.cancel(any())).willReturn(tossResponse());
+        given(refundFinalizer.finalizeRefund(any(), any(), any(), any(), any()))
+            .willThrow(new BusinessException(GlobalErrorCode.REFUND_DATA_INCONSISTENT));
+
+        assertThatThrownBy(() -> service.refund(
+            10L,
+            null,
+            1L,
+            new CreateRefundRequest("reason")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.REFUND_DATA_INCONSISTENT);
+
+        verify(tossPaymentClient).cancel(any());
+        verify(refundAttemptRecorder, never()).markFailed(preparedRefund.getId());
+    }
+
+    @Test
+    void refund_failsAsAlreadyProcessingWhenPrepareUniqueCollisionFindsRequestedRefund() {
+        RefundPaymentProjection payment = projection(10L);
+        PaymentRefund existingRefund = requestedRefund();
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        given(paymentRefundRepository.findByPaymentId(1L))
+            .willReturn(Optional.empty(), Optional.of(existingRefund));
+        given(refundAttemptRecorder.prepare(any(), any(), any()))
+            .willThrow(paymentRefundUniqueViolation());
+
+        assertThatThrownBy(() -> service.refund(
+            10L,
+            null,
+            1L,
+            new CreateRefundRequest("reason")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.REFUND_ALREADY_PROCESSING);
+
+        verify(tossPaymentClient, never()).cancel(any());
+        verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void refund_returnsCompletedRefundWhenPrepareUniqueCollisionFindsCompletedRefund() {
+        RefundPaymentProjection payment = projection(10L);
+        PaymentRefund existingRefund = completedRefund();
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        given(paymentRefundRepository.findByPaymentId(1L))
+            .willReturn(Optional.empty(), Optional.of(existingRefund));
+        given(refundAttemptRecorder.prepare(any(), any(), any()))
+            .willThrow(paymentRefundUniqueViolation());
+
+        CreateRefundResponse response = service.refund(
+            10L,
+            null,
+            1L,
+            new CreateRefundRequest("reason")
+        );
+
+        assertThat(response.getRefundStatus()).isEqualTo("COMPLETED");
+        verify(tossPaymentClient, never()).cancel(any());
+        verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void refund_reusesFailedRefundWhenPrepareUniqueCollisionFindsFailedRefund() {
+        RefundPaymentProjection payment = projection(10L);
+        PaymentRefund failedRefund = failedRefund();
+        PaymentRefund retriedRefund = requestedRefund();
+        CreateRefundRequest request = new CreateRefundRequest("reason");
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        given(paymentRefundRepository.findByPaymentId(1L))
+            .willReturn(Optional.empty(), Optional.of(failedRefund));
+        given(refundAttemptRecorder.prepare(any(), any(), any()))
+            .willThrow(paymentRefundUniqueViolation())
+            .willReturn(retriedRefund);
+        given(tossPaymentClient.cancel(any())).willReturn(tossResponse());
+        given(refundFinalizer.finalizeRefund(any(), any(), any(), any(), any()))
+            .willReturn(refundResponse());
+
+        CreateRefundResponse response = service.refund(10L, null, 1L, request);
+
+        assertThat(response.getRefundStatus()).isEqualTo("COMPLETED");
+        verify(refundAttemptRecorder, times(2)).prepare(payment, 10L, request);
+        verify(tossPaymentClient).cancel(any());
+        verify(refundFinalizer)
+            .finalizeRefund(eq(retriedRefund.getId()), eq(1L), eq(10L), eq(request), any());
+    }
+
+    @Test
+    void refund_recoversAlreadyCanceledPaymentAfterTossLookupMatches() {
+        RefundPaymentProjection payment = projection(10L);
+        PaymentRefund preparedRefund = requestedRefund();
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        given(refundAttemptRecorder.prepare(any(), any(), any())).willReturn(preparedRefund);
+        given(tossPaymentClient.cancel(any())).willThrow(new TossPaymentClientException(
+            GlobalErrorCode.REFUND_REJECTED,
+            "ALREADY_CANCELED_PAYMENT"
+        ));
+        given(tossPaymentClient.getPaymentForRefund("payment-key")).willReturn(tossResponse());
+        given(refundFinalizer.finalizeRefund(any(), any(), any(), any(), any()))
+            .willReturn(refundResponse());
+
+        CreateRefundResponse response = service.refund(
+            10L,
+            null,
+            1L,
+            new CreateRefundRequest("reason")
+        );
+
+        assertThat(response.getRefundStatus()).isEqualTo("COMPLETED");
+        verify(tossPaymentClient).getPaymentForRefund("payment-key");
+        verify(refundAttemptRecorder, never()).markFailed(preparedRefund.getId());
+    }
+
+    @Test
+    void refund_marksFailedWhenAlreadyCanceledLookupDoesNotMatch() {
+        RefundPaymentProjection payment = projection(10L);
+        PaymentRefund preparedRefund = requestedRefund();
+        TossCancelResponse mismatched = new TossCancelResponse(
+            "payment-key",
+            "OTHER-ORDER",
+            BigDecimal.valueOf(10000),
+            "CANCELED",
+            "CARD",
+            OffsetDateTime.now(),
+            OffsetDateTime.now(),
+            java.util.List.of(new TossCancelResponse.Cancel(
+                "cancel-key",
+                BigDecimal.valueOf(10000),
+                "reason",
+                OffsetDateTime.now()
+            ))
+        );
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        given(refundAttemptRecorder.prepare(any(), any(), any())).willReturn(preparedRefund);
+        given(tossPaymentClient.cancel(any())).willThrow(new TossPaymentClientException(
+            GlobalErrorCode.REFUND_REJECTED,
+            "ALREADY_CANCELED_PAYMENT"
+        ));
+        given(tossPaymentClient.getPaymentForRefund("payment-key")).willReturn(mismatched);
+
+        assertThatThrownBy(() -> service.refund(
+            10L,
+            null,
+            1L,
+            new CreateRefundRequest("reason")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+
+        verify(refundAttemptRecorder).markFailed(preparedRefund.getId());
+        verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
     }
 
     private CreateRefundResponse refundResponse() {
@@ -221,6 +526,39 @@ class RefundRequestServiceTest {
                 OffsetDateTime.now()
             ))
         );
+    }
+
+    private PaymentRefund requestedRefund() {
+        return PaymentRefund.builder()
+            .id(1L)
+            .paymentId(1L)
+            .requesterMemberId(10L)
+            .refundAmount(BigDecimal.valueOf(10000))
+            .reason("reason")
+            .status(com.min.edu.payment.domain.PaymentRefundStatus.REQUESTED)
+            .requestedAt(OffsetDateTime.now())
+            .build();
+    }
+
+    private PaymentRefund completedRefund() {
+        PaymentRefund refund = requestedRefund();
+        refund.complete("cancel-key", OffsetDateTime.now());
+        return refund;
+    }
+
+    private PaymentRefund failedRefund() {
+        PaymentRefund refund = requestedRefund();
+        refund.fail(OffsetDateTime.now());
+        return refund;
+    }
+
+    private DataIntegrityViolationException paymentRefundUniqueViolation() {
+        ConstraintViolationException cause = new ConstraintViolationException(
+            "duplicate",
+            new SQLException("duplicate", "23505"),
+            "uk_payment_refunds_payment"
+        );
+        return new DataIntegrityViolationException("duplicate", cause);
     }
 
     private RefundPaymentProjection projection(Long buyerMemberId) {

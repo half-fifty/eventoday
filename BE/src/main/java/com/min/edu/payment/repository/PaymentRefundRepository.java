@@ -40,6 +40,7 @@ public interface PaymentRefundRepository extends JpaRepository<PaymentRefund, Lo
         JOIN TicketOrder t ON t.paymentOrderId = po.id
         JOIN Event e ON e.id = t.eventId
         WHERE r.id = :refundId
+            AND po.orderType = com.min.edu.payment.domain.PaymentOrderType.EVENT_TICKET
         """)
     Optional<RefundDetailProjection> findRefundDetailById(@Param("refundId") Long refundId);
 
@@ -62,6 +63,7 @@ public interface PaymentRefundRepository extends JpaRepository<PaymentRefund, Lo
             JOIN TicketOrder t ON t.paymentOrderId = po.id
             JOIN Event e ON e.id = t.eventId
             WHERE po.buyerMemberId = :memberId
+                AND po.orderType = com.min.edu.payment.domain.PaymentOrderType.EVENT_TICKET
             ORDER BY r.requestedAt DESC, r.id DESC
             """,
         countQuery = """
@@ -69,7 +71,10 @@ public interface PaymentRefundRepository extends JpaRepository<PaymentRefund, Lo
             FROM PaymentRefund r
             JOIN Payment p ON p.id = r.paymentId
             JOIN PaymentOrder po ON po.id = p.paymentOrderId
+            JOIN TicketOrder t ON t.paymentOrderId = po.id
+            JOIN Event e ON e.id = t.eventId
             WHERE po.buyerMemberId = :memberId
+                AND po.orderType = com.min.edu.payment.domain.PaymentOrderType.EVENT_TICKET
             """
     )
     Page<RefundListProjection> findMyRefunds(

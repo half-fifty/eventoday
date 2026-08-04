@@ -11,5 +11,7 @@ public interface TossPaymentClient {
 
     TossConfirmResponse getPayment(String paymentKey);
 
+    TossCancelResponse getPaymentForRefund(String paymentKey);
+
     TossCancelResponse cancel(TossCancelRequest request);
 }

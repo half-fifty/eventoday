@@ -100,6 +100,27 @@ public class RestClientTossPaymentClient implements TossPaymentClient {
     }
 
     @Override
+    public TossCancelResponse getPaymentForRefund(String paymentKey) {
+        return executeCancel(() -> webhookRestClient.get()
+            .uri(PAYMENT_PATH, paymentKey)
+            .header(HttpHeaders.AUTHORIZATION, authorizationHeader())
+            .retrieve()
+            .onStatus(HttpStatusCode::is4xxClientError,
+                (httpRequest, clientResponse) -> {
+                    throw new TossPaymentClientException(
+                        GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID
+                    );
+                })
+            .onStatus(HttpStatusCode::is5xxServerError,
+                (httpRequest, clientResponse) -> {
+                    throw new TossPaymentClientException(
+                        GlobalErrorCode.PAYMENT_GATEWAY_ERROR
+                    );
+                })
+            .body(TossCancelResponse.class));
+    }
+
+    @Override
     public TossCancelResponse cancel(TossCancelRequest request) {
         return executeCancel(() -> confirmRestClient.post()
             .uri(CANCEL_PATH, request.paymentKey())
@@ -110,7 +131,7 @@ public class RestClientTossPaymentClient implements TossPaymentClient {
             .onStatus(HttpStatusCode::is4xxClientError,
                 (httpRequest, clientResponse) -> {
                     throw new TossPaymentClientException(
-                        GlobalErrorCode.PAYMENT_CONFIRM_REJECTED,
+                        GlobalErrorCode.REFUND_REJECTED,
                         extractTossErrorCode(clientResponse)
                     );
                 })

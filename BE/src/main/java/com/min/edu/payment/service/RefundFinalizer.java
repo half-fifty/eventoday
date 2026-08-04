@@ -47,6 +47,7 @@ public class RefundFinalizer {
 
     @Transactional
     public CreateRefundResponse finalizeRefund(
+            Long refundId,
             Long paymentId,
             Long requesterMemberId,
             CreateRefundRequest request,
@@ -70,15 +71,13 @@ public class RefundFinalizer {
 
         validateDataConsistency(projection, payment, paymentOrder, ticketOrder);
 
-        PaymentRefund existingRefund = paymentRefundRepository
-            .findByPaymentId(paymentId)
-            .orElse(null);
-        if (existingRefund != null) {
-            if (existingRefund.isCompleted()) {
-                return CreateRefundResponse.of(existingRefund, paymentOrder.getOrderNo());
-            }
-
-            throw new BusinessException(GlobalErrorCode.REFUND_ALREADY_PROCESSING);
+        PaymentRefund refund = paymentRefundRepository.findById(refundId)
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.REFUND_NOT_FOUND));
+        if (!refund.getPaymentId().equals(paymentId)) {
+            throw new BusinessException(GlobalErrorCode.REFUND_DATA_INCONSISTENT);
+        }
+        if (refund.isCompleted()) {
+            return CreateRefundResponse.of(refund, paymentOrder.getOrderNo());
         }
 
         validateRefundable(projection, payment, paymentOrder, ticketOrder);
@@ -105,13 +104,6 @@ public class RefundFinalizer {
         paymentOrder.markRefunded(now);
         ticketOrder.refund(now);
 
-        PaymentRefund refund = PaymentRefund.requested(
-            paymentId,
-            requesterMemberId,
-            payment.getAmount(),
-            request.getReason(),
-            now
-        );
         refund.complete(cancelTransactionKey(tossResponse, payment.getAmount()), now);
 
         PaymentRefund savedRefund = paymentRefundRepository.saveAndFlush(refund);

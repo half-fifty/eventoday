@@ -402,6 +402,11 @@ class PaymentKeyConcurrencyIntegrationTest {
                 }
 
                 @Override
+                public TossCancelResponse getPaymentForRefund(String paymentKey) {
+                    throw new UnsupportedOperationException("Not used in this test.");
+                }
+
+                @Override
                 public TossCancelResponse cancel(TossCancelRequest request) {
                     throw new UnsupportedOperationException("Not used in this test.");
                 }

@@ -135,6 +135,31 @@ class RestClientTossPaymentClientTest {
     }
 
     @Test
+    void cancel_mapsFourHundredToRefundRejected() throws Exception {
+        startServer(exchange -> respond(exchange, 400, """
+            {
+              "code":"ALREADY_CANCELED_PAYMENT",
+              "message":"already canceled"
+            }
+            """));
+
+        assertThatThrownBy(() -> client().cancel(new TossCancelRequest(
+            "payment-key",
+            "reason",
+            10000L
+        )))
+            .isInstanceOf(TossPaymentClientException.class)
+            .satisfies(exception -> {
+                TossPaymentClientException clientException =
+                    (TossPaymentClientException) exception;
+                assertThat(clientException.getErrorCode())
+                    .isEqualTo(GlobalErrorCode.REFUND_REJECTED);
+                assertThat(clientException.getTossErrorCode())
+                    .isEqualTo("ALREADY_CANCELED_PAYMENT");
+            });
+    }
+
+    @Test
     void idempotencyKey_isStableForSameOrderIdAndPaymentKey() throws Exception {
         startServer(exchange -> respond(exchange, 200, "{}"));
         RestClientTossPaymentClient client = client();
