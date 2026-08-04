@@ -117,4 +117,102 @@ public class Booth {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public static Booth create(
+            Long eventId,
+            String boothCode,
+            String boothType,
+            String floorName,
+            String zoneName,
+            String locationDescription,
+            BigDecimal widthMeter,
+            BigDecimal depthMeter,
+            BigDecimal areaSqm,
+            String basicEquipment,
+            boolean electricityAvailable,
+            boolean waterAvailable,
+            boolean drainageAvailable,
+            boolean internetAvailable,
+            BigDecimal price,
+            OffsetDateTime now) {
+        return Booth.builder()
+            .eventId(eventId)
+            .boothCode(boothCode)
+            .boothType(boothType)
+            .floorName(floorName)
+            .zoneName(zoneName)
+            .locationDescription(locationDescription)
+            .widthMeter(widthMeter)
+            .depthMeter(depthMeter)
+            .areaSqm(areaSqm)
+            .basicEquipment(basicEquipment)
+            .electricityAvailable(electricityAvailable)
+            .waterAvailable(waterAvailable)
+            .drainageAvailable(drainageAvailable)
+            .internetAvailable(internetAvailable)
+            .price(price)
+            .status(BoothStatus.AVAILABLE)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+    }
+
+    public void updateDetails(
+            String boothCode,
+            String boothType,
+            String floorName,
+            String zoneName,
+            String locationDescription,
+            BigDecimal widthMeter,
+            BigDecimal depthMeter,
+            BigDecimal areaSqm,
+            String basicEquipment,
+            boolean electricityAvailable,
+            boolean waterAvailable,
+            boolean drainageAvailable,
+            boolean internetAvailable,
+            BigDecimal price,
+            OffsetDateTime now) {
+        this.boothCode = boothCode;
+        this.boothType = boothType;
+        this.floorName = floorName;
+        this.zoneName = zoneName;
+        this.locationDescription = locationDescription;
+        this.widthMeter = widthMeter;
+        this.depthMeter = depthMeter;
+        this.areaSqm = areaSqm;
+        this.basicEquipment = basicEquipment;
+        this.electricityAvailable = electricityAvailable;
+        this.waterAvailable = waterAvailable;
+        this.drainageAvailable = drainageAvailable;
+        this.internetAvailable = internetAvailable;
+        this.price = price;
+        this.updatedAt = now;
+    }
+
+    public void changeStatus(BoothStatus status, OffsetDateTime now) {
+        this.status = status;
+        this.updatedAt = now;
+    }
+
+    public void updateIntro(
+            String displayName,
+            String shortIntro,
+            String description,
+            String exhibitionContent,
+            Long representativeFileId,
+            OffsetDateTime now) {
+        this.displayName = displayName;
+        this.shortIntro = shortIntro;
+        this.description = description;
+        this.exhibitionContent = exhibitionContent;
+        this.representativeFileId = representativeFileId;
+        this.updatedAt = now;
+    }
+
+    public void issueQrToken(String qrToken, OffsetDateTime now) {
+        this.qrToken = qrToken;
+        this.qrIssuedAt = now;
+        this.updatedAt = now;
+    }
 }
