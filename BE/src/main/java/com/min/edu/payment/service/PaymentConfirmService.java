@@ -1,5 +1,6 @@
 package com.min.edu.payment.service;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 public class PaymentConfirmService {
 
     private static final String TOSS_DONE_STATUS = "DONE";
+    private static final String ALREADY_PROCESSED_PAYMENT = "ALREADY_PROCESSED_PAYMENT";
 
     private final PaymentOrderRepository paymentOrderRepository;
     private final TicketOrderRepository ticketOrderRepository;
@@ -50,7 +52,7 @@ public class PaymentConfirmService {
             return finalizeWithoutToss(request);
         }
 
-        TossConfirmResponse tossResponse = confirmWithToss(request);
+        TossConfirmResponse tossResponse = confirmWithToss(request, paymentOrder);
         validateTossResponse(request, paymentOrder, tossResponse);
 
         return finalizeWithLock(request, tossResponse);
@@ -127,13 +129,32 @@ public class PaymentConfirmService {
         }
     }
 
-    private TossConfirmResponse confirmWithToss(ConfirmPaymentRequest request) {
+    private TossConfirmResponse confirmWithToss(
+            ConfirmPaymentRequest request,
+            PaymentOrder paymentOrder) {
         try {
             return tossPaymentClient.confirm(new TossConfirmRequest(
                 request.getPaymentKey(),
                 request.getOrderId(),
-                request.getAmount()
+                toTossAmount(request.getAmount())
             ));
+        } catch (TossPaymentClientException exception) {
+            if (ALREADY_PROCESSED_PAYMENT.equals(exception.getTossErrorCode())) {
+                return recoverAlreadyProcessedPayment(request, paymentOrder);
+            }
+
+            throw new BusinessException(exception.getErrorCode());
+        }
+    }
+
+    private TossConfirmResponse recoverAlreadyProcessedPayment(
+            ConfirmPaymentRequest request,
+            PaymentOrder paymentOrder) {
+        try {
+            TossConfirmResponse tossPayment =
+                tossPaymentClient.getPayment(request.getPaymentKey());
+            validateTossResponse(request, paymentOrder, tossPayment);
+            return tossPayment;
         } catch (TossPaymentClientException exception) {
             throw new BusinessException(exception.getErrorCode());
         }
@@ -181,6 +202,14 @@ public class PaymentConfirmService {
             }
 
             throw exception;
+        }
+    }
+
+    private long toTossAmount(BigDecimal amount) {
+        try {
+            return amount.stripTrailingZeros().longValueExact();
+        } catch (ArithmeticException exception) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
     }
 }

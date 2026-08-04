@@ -89,6 +89,7 @@ public class PaymentFinalizer {
             throw new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT);
         }
 
+        OffsetDateTime now = OffsetDateTime.now();
         Payment payment = paymentRepository.saveAndFlush(Payment.approved(
             paymentOrder.getId(),
             PaymentProvider.TOSS_PAYMENTS,
@@ -97,15 +98,15 @@ public class PaymentFinalizer {
             request.getAmount(),
             tossResponse.requestedAt(),
             tossResponse.approvedAt(),
-            OffsetDateTime.now()
+            now
         ));
 
-        paymentOrder.markPaid(OffsetDateTime.now());
-        ticketOrder.confirm(tossResponse.approvedAt());
+        paymentOrder.markPaid(now);
+        ticketOrder.confirm(tossResponse.approvedAt(), now);
         ticketExchangeCodeIssuer.issueIfAbsent(
             ticketOrder,
             paymentOrder.getBuyerMemberId(),
-            OffsetDateTime.now()
+            now
         );
 
         return ConfirmPaymentResponse.of(payment, paymentOrder.getOrderNo(), ticketOrder);
@@ -146,11 +147,6 @@ public class PaymentFinalizer {
 
         if (paymentOrder.getTotalAmount().signum() <= 0) {
             throw new BusinessException(GlobalErrorCode.PAYMENT_NOT_REQUIRED);
-        }
-
-        if (paymentOrder.getExpiresAt() == null
-                || !paymentOrder.getExpiresAt().isAfter(OffsetDateTime.now())) {
-            throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
         }
 
         if (!paymentOrder.isPending() || !ticketOrder.isPendingPayment()) {

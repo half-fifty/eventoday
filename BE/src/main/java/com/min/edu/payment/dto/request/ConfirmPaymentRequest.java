@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -18,6 +19,8 @@ public class ConfirmPaymentRequest {
     private String paymentKey;
 
     @NotBlank
+    @Size(min = 6, max = 64)
+    @Pattern(regexp = "^[A-Za-z0-9_-]+$")
     private String orderId;
 
     @NotNull

@@ -102,8 +102,32 @@ class PaymentFinalizerTest {
         assertThat(paymentOrder.getStatus()).isEqualTo(PaymentOrderStatus.PAID.name());
         assertThat(ticketOrder.getStatus()).isEqualTo(TicketOrderStatus.CONFIRMED.name());
         assertThat(ticketOrder.getConfirmedAt()).isEqualTo(tossResponse().approvedAt());
+        assertThat(ticketOrder.getUpdatedAt()).isAfter(tossResponse().approvedAt());
         verify(ticketExchangeCodeIssuer).issueIfAbsent(any(), any(), any());
         verify(query).setParameter("timeout", "300ms");
+    }
+
+    @Test
+    void finalizePayment_succeedsWhenOrderExpiresAfterTossApproved() {
+        PaymentOrder paymentOrder = expiredPaymentOrder();
+        TicketOrder ticketOrder = pendingTicketOrder();
+        Payment savedPayment = payment();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(false);
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(ticketOrder));
+        given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
+        given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
+
+        ConfirmPaymentResponse response =
+            paymentFinalizer.finalizePayment(request(), tossResponse());
+
+        assertThat(response.getPaymentId()).isEqualTo(5L);
+        assertThat(paymentOrder.getStatus()).isEqualTo(PaymentOrderStatus.PAID.name());
+        assertThat(ticketOrder.getStatus()).isEqualTo(TicketOrderStatus.CONFIRMED.name());
     }
 
     @Test
@@ -232,6 +256,20 @@ class PaymentFinalizerTest {
 
     private PaymentOrder paidPaymentOrder() {
         return paymentOrder(PaymentOrderStatus.PAID);
+    }
+
+    private PaymentOrder expiredPaymentOrder() {
+        return PaymentOrder.builder()
+            .id(1L)
+            .orderNo("ORDER-1")
+            .buyerMemberId(10L)
+            .orderType(PaymentOrderType.EVENT_TICKET)
+            .totalAmount(BigDecimal.valueOf(10000))
+            .status(PaymentOrderStatus.PENDING.name())
+            .expiresAt(OffsetDateTime.now().minusSeconds(1))
+            .createdAt(OffsetDateTime.now().minusMinutes(10))
+            .updatedAt(OffsetDateTime.now().minusMinutes(10))
+            .build();
     }
 
     private PaymentOrder paymentOrder(PaymentOrderStatus status) {

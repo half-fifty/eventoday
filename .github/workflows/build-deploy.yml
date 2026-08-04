@@ -69,7 +69,7 @@ jobs:
             --from-literal=GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \
             --from-literal=NTS_BUSINESS_API_KEY="${{ secrets.NTS_BUSINESS_API_KEY }}" \
             --from-literal=ORDER_ACCESS_TOKEN_SECRET="${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}" \
-            --from-literal=TOSS_SECRET_KEY=${{ secrets.TOSS_SECRET_KEY }} \
+            --from-literal=TOSS_SECRET_KEY="${{ secrets.TOSS_SECRET_KEY }}" \
             --dry-run=client -o yaml | sudo kubectl apply -f -
 
       - name: Sync backend config env vars

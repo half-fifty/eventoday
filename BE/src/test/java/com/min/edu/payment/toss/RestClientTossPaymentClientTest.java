@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -39,10 +38,13 @@ class RestClientTossPaymentClientTest {
     @Test
     void confirm_sendsBasicAuthorizationAndBody() throws Exception {
         String[] capturedAuthorization = new String[1];
+        String[] capturedIdempotencyKey = new String[1];
         String[] capturedBody = new String[1];
         startServer(exchange -> {
             capturedAuthorization[0] = exchange.getRequestHeaders()
                 .getFirst("Authorization");
+            capturedIdempotencyKey[0] = exchange.getRequestHeaders()
+                .getFirst("Idempotency-Key");
             capturedBody[0] = new String(
                 exchange.getRequestBody().readAllBytes(),
                 StandardCharsets.UTF_8
@@ -70,7 +72,70 @@ class RestClientTossPaymentClientTest {
             .contains("\"paymentKey\":\"payment-key\"")
             .contains("\"orderId\":\"ORDER-1\"")
             .contains("\"amount\":10000");
+        assertThat(capturedBody[0]).doesNotContain("10000.00");
+        assertThat(capturedIdempotencyKey[0])
+            .isEqualTo(client().idempotencyKey(request()));
         assertThat(response.status()).isEqualTo("DONE");
+    }
+
+    @Test
+    void idempotencyKey_isStableForSameOrderIdAndPaymentKey() throws Exception {
+        startServer(exchange -> respond(exchange, 200, "{}"));
+        RestClientTossPaymentClient client = client();
+
+        String first = client.idempotencyKey(new TossConfirmRequest(
+            "payment-key",
+            "ORDER-1",
+            10000L
+        ));
+        String second = client.idempotencyKey(new TossConfirmRequest(
+            "payment-key",
+            "ORDER-1",
+            10000L
+        ));
+
+        assertThat(second).isEqualTo(first);
+    }
+
+    @Test
+    void idempotencyKey_differsWhenOrderIdOrPaymentKeyDiffers() throws Exception {
+        startServer(exchange -> respond(exchange, 200, "{}"));
+        RestClientTossPaymentClient client = client();
+
+        String base = client.idempotencyKey(new TossConfirmRequest(
+            "payment-key",
+            "ORDER-1",
+            10000L
+        ));
+        String differentOrder = client.idempotencyKey(new TossConfirmRequest(
+            "payment-key",
+            "ORDER-2",
+            10000L
+        ));
+        String differentPaymentKey = client.idempotencyKey(new TossConfirmRequest(
+            "other-key",
+            "ORDER-1",
+            10000L
+        ));
+
+        assertThat(differentOrder).isNotEqualTo(base);
+        assertThat(differentPaymentKey).isNotEqualTo(base);
+    }
+
+    @Test
+    void confirm_mapsAlreadyProcessedTossErrorCode() throws Exception {
+        startServer(exchange -> respond(exchange, 400, """
+            {
+              "code":"ALREADY_PROCESSED_PAYMENT",
+              "message":"already processed"
+            }
+            """));
+
+        assertThatThrownBy(() -> client().confirm(request()))
+            .isInstanceOf(TossPaymentClientException.class)
+            .satisfies(exception -> assertThat(
+                ((TossPaymentClientException) exception).getTossErrorCode()
+            ).isEqualTo("ALREADY_PROCESSED_PAYMENT"));
     }
 
     @Test
@@ -241,7 +306,7 @@ class RestClientTossPaymentClientTest {
         return new TossConfirmRequest(
             "payment-key",
             "ORDER-1",
-            BigDecimal.valueOf(10000)
+            10000L
         );
     }
 

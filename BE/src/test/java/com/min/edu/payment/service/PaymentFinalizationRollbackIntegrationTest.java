@@ -214,7 +214,7 @@ class PaymentFinalizationRollbackIntegrationTest {
                     return new TossConfirmResponse(
                         request.paymentKey(),
                         request.orderId(),
-                        request.amount(),
+                        BigDecimal.valueOf(request.amount()),
                         "DONE",
                         "CARD",
                         OffsetDateTime.now(),

@@ -1,5 +1,6 @@
 package com.min.edu.payment.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -12,6 +13,7 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -34,6 +36,7 @@ import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.support.OrderAccessTokenProvider;
 import com.min.edu.payment.toss.TossPaymentClient;
 import com.min.edu.payment.toss.TossPaymentClientException;
+import com.min.edu.payment.toss.dto.TossConfirmRequest;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
 
 @ExtendWith(MockitoExtension.class)
@@ -88,6 +91,24 @@ class PaymentConfirmServiceTest {
 
     @Test
     void confirm_succeedsForGuestWithOrderAccessToken() {
+        ConfirmPaymentRequest request = request();
+        PaymentOrder paymentOrder = pendingGuestOrder();
+
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(orderAccessTokenProvider.getOrderNo("token")).willReturn("ORDER-1");
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+        given(tossPaymentClient.confirm(any())).willReturn(tossResponse());
+        given(paymentFinalizer.finalizePayment(any(), any())).willReturn(response());
+
+        paymentConfirmService.confirm(null, "token", request);
+
+        verify(orderAccessTokenProvider).getOrderNo("token");
+    }
+
+    @Test
+    void confirm_succeedsForLoggedInUserAccessingGuestOrderWithToken() {
         ConfirmPaymentRequest request = request();
         PaymentOrder paymentOrder = pendingGuestOrder();
 
@@ -155,7 +176,7 @@ class PaymentConfirmServiceTest {
     @Test
     void confirm_failsWhenOrderIsFree() {
         given(paymentOrderRepository.findByOrderNo("ORDER-1"))
-            .willReturn(Optional.of(order(PaymentOrderStatus.PAID, BigDecimal.ZERO, 10L)));
+            .willReturn(Optional.of(order(PaymentOrderStatus.PENDING, BigDecimal.ZERO, 10L)));
 
         assertBusinessException(
             () -> paymentConfirmService.confirm(
@@ -165,6 +186,52 @@ class PaymentConfirmServiceTest {
             ),
             GlobalErrorCode.PAYMENT_NOT_REQUIRED
         );
+    }
+
+    @Test
+    void confirm_normalizesScaleZeroAmountBeforeCallingToss() {
+        ConfirmPaymentRequest request = new ConfirmPaymentRequest(
+            "payment-key",
+            "ORDER-1",
+            new BigDecimal("10000.00")
+        );
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(pendingMemberOrder(10L)));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+        given(tossPaymentClient.confirm(any())).willReturn(tossResponse());
+        given(paymentFinalizer.finalizePayment(any(), any())).willReturn(response());
+
+        paymentConfirmService.confirm(10L, null, request);
+
+        ArgumentCaptor<TossConfirmRequest> captor =
+            ArgumentCaptor.forClass(TossConfirmRequest.class);
+        verify(tossPaymentClient).confirm(captor.capture());
+        assertThat(captor.getValue().amount()).isEqualTo(10000L);
+    }
+
+    @Test
+    void confirm_failsBeforeCallingTossWhenAmountHasFraction() {
+        ConfirmPaymentRequest request = new ConfirmPaymentRequest(
+            "payment-key",
+            "ORDER-1",
+            new BigDecimal("10000.50")
+        );
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(order(
+                PaymentOrderStatus.PENDING,
+                new BigDecimal("10000.50"),
+                10L
+            )));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+
+        assertBusinessException(
+            () -> paymentConfirmService.confirm(10L, null, request),
+            GlobalErrorCode.INVALID_INPUT_VALUE
+        );
+
+        verify(tossPaymentClient, never()).confirm(any());
     }
 
     @Test
@@ -178,6 +245,7 @@ class PaymentConfirmServiceTest {
             () -> paymentConfirmService.confirm(10L, null, request()),
             GlobalErrorCode.PAYMENT_INVALID_STATE
         );
+        verify(tossPaymentClient, never()).confirm(any());
     }
 
     @Test
@@ -224,6 +292,30 @@ class PaymentConfirmServiceTest {
             () -> paymentConfirmService.confirm(10L, null, request()),
             GlobalErrorCode.PAYMENT_GATEWAY_TIMEOUT
         );
+    }
+
+    @Test
+    void confirm_recoversAlreadyProcessedPaymentFromTossLookup() {
+        ConfirmPaymentRequest request = request();
+        PaymentOrder paymentOrder = pendingMemberOrder(10L);
+        TossConfirmResponse tossResponse = tossResponse();
+
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+        given(tossPaymentClient.confirm(any()))
+            .willThrow(new TossPaymentClientException(
+                GlobalErrorCode.PAYMENT_CONFIRM_REJECTED,
+                "ALREADY_PROCESSED_PAYMENT"
+            ));
+        given(tossPaymentClient.getPayment("payment-key")).willReturn(tossResponse);
+        given(paymentFinalizer.finalizePayment(request, tossResponse)).willReturn(response());
+
+        paymentConfirmService.confirm(10L, null, request);
+
+        verify(tossPaymentClient).getPayment("payment-key");
+        verify(paymentFinalizer).finalizePayment(request, tossResponse);
     }
 
     @Test

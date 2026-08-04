@@ -98,6 +98,23 @@ class PaymentWebhookIntegrationTest {
         assertExchangeCodeCount(order.ticketOrderId(), 1);
     }
 
+    @Test
+    void webhook_recoversExpiredLocalOrderWhenTossIsAlreadyDone() {
+        Long memberId = insertMember();
+        Long eventId = insertEvent();
+        OrderFixture order = createExpiredPendingOrder(memberId, eventId, "WEBHOOK-EXPIRED");
+        String paymentKey = "payment-key-" + UUID.randomUUID();
+        TossConfirmResponse tossPayment = tossPayment(paymentKey, order.orderNo());
+        fakeTossPaymentClient.put(paymentKey, tossPayment);
+
+        paymentWebhookService.handleTossWebhook(webhook(tossPayment));
+
+        assertThat(paymentRepository.countByPaymentKey(paymentKey)).isEqualTo(1);
+        assertOrderStatus(order.paymentOrderId(), PaymentOrderStatus.PAID);
+        assertTicketOrderStatus(order.paymentOrderId(), TicketOrderStatus.CONFIRMED);
+        assertExchangeCodeCount(order.ticketOrderId(), 1);
+    }
+
     private TossPaymentWebhookRequest webhook(TossConfirmResponse tossPayment) {
         return new TossPaymentWebhookRequest(
             "PAYMENT_STATUS_CHANGED",
@@ -152,6 +169,42 @@ class PaymentWebhookIntegrationTest {
                 .status(TicketOrderStatus.PENDING_PAYMENT.name())
                 .createdAt(now)
                 .updatedAt(now)
+                .build()
+        );
+
+        return new OrderFixture(
+            paymentOrder.getId(),
+            ticketOrder.getId(),
+            paymentOrder.getOrderNo()
+        );
+    }
+
+    private OrderFixture createExpiredPendingOrder(
+            Long memberId,
+            Long eventId,
+            String orderNoPrefix) {
+        OffsetDateTime now = OffsetDateTime.now();
+        PaymentOrder paymentOrder = paymentOrderRepository.saveAndFlush(
+            PaymentOrder.builder()
+                .orderNo(orderNoPrefix + "-" + UUID.randomUUID())
+                .buyerMemberId(memberId)
+                .orderType(PaymentOrderType.EVENT_TICKET)
+                .totalAmount(BigDecimal.valueOf(10000))
+                .status(PaymentOrderStatus.PENDING.name())
+                .expiresAt(now.minusSeconds(1))
+                .createdAt(now.minusMinutes(10))
+                .updatedAt(now.minusMinutes(10))
+                .build()
+        );
+        TicketOrder ticketOrder = ticketOrderRepository.saveAndFlush(
+            TicketOrder.builder()
+                .paymentOrderId(paymentOrder.getId())
+                .eventId(eventId)
+                .unitPrice(BigDecimal.valueOf(10000))
+                .totalQuantity(1)
+                .status(TicketOrderStatus.PENDING_PAYMENT.name())
+                .createdAt(now.minusMinutes(10))
+                .updatedAt(now.minusMinutes(10))
                 .build()
         );
 
@@ -257,7 +310,11 @@ class PaymentWebhookIntegrationTest {
             .findByPaymentOrderId(paymentOrderId)
             .orElseThrow();
         assertThat(ticketOrder.getStatus()).isEqualTo(status.name());
-        assertThat(ticketOrder.getConfirmedAt()).isNotNull();
+        if (status == TicketOrderStatus.CONFIRMED) {
+            assertThat(ticketOrder.getConfirmedAt()).isNotNull();
+        } else {
+            assertThat(ticketOrder.getConfirmedAt()).isNull();
+        }
     }
 
     private void assertExchangeCodeCount(Long ticketOrderId, int expectedCount) {
