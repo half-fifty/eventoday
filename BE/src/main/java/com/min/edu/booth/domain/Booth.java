@@ -136,25 +136,25 @@ public class Booth {
             BigDecimal price,
             OffsetDateTime now) {
         return Booth.builder()
-            .eventId(eventId)
-            .boothCode(boothCode)
-            .boothType(boothType)
-            .floorName(floorName)
-            .zoneName(zoneName)
-            .locationDescription(locationDescription)
-            .widthMeter(widthMeter)
-            .depthMeter(depthMeter)
-            .areaSqm(areaSqm)
-            .basicEquipment(basicEquipment)
-            .electricityAvailable(electricityAvailable)
-            .waterAvailable(waterAvailable)
-            .drainageAvailable(drainageAvailable)
-            .internetAvailable(internetAvailable)
-            .price(price)
-            .status(BoothStatus.AVAILABLE)
-            .createdAt(now)
-            .updatedAt(now)
-            .build();
+                .eventId(eventId)
+                .boothCode(boothCode)
+                .boothType(boothType)
+                .floorName(floorName)
+                .zoneName(zoneName)
+                .locationDescription(locationDescription)
+                .widthMeter(widthMeter)
+                .depthMeter(depthMeter)
+                .areaSqm(areaSqm)
+                .basicEquipment(basicEquipment)
+                .electricityAvailable(electricityAvailable)
+                .waterAvailable(waterAvailable)
+                .drainageAvailable(drainageAvailable)
+                .internetAvailable(internetAvailable)
+                .price(price)
+                .status(BoothStatus.AVAILABLE)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
     }
 
     public void updateDetails(
@@ -213,6 +213,22 @@ public class Booth {
     public void issueQrToken(String qrToken, OffsetDateTime now) {
         this.qrToken = qrToken;
         this.qrIssuedAt = now;
+        this.updatedAt = now;
+    }
+
+    /**
+     * 부스 신청 접수 시 상태를 APPLICATION_PENDING으로 변경
+     */
+    public void markAsPending(OffsetDateTime now) {
+        this.status = BoothStatus.APPLICATION_PENDING;
+        this.updatedAt = now;
+    }
+
+    /**
+     * 신청 취소/반려 시 부스 상태를 AVAILABLE로 복원
+     */
+    public void markAsAvailable(OffsetDateTime now) {
+        this.status = BoothStatus.AVAILABLE;
         this.updatedAt = now;
     }
 }

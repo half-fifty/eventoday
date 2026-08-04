@@ -76,9 +76,16 @@ public enum GlobalErrorCode {
     BOOTH_DELETE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "BOOTH_400_002", "사용 가능 상태인 부스만 삭제할 수 있습니다."),
     BOOTH_NOT_ASSIGNED(HttpStatus.BAD_REQUEST, "BOOTH_400_003", "배정된 부스만 소개를 등록할 수 있습니다."),
     BOOTH_STATUS_TRANSITION_INVALID(HttpStatus.BAD_REQUEST, "BOOTH_400_004", "허용되지 않는 부스 상태 변경입니다."),
-    BOOTH_QR_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "BOOTH_500_001", "QR 토큰 생성에 실패했습니다."),
     RESERVATION_SLOT_TIME_CONFLICT(HttpStatus.CONFLICT, "BOOTH_409_001", "이미 존재하는 시간대입니다."),
-    BOOTH_CODE_ALREADY_EXISTS(HttpStatus.CONFLICT, "BOOTH_409_002", "이미 등록된 부스 번호입니다.");
+    BOOTH_CODE_ALREADY_EXISTS(HttpStatus.CONFLICT, "BOOTH_409_002", "이미 등록된 부스 번호입니다."),
+    BOOTH_QR_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "BOOTH_500_001", "QR 토큰 생성에 실패했습니다."),
+    RECRUITMENT_NOT_OPEN(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_001", "현재 부스 신청 모집 기간이 아닙니다."),
+    BOOTH_REQUIREMENT_NOT_MET(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_002", "요청한 설비를 해당 부스에서 제공하지 않습니다."),
+    ESTIMATE_FILE_REQUIRED(HttpStatus.BAD_REQUEST, "BOOTH_400_001", "견적서 파일은 필수입니다."),
+    BOOTH_NOT_AVAILABLE(HttpStatus.CONFLICT, "BOOTH_409_003", "해당 부스는 신청 가능한 상태가 아닙니다."),
+    BOOTH_APPLICATION_CONFLICT(HttpStatus.CONFLICT, "BOOTH_409_004", "다른 신청에 의해 이미 처리되었습니다. 잠시 후 다시 시도해주세요."),
+    APPLICATION_NUMBER_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "BOOTH_500_002", "신청번호 생성에 실패했습니다."),
+    APPLICATION_CANNOT_BE_CANCELLED(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_003", "현재 상태에서는 신청을 취소할 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;
