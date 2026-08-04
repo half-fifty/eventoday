@@ -199,8 +199,8 @@ class BoothControllerTest {
                 .header("Authorization", "Bearer " + eventManagerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(createRequestJson("A-01")))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.code").value("BOOTH_400_001"));
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value("BOOTH_409_002"));
     }
 
     @Test
@@ -243,8 +243,8 @@ class BoothControllerTest {
                 .header("Authorization", "Bearer " + eventManagerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(bulkJson))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.code").value("BOOTH_400_001"));
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value("BOOTH_409_002"));
     }
 
     @Test
@@ -379,6 +379,8 @@ class BoothControllerTest {
 
         long boothId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
 
+        assignToExhibitor(boothId);
+
         mockMvc.perform(patch("/events/{eventId}/booths/{boothId}/status", eventId, boothId)
                 .header("Authorization", "Bearer " + eventManagerToken)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -430,13 +432,13 @@ class BoothControllerTest {
 
         long boothId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
 
+        assignToExhibitor(boothId);
+
         mockMvc.perform(patch("/events/{eventId}/booths/{boothId}/status", eventId, boothId)
                 .header("Authorization", "Bearer " + eventManagerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"status\":\"ASSIGNED\"}"))
             .andExpect(status().isOk());
-
-        assignToExhibitor(boothId);
 
         String introJson = objectMapper.writeValueAsString(new LinkedHashMap<String, Object>() {{
             put("displayName", "테스트 부스");
@@ -490,6 +492,8 @@ class BoothControllerTest {
             .getContentAsString();
 
         long boothId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
+
+        assignToExhibitor(boothId);
 
         mockMvc.perform(patch("/events/{eventId}/booths/{boothId}/status", eventId, boothId)
                 .header("Authorization", "Bearer " + eventManagerToken)
@@ -576,13 +580,13 @@ class BoothControllerTest {
 
         long boothId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
 
+        assignToExhibitor(boothId);
+
         mockMvc.perform(patch("/events/{eventId}/booths/{boothId}/status", eventId, boothId)
                 .header("Authorization", "Bearer " + eventManagerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"status\":\"ASSIGNED\"}"))
             .andExpect(status().isOk());
-
-        assignToExhibitor(boothId);
 
         mockMvc.perform(post("/events/{eventId}/booths/{boothId}/qr", eventId, boothId)
                 .header("Authorization", "Bearer " + eventManagerToken))

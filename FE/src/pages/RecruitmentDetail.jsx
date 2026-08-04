@@ -6,6 +6,7 @@ import Icon from "../components/Icon.jsx";
 import { ApiError } from "../api/apiClient.js";
 import { getPublicRecruitment } from "../api/recruitmentApi.js";
 import { listPublicBooths } from "../api/boothApi.js";
+import { eventApi } from "../api/eventApi.js";
 
 const STATUS_BADGE = {
   OPEN: { label: "모집 중", cls: "bg-primary-container/10 text-primary-focus" },
@@ -34,7 +35,11 @@ export default function RecruitmentDetail() {
   const [booths, setBooths] = useState([]);
   const [loadingBooths, setLoadingBooths] = useState(false);
   const [boothError, setBoothError] = useState("");
+  const [boothPage, setBoothPage] = useState(0);
+  const [boothHasMore, setBoothHasMore] = useState(false);
+  const [loadingMoreBooths, setLoadingMoreBooths] = useState(false);
   const [selectedBooth, setSelectedBooth] = useState(null);
+  const [eventLinkAvailable, setEventLinkAvailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,19 +76,61 @@ export default function RecruitmentDetail() {
 
     setLoadingBooths(true);
     setBoothError("");
+    setBoothPage(0);
 
-    listPublicBooths(recruitment.eventId, { size: 50 })
+    listPublicBooths(recruitment.eventId, { page: 0, size: 50 })
       .then((data) => {
-        if (!cancelled) setBooths(data?.content || []);
+        if (!cancelled) {
+          setBooths(data?.content || []);
+          setBoothHasMore(data ? !data.last : false);
+        }
       })
       .catch((err) => {
         if (!cancelled) {
           setBooths([]);
+          setBoothHasMore(false);
           setBoothError(err instanceof ApiError ? err.message : "부스 목록을 불러오지 못했습니다.");
         }
       })
       .finally(() => {
         if (!cancelled) setLoadingBooths(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [recruitment?.eventId]);
+
+  const loadMoreBooths = async () => {
+    if (!recruitment?.eventId || loadingMoreBooths || !boothHasMore) return;
+
+    const nextPage = boothPage + 1;
+    setLoadingMoreBooths(true);
+    setBoothError("");
+    try {
+      const data = await listPublicBooths(recruitment.eventId, { page: nextPage, size: 50 });
+      setBooths((prev) => [...prev, ...(data?.content || [])]);
+      setBoothHasMore(data ? !data.last : false);
+      setBoothPage(nextPage);
+    } catch (err) {
+      setBoothError(err instanceof ApiError ? err.message : "부스 목록을 더 불러오지 못했습니다.");
+    } finally {
+      setLoadingMoreBooths(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!recruitment?.eventId) return;
+    let cancelled = false;
+
+    setEventLinkAvailable(false);
+    // 공개 행사 상세는 PUBLISHED 상태에서만 조회 가능하므로, 조회 성공할 때만 링크를 노출한다.
+    eventApi.detail(recruitment.eventId)
+      .then(() => {
+        if (!cancelled) setEventLinkAvailable(true);
+      })
+      .catch(() => {
+        if (!cancelled) setEventLinkAvailable(false);
       });
 
     return () => {
@@ -118,9 +165,19 @@ export default function RecruitmentDetail() {
                 <Icon name="campaign" className="text-[56px] opacity-90" />
               </div>
 
-              <span className={`inline-block text-[12px] font-bold px-md py-1 rounded-full mb-sm ${badge.cls}`}>
-                {badge.label}
-              </span>
+              <div className="flex items-start justify-between gap-sm flex-wrap mb-sm">
+                <span className={`inline-block text-[12px] font-bold px-md py-1 rounded-full ${badge.cls}`}>
+                  {badge.label}
+                </span>
+                {eventLinkAvailable && (
+                  <Link
+                    to={`/events/${recruitment.eventId}`}
+                    className="inline-flex items-center gap-1 text-caption text-primary font-body-strong border border-hairline rounded-full px-md py-1 hover:bg-surface-container transition-colors"
+                  >
+                    행사 상세 보기 <Icon name="arrow_forward" className="text-[14px]" />
+                  </Link>
+                )}
+              </div>
               <h1 className="font-display-lg text-[26px] mb-sm">{recruitment.title}</h1>
               <p className="text-caption text-ink-muted mb-lg">
                 모집 기간 {formatDateTime(recruitment.recruitmentStartAt)} – {formatDateTime(recruitment.recruitmentEndAt)}
@@ -196,6 +253,18 @@ export default function RecruitmentDetail() {
                         </button>
                       );
                     })}
+                  </div>
+                )}
+                {boothHasMore && (
+                  <div className="flex justify-center mt-lg">
+                    <button
+                      type="button"
+                      onClick={loadMoreBooths}
+                      disabled={loadingMoreBooths}
+                      className="px-lg py-sm border border-hairline rounded-full text-caption font-body-strong hover:bg-surface-container transition-colors disabled:opacity-40"
+                    >
+                      {loadingMoreBooths ? "불러오는 중..." : "부스 더 보기"}
+                    </button>
                   </div>
                 )}
               </div>

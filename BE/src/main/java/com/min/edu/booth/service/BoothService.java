@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -36,6 +37,7 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventRepository;
+import com.min.edu.file.service.FileService;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.repository.OrganizationMemberRepository;
@@ -47,12 +49,15 @@ import lombok.RequiredArgsConstructor;
 public class BoothService {
 
     private static final int MAX_PAGE_SIZE = 100;
+    private static final List<BoothStatus> PUBLIC_VISIBLE_STATUSES =
+        List.of(BoothStatus.AVAILABLE, BoothStatus.ASSIGNED);
 
     private final BoothRepository boothRepository;
     private final EventRepository eventRepository;
     private final EventMemberRepository eventMemberRepository;
     private final OrganizationMemberRepository organizationMemberRepository;
     private final BoothQrTokenGenerator boothQrTokenGenerator;
+    private final FileService fileService;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -106,10 +111,8 @@ public class BoothService {
             throw new BusinessException(GlobalErrorCode.BOOTH_CODE_ALREADY_EXISTS);
         }
 
-        for (String code : boothCodes) {
-            if (boothRepository.existsByEventIdAndBoothCode(eventId, code)) {
-                throw new BusinessException(GlobalErrorCode.BOOTH_CODE_ALREADY_EXISTS);
-            }
+        if (!boothRepository.findExistingBoothCodes(eventId, boothCodes).isEmpty()) {
+            throw new BusinessException(GlobalErrorCode.BOOTH_CODE_ALREADY_EXISTS);
         }
 
         OffsetDateTime now = OffsetDateTime.now();
@@ -196,7 +199,15 @@ public class BoothService {
         requireEventManager(eventId, member);
         Booth booth = getByIdAndEventIdOrThrow(boothId, eventId);
 
-        booth.changeStatus(request.getStatus(), OffsetDateTime.now());
+        BoothStatus nextStatus = request.getStatus();
+        if (nextStatus == BoothStatus.ASSIGNED && booth.getAssignedOrganizationId() == null) {
+            throw new BusinessException(GlobalErrorCode.BOOTH_STATUS_TRANSITION_INVALID);
+        }
+        if (nextStatus == BoothStatus.AVAILABLE && booth.getAssignedOrganizationId() != null) {
+            throw new BusinessException(GlobalErrorCode.BOOTH_STATUS_TRANSITION_INVALID);
+        }
+
+        booth.changeStatus(nextStatus, OffsetDateTime.now());
 
         return toResponse(booth);
     }
@@ -232,6 +243,10 @@ public class BoothService {
 
         if (booth.getStatus() != BoothStatus.ASSIGNED || booth.getAssignedOrganizationId() == null) {
             throw new BusinessException(GlobalErrorCode.BOOTH_NOT_ASSIGNED);
+        }
+
+        if (request.getRepresentativeFileId() != null) {
+            fileService.assertAccessible(request.getRepresentativeFileId(), member.getMemberId());
         }
 
         booth.updateIntro(
@@ -302,8 +317,8 @@ public class BoothService {
         requireEventExists(eventId);
         validatePageRequest(page, size);
 
-        Page<Booth> booths = boothRepository.search(
-            eventId, null, null, null, null, PageRequest.of(page, size));
+        Page<Booth> booths = boothRepository.searchPublic(
+            eventId, PUBLIC_VISIBLE_STATUSES, PageRequest.of(page, size));
 
         return new BoothPublicPageResponse(
             booths.getContent().stream().map(this::toPublicResponse).toList(),
@@ -380,7 +395,13 @@ public class BoothService {
             return null;
         }
 
-        return "%" + keyword.trim().toLowerCase() + "%";
+        String escaped = keyword.trim()
+            .toLowerCase(Locale.ROOT)
+            .replace("!", "!!")
+            .replace("%", "!%")
+            .replace("_", "!_");
+
+        return "%" + escaped + "%";
     }
 
     private void validatePageRequest(int page, int size) {

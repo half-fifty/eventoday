@@ -4,9 +4,11 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -16,24 +18,32 @@ import lombok.NoArgsConstructor;
 public class BoothBulkCreateRequestDto {
 
     @NotEmpty
-    private List<@NotBlank String> boothCodes;
+    @Size(max = 200)
+    private List<@NotBlank @Size(max = 30) String> boothCodes;
 
     @NotBlank
+    @Size(max = 50)
     private String boothType;
 
+    @Size(max = 50)
     private String floorName;
 
+    @Size(max = 50)
     private String zoneName;
 
+    @Size(max = 200)
     private String locationDescription;
 
     @DecimalMin(value = "0", inclusive = true)
+    @Digits(integer = 4, fraction = 2)
     private BigDecimal widthMeter;
 
     @DecimalMin(value = "0", inclusive = true)
+    @Digits(integer = 4, fraction = 2)
     private BigDecimal depthMeter;
 
     @DecimalMin(value = "0", inclusive = true)
+    @Digits(integer = 6, fraction = 2)
     private BigDecimal areaSqm;
 
     private List<String> basicEquipment;
@@ -48,5 +58,6 @@ public class BoothBulkCreateRequestDto {
 
     @NotNull
     @DecimalMin(value = "0", inclusive = true)
+    @Digits(integer = 12, fraction = 0)
     private BigDecimal price;
 }

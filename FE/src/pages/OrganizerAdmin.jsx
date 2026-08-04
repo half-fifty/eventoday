@@ -43,14 +43,22 @@ export default function OrganizerAdmin() {
   const [recruitmentStatus, setRecruitmentStatus] = useState(null);
   const [recruitmentLoading, setRecruitmentLoading] = useState(false);
 
-  // 내 계정이 속한 조직 목록을 불러와, URL에 organizationId가 없으면 자동으로 선택한다.
+  // 내 계정이 속한 조직 목록을 불러와, URL/localStorage의 organizationId가 없거나
+  // 더 이상 내 소속이 아니면(다른 계정으로 로그인 등) 자동으로 첫 번째 소속 조직으로 교체한다.
   useEffect(() => {
     eventApi.managedOrganizations()
       .then((result) => {
         const list = result?.data || [];
         setManagedOrganizations(list);
-        if (!organizationId && list.length > 0) {
+        if (list.length === 0) {
+          setOrganizationId("");
+          localStorage.removeItem("organizationId");
+          return;
+        }
+        const isValid = list.some((org) => String(org.id) === String(organizationId));
+        if (!isValid) {
           setOrganizationId(String(list[0].id));
+          setSelectedEventId("");
         }
       })
       .catch((error) => setEventLoadError(error.message || "소속 조직 정보를 불러오지 못했습니다."));

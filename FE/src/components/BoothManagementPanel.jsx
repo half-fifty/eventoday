@@ -41,20 +41,29 @@ const EMPTY_SPEC_FORM = {
 const EMPTY_BULK_FORM = { boothCodes: "", ...EMPTY_SPEC_FORM };
 const EMPTY_INTRO_FORM = { displayName: "", shortIntro: "", description: "", exhibitionContent: "" };
 
+const toNumberOrThrow = (value, label) => {
+  if (value === "" || value == null) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${label} 값이 올바르지 않습니다.`);
+  }
+  return parsed;
+};
+
 const toSpecPayload = (form) => ({
   boothCode: form.boothCode,
   boothType: form.boothType,
   floorName: form.floorName || null,
   zoneName: form.zoneName || null,
   locationDescription: form.locationDescription || null,
-  widthMeter: form.widthMeter === "" ? null : Number(form.widthMeter),
-  depthMeter: form.depthMeter === "" ? null : Number(form.depthMeter),
-  areaSqm: form.areaSqm === "" ? null : Number(form.areaSqm),
+  widthMeter: toNumberOrThrow(form.widthMeter, "가로(m)"),
+  depthMeter: toNumberOrThrow(form.depthMeter, "세로(m)"),
+  areaSqm: toNumberOrThrow(form.areaSqm, "면적(㎡)"),
   electricityAvailable: form.electricityAvailable,
   waterAvailable: form.waterAvailable,
   drainageAvailable: form.drainageAvailable,
   internetAvailable: form.internetAvailable,
-  price: Number(form.price || 0),
+  price: toNumberOrThrow(form.price, "가격(원)") ?? 0,
 });
 
 function EquipmentCheckboxes({ form, onChange }) {
@@ -149,8 +158,6 @@ function SpecFormFields({ form, onChange, includeCode = true }) {
 }
 
 export default function BoothManagementPanel({ eventId }) {
-  const [loadedEventId, setLoadedEventId] = useState(null);
-
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [page, setPage] = useState(0);
   const [pageResult, setPageResult] = useState(null);
@@ -194,7 +201,6 @@ export default function BoothManagementPanel({ eventId }) {
     try {
       const result = await listBooths(id, { ...currentFilters, page: currentPage, size: PAGE_SIZE });
       setPageResult(result);
-      setLoadedEventId(id);
     } catch (err) {
       setPageResult(null);
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "부스 목록을 불러오지 못했습니다.");
@@ -206,26 +212,28 @@ export default function BoothManagementPanel({ eventId }) {
   useEffect(() => {
     setPage(0);
     setFilters(EMPTY_FILTERS);
+    setEditingBoothId(null);
+    setIntroBoothId(null);
+    closeQr();
+    setMessage("");
+    setPageResult(null);
     if (eventId) {
       loadBooths(eventId, EMPTY_FILTERS, 0);
-    } else {
-      setLoadedEventId(null);
-      setPageResult(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
   const handleSearch = () => {
     setPage(0);
-    loadBooths(loadedEventId, filters, 0);
+    loadBooths(eventId, filters, 0);
   };
 
   const changePage = (nextPage) => {
     setPage(nextPage);
-    loadBooths(loadedEventId, filters, nextPage);
+    loadBooths(eventId, filters, nextPage);
   };
 
-  const refresh = () => loadBooths(loadedEventId, filters, page);
+  const refresh = () => loadBooths(eventId, filters, page);
 
   const runAction = async (actionFn, successMessage) => {
     if (submitting) return;
@@ -237,7 +245,7 @@ export default function BoothManagementPanel({ eventId }) {
       setMessage(successMessage);
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "요청에 실패했습니다.");
+      setError(err instanceof ApiError ? `${err.code}: ${err.message}` : err.message || "요청에 실패했습니다.");
     } finally {
       setSubmitting(false);
     }
@@ -245,7 +253,7 @@ export default function BoothManagementPanel({ eventId }) {
 
   const handleCreate = () =>
     runAction(async () => {
-      await createBooth(loadedEventId, toSpecPayload(createForm));
+      await createBooth(eventId, toSpecPayload(createForm));
       setCreateForm(EMPTY_SPEC_FORM);
       setShowCreateForm(false);
     }, "부스를 등록했습니다.");
@@ -256,7 +264,7 @@ export default function BoothManagementPanel({ eventId }) {
         .split(",")
         .map((code) => code.trim())
         .filter(Boolean);
-      await createBoothsBulk(loadedEventId, { ...toSpecPayload(bulkForm), boothCodes });
+      await createBoothsBulk(eventId, { ...toSpecPayload(bulkForm), boothCodes });
       setBulkForm(EMPTY_BULK_FORM);
       setShowBulkForm(false);
     }, "부스를 일괄 등록했습니다.");
@@ -283,16 +291,16 @@ export default function BoothManagementPanel({ eventId }) {
 
   const handleUpdate = () =>
     runAction(async () => {
-      await updateBooth(loadedEventId, editingBoothId, toSpecPayload(editForm));
+      await updateBooth(eventId, editingBoothId, toSpecPayload(editForm));
       setEditingBoothId(null);
     }, "부스 정보를 수정했습니다.");
 
   const handleStatusChange = (boothId, status) =>
-    runAction(() => updateBoothStatus(loadedEventId, boothId, status), "상태를 변경했습니다.");
+    runAction(() => updateBoothStatus(eventId, boothId, status), "상태를 변경했습니다.");
 
   const handleDelete = (boothId) => {
     if (!window.confirm("이 부스를 삭제할까요? 되돌릴 수 없습니다.")) return;
-    runAction(() => deleteBooth(loadedEventId, boothId), "삭제했습니다.");
+    runAction(() => deleteBooth(eventId, boothId), "삭제했습니다.");
   };
 
   const startIntroEdit = (booth) => {
@@ -308,7 +316,7 @@ export default function BoothManagementPanel({ eventId }) {
 
   const handleIntroSave = () =>
     runAction(async () => {
-      await updateBoothIntro(loadedEventId, introBoothId, introForm);
+      await updateBoothIntro(eventId, introBoothId, introForm);
       setIntroBoothId(null);
     }, "부스 소개를 수정했습니다.");
 
@@ -326,7 +334,7 @@ export default function BoothManagementPanel({ eventId }) {
       return;
     }
     return runAction(async () => {
-      const result = await issueBoothQr(loadedEventId, boothId);
+      const result = await issueBoothQr(eventId, boothId);
       await showQr(boothId, result);
     }, "QR을 불러왔습니다.");
   };
@@ -349,7 +357,7 @@ export default function BoothManagementPanel({ eventId }) {
       {error && <p className="text-caption text-error">{error}</p>}
       {message && <p className="text-caption text-status-available">{message}</p>}
 
-      {loadedEventId && (
+      {eventId && (
         <>
           <div className="bg-white border border-hairline rounded-xl p-lg space-y-sm">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-sm">
