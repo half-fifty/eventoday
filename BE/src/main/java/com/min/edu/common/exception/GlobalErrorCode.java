@@ -8,6 +8,8 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum GlobalErrorCode {
 
+    KAKAO_MAP_API_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "EVENT_503_001", "카카오 장소 검색 서비스를 이용할 수 없습니다."),
+
     INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "COMMON_400", "요청 값이 올바르지 않습니다."),
     UNSUPPORTED_OAUTH_PROVIDER(HttpStatus.BAD_REQUEST, "AUTH_400_001", "지원하지 않는 OAuth 제공자입니다."),
     OAUTH_REQUIRED_ATTRIBUTE_MISSING(HttpStatus.BAD_REQUEST, "AUTH_400_002", "소셜 로그인 사용자 정보가 부족합니다."),
