@@ -4,12 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.OffsetDateTime;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.min.edu.TestcontainersConfiguration;
 import com.min.edu.booth.domain.BoothRecruitment;
@@ -20,13 +20,16 @@ import com.min.edu.event.repository.EventRepository;
 import com.min.edu.organization.domain.Organization;
 import com.min.edu.organization.domain.OrganizationStatus;
 import com.min.edu.organization.domain.OrganizationType;
+import com.min.edu.organization.repository.OrganizationRepository;
 import com.min.edu.recruitment.repository.BoothRecruitmentRepository;
 
 import jakarta.persistence.EntityManager;
 
+// 스케줄러가 REQUIRES_NEW로 별도 트랜잭션을 열기 때문에, 테스트 트랜잭션에 롤백을 맡기면
+// 스케줄러가 아직 커밋되지 않은(테스트에서 저장한) 데이터를 보지 못한다.
+// 그래서 이 테스트는 @Transactional을 쓰지 않고 각 테스트 후 직접 데이터를 정리한다.
 @Import(TestcontainersConfiguration.class)
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@Transactional
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 class BoothRecruitmentStatusSchedulerTest {
 
     @Autowired
@@ -39,9 +42,13 @@ class BoothRecruitmentStatusSchedulerTest {
     private EventRepository eventRepository;
 
     @Autowired
+    private OrganizationRepository organizationRepository;
+
+    @Autowired
     private EntityManager entityManager;
 
     private Long eventId;
+    private Long organizationId;
 
     @BeforeEach
     void setUp() {
@@ -56,7 +63,8 @@ class BoothRecruitmentStatusSchedulerTest {
             .createdAt(now)
             .updatedAt(now)
             .build();
-        entityManager.persist(organization);
+        organizationRepository.save(organization);
+        organizationId = organization.getId();
 
         Event event = Event.builder()
             .organizerOrganizationId(organization.getId())
@@ -83,6 +91,13 @@ class BoothRecruitmentStatusSchedulerTest {
         eventId = event.getId();
     }
 
+    @AfterEach
+    void tearDown() {
+        boothRecruitmentRepository.findByEventId(eventId).ifPresent(boothRecruitmentRepository::delete);
+        eventRepository.deleteById(eventId);
+        organizationRepository.deleteById(organizationId);
+    }
+
     @Test
     void 시작시각이_지난_BEFORE_OPEN_공고는_OPEN으로_전환된다() {
         OffsetDateTime now = OffsetDateTime.now();
@@ -90,7 +105,6 @@ class BoothRecruitmentStatusSchedulerTest {
         boothRecruitmentRepository.saveAndFlush(recruitment);
 
         scheduler.transitionStatuses();
-        entityManager.flush();
         entityManager.clear();
 
         BoothRecruitment reloaded = boothRecruitmentRepository.findById(recruitment.getId()).orElseThrow();
@@ -104,7 +118,6 @@ class BoothRecruitmentStatusSchedulerTest {
         boothRecruitmentRepository.saveAndFlush(recruitment);
 
         scheduler.transitionStatuses();
-        entityManager.flush();
         entityManager.clear();
 
         BoothRecruitment reloaded = boothRecruitmentRepository.findById(recruitment.getId()).orElseThrow();
@@ -119,7 +132,6 @@ class BoothRecruitmentStatusSchedulerTest {
         boothRecruitmentRepository.saveAndFlush(recruitment);
 
         scheduler.transitionStatuses();
-        entityManager.flush();
         entityManager.clear();
 
         BoothRecruitment reloaded = boothRecruitmentRepository.findById(recruitment.getId()).orElseThrow();
@@ -134,7 +146,6 @@ class BoothRecruitmentStatusSchedulerTest {
         boothRecruitmentRepository.saveAndFlush(recruitment);
 
         scheduler.transitionStatuses();
-        entityManager.flush();
         entityManager.clear();
 
         BoothRecruitment reloaded = boothRecruitmentRepository.findById(recruitment.getId()).orElseThrow();
