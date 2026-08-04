@@ -41,4 +41,14 @@ public class BoothApplicationController {
                 boothApplicationService.listByOrganization(organizationId, member)
         );
     }
+
+    // APP-API-003
+    @GetMapping("/booth-applications/{applicationId}")
+    public ApiResponse<BoothApplicationResponseDto> getDetail(
+            @PathVariable Long applicationId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        return ApiResponse.success(
+                boothApplicationService.getDetail(applicationId, member)
+        );
+    }
 }

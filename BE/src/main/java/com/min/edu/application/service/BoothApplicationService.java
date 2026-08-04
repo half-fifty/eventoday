@@ -21,6 +21,9 @@ import com.min.edu.file.repository.FileAssetRepository;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
 import com.min.edu.recruitment.repository.BoothRecruitmentRepository;
+import com.min.edu.event.domain.EventRole;
+import com.min.edu.event.repository.EventMemberRepository;
+import com.min.edu.member.domain.PlatformRole;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +44,7 @@ public class BoothApplicationService {
     private final BoothOrganizationMemberRepository boothOrganizationMemberRepository;
     private final FileAssetRepository fileAssetRepository;
     private final ApplicationNoGenerator applicationNoGenerator;
+    private final EventMemberRepository eventMemberRepository;
 
     /**
      * 부스 신청 제출
@@ -132,6 +136,59 @@ public class BoothApplicationService {
                 .stream()
                 .map(BoothApplicationResponseDto::from)
                 .toList();
+    }
+
+    /**
+     * 신청 상세 조회
+     * - ORG_MEMBER: 본인 조직의 신청만 조회 가능
+     * - EVENT_MANAGER: 해당 모집공고 행사의 관리자면 조회 가능
+     * - PLATFORM_ADMIN: 모두 조회 가능
+     */
+    @Transactional(readOnly = true)
+    public BoothApplicationResponseDto getDetail(Long applicationId, AuthenticatedMemberDto member) {
+
+        BoothApplication application = boothApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // PLATFORM_ADMIN은 모두 접근 가능
+        if (member.getPlatformRole() == PlatformRole.PLATFORM_ADMIN) {
+            return BoothApplicationResponseDto.from(application);
+        }
+
+        // 본인 조직 신청이면 조직 멤버 여부 검증 후 반환
+        if (isOrganizationMember(application.getApplicantOrganizationId(), member.getMemberId())) {
+            return BoothApplicationResponseDto.from(application);
+        }
+
+        // 해당 모집공고가 속한 행사의 EVENT_MANAGER인지 검증
+        if (isEventManagerOfApplication(application, member.getMemberId())) {
+            return BoothApplicationResponseDto.from(application);
+        }
+
+        throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+    }
+
+    /** 조직 소속 여부 확인 (권한 예외 없이 boolean 반환) */
+    private boolean isOrganizationMember(Long organizationId, Long memberId) {
+        return boothOrganizationMemberRepository
+                .existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
+                        organizationId,
+                        memberId,
+                        OrganizationMemberStatus.ACTIVE,
+                        List.of(OrganizationRole.OWNER, OrganizationRole.MANAGER, OrganizationRole.STAFF)
+                );
+    }
+
+    /** 신청에 연결된 모집공고의 행사 EVENT_MANAGER인지 확인 */
+    private boolean isEventManagerOfApplication(BoothApplication application, Long memberId) {
+        return boothRecruitmentRepository.findById(application.getRecruitmentId())
+                .map(recruitment -> eventMemberRepository
+                        .existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
+                                recruitment.getEventId(),
+                                memberId,
+                                EventRole.EVENT_MANAGER
+                        ))
+                .orElse(false);
     }
 
     /**
