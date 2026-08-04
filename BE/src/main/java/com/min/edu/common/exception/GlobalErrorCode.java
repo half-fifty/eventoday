@@ -44,6 +44,7 @@ public enum GlobalErrorCode {
     PAYMENT_CONFIRM_REJECTED(HttpStatus.BAD_REQUEST, "PAYMENT_400_003", "결제 승인이 거절되었습니다."),
     PAYMENT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "PAYMENT_403_001", "결제 처리 권한이 없습니다."),
     PAYMENT_ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_404_001", "결제 주문을 찾을 수 없습니다."),
+    PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_404_002", "결제 내역을 찾을 수 없습니다."),
     PAYMENT_INVALID_STATE(HttpStatus.CONFLICT, "PAYMENT_409_001", "결제할 수 없는 주문 상태입니다."),
     PAYMENT_ALREADY_PROCESSED(HttpStatus.CONFLICT, "PAYMENT_409_002", "이미 처리된 결제입니다."),
     PAYMENT_PROCESSING_CONFLICT(HttpStatus.CONFLICT, "PAYMENT_409_003", "현재 결제를 처리하고 있습니다. 잠시 후 다시 시도해주세요."),

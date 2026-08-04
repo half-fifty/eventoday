@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -55,6 +56,10 @@ class PaymentConfirmServiceTest {
 
     @Mock
     private PaymentFinalizer paymentFinalizer;
+
+    @Spy
+    private PaymentFinalizationExceptionTranslator exceptionTranslator =
+        new PaymentFinalizationExceptionTranslator();
 
     @InjectMocks
     private PaymentConfirmService paymentConfirmService;
@@ -187,6 +192,24 @@ class PaymentConfirmServiceTest {
             GlobalErrorCode.PAYMENT_INVALID_STATE
         );
     }
+
+    @Test
+    void confirm_failsWithPaymentKeyAlreadyUsedBeforeCallingToss() {
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(pendingMemberOrder(10L)));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(true);
+
+        assertBusinessException(
+            () -> paymentConfirmService.confirm(10L, null, request()),
+            GlobalErrorCode.PAYMENT_KEY_ALREADY_USED
+        );
+
+        verify(tossPaymentClient, never()).confirm(any());
+    }
+
 
     @Test
     void confirm_failsWhenTossRejectsPayment() {

@@ -24,4 +24,8 @@ public class TossPaymentProperties {
     private long connectTimeoutMs = 3000L;
 
     private long readTimeoutMs = 5000L;
+
+    private long webhookConnectTimeoutMs = 1500L;
+
+    private long webhookReadTimeoutMs = 3000L;
 }

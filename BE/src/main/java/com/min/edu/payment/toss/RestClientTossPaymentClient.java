@@ -21,39 +21,76 @@ import com.min.edu.payment.toss.dto.TossConfirmResponse;
 public class RestClientTossPaymentClient implements TossPaymentClient {
 
     private static final String CONFIRM_PATH = "/v1/payments/confirm";
+    private static final String PAYMENT_PATH = "/v1/payments/{paymentKey}";
 
-    private final RestClient restClient;
+    private final RestClient confirmRestClient;
+    private final RestClient webhookRestClient;
     private final TossPaymentProperties properties;
 
     public RestClientTossPaymentClient(TossPaymentProperties properties) {
         this.properties = properties;
-        this.restClient = RestClient.builder()
+        this.confirmRestClient = RestClient.builder()
             .baseUrl(properties.getBaseUrl())
-            .requestFactory(requestFactory(properties))
+            .requestFactory(requestFactory(
+                properties.getConnectTimeoutMs(),
+                properties.getReadTimeoutMs()
+            ))
+            .build();
+        this.webhookRestClient = RestClient.builder()
+            .baseUrl(properties.getBaseUrl())
+            .requestFactory(requestFactory(
+                properties.getWebhookConnectTimeoutMs(),
+                properties.getWebhookReadTimeoutMs()
+            ))
             .build();
     }
 
     @Override
     public TossConfirmResponse confirm(TossConfirmRequest request) {
+        return execute(() -> confirmRestClient.post()
+            .uri(CONFIRM_PATH)
+            .header(HttpHeaders.AUTHORIZATION, authorizationHeader())
+            .body(request)
+            .retrieve()
+            .onStatus(HttpStatusCode::is4xxClientError,
+                (httpRequest, clientResponse) -> {
+                    throw new TossPaymentClientException(
+                        GlobalErrorCode.PAYMENT_CONFIRM_REJECTED
+                    );
+                })
+            .onStatus(HttpStatusCode::is5xxServerError,
+                (httpRequest, clientResponse) -> {
+                    throw new TossPaymentClientException(
+                        GlobalErrorCode.PAYMENT_GATEWAY_ERROR
+                    );
+                })
+            .body(TossConfirmResponse.class));
+    }
+
+    @Override
+    public TossConfirmResponse getPayment(String paymentKey) {
+        return execute(() -> webhookRestClient.get()
+            .uri(PAYMENT_PATH, paymentKey)
+            .header(HttpHeaders.AUTHORIZATION, authorizationHeader())
+            .retrieve()
+            .onStatus(HttpStatusCode::is4xxClientError,
+                (httpRequest, clientResponse) -> {
+                    throw new TossPaymentClientException(
+                        GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID
+                    );
+                })
+            .onStatus(HttpStatusCode::is5xxServerError,
+                (httpRequest, clientResponse) -> {
+                    throw new TossPaymentClientException(
+                        GlobalErrorCode.PAYMENT_GATEWAY_ERROR
+                    );
+                })
+            .body(TossConfirmResponse.class));
+    }
+
+    private TossConfirmResponse execute(TossRequest tossRequest) {
         try {
-            TossConfirmResponse response = restClient.post()
-                .uri(CONFIRM_PATH)
-                .header(HttpHeaders.AUTHORIZATION, authorizationHeader())
-                .body(request)
-                .retrieve()
-                .onStatus(HttpStatusCode::is4xxClientError,
-                    (httpRequest, clientResponse) -> {
-                        throw new TossPaymentClientException(
-                            GlobalErrorCode.PAYMENT_CONFIRM_REJECTED
-                        );
-                    })
-                .onStatus(HttpStatusCode::is5xxServerError,
-                    (httpRequest, clientResponse) -> {
-                        throw new TossPaymentClientException(
-                            GlobalErrorCode.PAYMENT_GATEWAY_ERROR
-                        );
-                    })
-                .body(TossConfirmResponse.class);
+            TossConfirmResponse response = tossRequest.execute();
 
             if (response == null) {
                 throw new TossPaymentClientException(
@@ -85,6 +122,12 @@ public class RestClientTossPaymentClient implements TossPaymentClient {
         }
     }
 
+    @FunctionalInterface
+    private interface TossRequest {
+
+        TossConfirmResponse execute();
+    }
+
     private String authorizationHeader() {
         String credential = properties.getSecretKey() + ":";
         String encoded = Base64.getEncoder()
@@ -108,11 +151,12 @@ public class RestClientTossPaymentClient implements TossPaymentClient {
     }
 
     private SimpleClientHttpRequestFactory requestFactory(
-            TossPaymentProperties properties) {
+            long connectTimeoutMs,
+            long readTimeoutMs) {
         SimpleClientHttpRequestFactory requestFactory =
             new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(Duration.ofMillis(properties.getConnectTimeoutMs()));
-        requestFactory.setReadTimeout(Duration.ofMillis(properties.getReadTimeoutMs()));
+        requestFactory.setConnectTimeout(Duration.ofMillis(connectTimeoutMs));
+        requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
         return requestFactory;
     }
 }

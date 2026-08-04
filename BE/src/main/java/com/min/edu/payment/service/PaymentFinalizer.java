@@ -38,7 +38,29 @@ public class PaymentFinalizer {
     public ConfirmPaymentResponse finalizePayment(
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse) {
-        setLocalLockTimeout();
+        return finalizePayment(
+            request,
+            tossResponse,
+            properties.getFinalizationLockTimeoutMs()
+        );
+    }
+
+    @Transactional
+    public ConfirmPaymentResponse finalizePaymentFromWebhook(
+            ConfirmPaymentRequest request,
+            TossConfirmResponse tossResponse) {
+        return finalizePayment(
+            request,
+            tossResponse,
+            properties.getWebhookFinalizationLockTimeoutMs()
+        );
+    }
+
+    private ConfirmPaymentResponse finalizePayment(
+            ConfirmPaymentRequest request,
+            TossConfirmResponse tossResponse,
+            long lockTimeoutMs) {
+        setLocalLockTimeout(lockTimeoutMs);
 
         PaymentOrder paymentOrder = paymentOrderRepository
             .findByOrderNoForUpdate(request.getOrderId())
@@ -47,7 +69,7 @@ public class PaymentFinalizer {
         if (paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot(
                 request.getPaymentKey(),
                 paymentOrder.getId())) {
-            throw new BusinessException(GlobalErrorCode.PAYMENT_ALREADY_PROCESSED);
+            throw new BusinessException(GlobalErrorCode.PAYMENT_KEY_ALREADY_USED);
         }
 
         TicketOrder ticketOrder = ticketOrderRepository
@@ -136,10 +158,10 @@ public class PaymentFinalizer {
         }
     }
 
-    private void setLocalLockTimeout() {
+    private void setLocalLockTimeout(long lockTimeoutMs) {
         entityManager
             .createNativeQuery("select set_config('lock_timeout', :timeout, true)")
-            .setParameter("timeout", properties.getFinalizationLockTimeoutMs() + "ms")
+            .setParameter("timeout", lockTimeoutMs + "ms")
             .getSingleResult();
     }
 }

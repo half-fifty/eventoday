@@ -13,4 +13,6 @@ import lombok.Setter;
 public class PaymentFinalizationProperties {
 
     private long finalizationLockTimeoutMs = 5000L;
+
+    private long webhookFinalizationLockTimeoutMs = 3000L;
 }

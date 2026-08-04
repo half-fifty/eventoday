@@ -1,46 +1,33 @@
 package com.min.edu.payment.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ConcurrentHashMap;
 
-import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import com.min.edu.TestcontainersConfiguration;
-import com.min.edu.common.exception.BusinessException;
-import com.min.edu.common.exception.GlobalErrorCode;
-import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderStatus;
 import com.min.edu.payment.domain.PaymentOrderType;
-import com.min.edu.payment.domain.PaymentProvider;
-import com.min.edu.payment.domain.PaymentStatus;
 import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.domain.TicketOrderStatus;
-import com.min.edu.payment.dto.request.ConfirmPaymentRequest;
+import com.min.edu.payment.dto.request.TossPaymentWebhookRequest;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
@@ -50,17 +37,16 @@ import com.min.edu.payment.toss.dto.TossConfirmResponse;
 
 @Import({
     TestcontainersConfiguration.class,
-    PaymentKeyConcurrencyIntegrationTest.FakeTossPaymentClientConfig.class
+    PaymentWebhookIntegrationTest.FakeTossPaymentClientConfig.class
 })
-@SpringBootTest(properties = "payment.finalization-lock-timeout-ms=5000")
-class PaymentKeyConcurrencyIntegrationTest {
-
-    private static final String PAYMENT_KEY_UNIQUE_CONSTRAINT =
-        "payments_payment_key_key";
-    private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
+@SpringBootTest
+class PaymentWebhookIntegrationTest {
 
     @Autowired
-    private PaymentConfirmService paymentConfirmService;
+    private PaymentWebhookService paymentWebhookService;
+
+    @Autowired
+    private FakeTossPaymentClient fakeTossPaymentClient;
 
     @Autowired
     private PaymentOrderRepository paymentOrderRepository;
@@ -74,125 +60,69 @@ class PaymentKeyConcurrencyIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private TransactionTemplate transactionTemplate;
-
-    private ExecutorService executorService;
-
     @AfterEach
     void tearDown() {
-        if (executorService != null) {
-            executorService.shutdownNow();
-        }
+        fakeTossPaymentClient.clear();
     }
 
     @Test
-    void confirm_convertsConcurrentDuplicatePaymentKeyToConflict() throws Exception {
+    void webhook_recoversLocalPendingOrderWhenTossIsDone() {
         Long memberId = insertMember();
         Long eventId = insertEvent();
-        OrderFixture first = createPendingOrder(memberId, eventId, "ORDER-A");
-        OrderFixture second = createPendingOrder(memberId, eventId, "ORDER-B");
+        OrderFixture order = createPendingOrder(memberId, eventId, "WEBHOOK-RECOVERY");
         String paymentKey = "payment-key-" + UUID.randomUUID();
+        TossConfirmResponse tossPayment = tossPayment(paymentKey, order.orderNo());
+        fakeTossPaymentClient.put(paymentKey, tossPayment);
 
-        CountDownLatch firstFinalizedButNotCommitted = new CountDownLatch(1);
-        CountDownLatch releaseFirstTransaction = new CountDownLatch(1);
-        AtomicReference<Throwable> secondFailure = new AtomicReference<>();
-
-        executorService = Executors.newFixedThreadPool(2);
-
-        Future<?> firstFuture = executorService.submit(() ->
-            transactionTemplate.executeWithoutResult(status -> {
-                paymentConfirmService.confirm(
-                    memberId,
-                    null,
-                    request(paymentKey, first.orderNo())
-                );
-                firstFinalizedButNotCommitted.countDown();
-                await(releaseFirstTransaction);
-            })
-        );
-
-        assertThat(firstFinalizedButNotCommitted.await(5, TimeUnit.SECONDS)).isTrue();
-
-        Future<?> secondFuture = executorService.submit(() -> {
-            try {
-                paymentConfirmService.confirm(
-                    memberId,
-                    null,
-                    request(paymentKey, second.orderNo())
-                );
-            } catch (Throwable throwable) {
-                secondFailure.set(throwable);
-            }
-        });
-
-        Thread.sleep(1000L);
-        releaseFirstTransaction.countDown();
-
-        firstFuture.get(5, TimeUnit.SECONDS);
-        secondFuture.get(5, TimeUnit.SECONDS);
-
-        assertThat(secondFailure.get())
-            .isInstanceOf(BusinessException.class)
-            .extracting("errorCode")
-            .isEqualTo(GlobalErrorCode.PAYMENT_KEY_ALREADY_USED);
+        paymentWebhookService.handleTossWebhook(webhook(tossPayment));
 
         assertThat(paymentRepository.countByPaymentKey(paymentKey)).isEqualTo(1);
-        assertOrderStatus(first.paymentOrderId(), PaymentOrderStatus.PAID);
-        assertTicketOrderStatus(first.paymentOrderId(), TicketOrderStatus.CONFIRMED);
-        assertExchangeCodeCount(first.ticketOrderId(), 1);
-        assertOrderStatus(second.paymentOrderId(), PaymentOrderStatus.PENDING);
-        assertTicketOrderStatus(second.paymentOrderId(), TicketOrderStatus.PENDING_PAYMENT);
-        assertExchangeCodeCount(second.ticketOrderId(), 0);
+        assertOrderStatus(order.paymentOrderId(), PaymentOrderStatus.PAID);
+        assertTicketOrderStatus(order.paymentOrderId(), TicketOrderStatus.CONFIRMED);
+        assertExchangeCodeCount(order.ticketOrderId(), 1);
     }
 
     @Test
-    void paymentKeyUniqueViolationExposesExpectedConstraintName() {
+    void webhook_isIdempotentWhenSameDoneEventIsReceivedAgain() {
         Long memberId = insertMember();
         Long eventId = insertEvent();
-        OrderFixture first = createPendingOrder(memberId, eventId, "ORDER-C");
-        OrderFixture second = createPendingOrder(memberId, eventId, "ORDER-D");
+        OrderFixture order = createPendingOrder(memberId, eventId, "WEBHOOK-IDEMPOTENT");
         String paymentKey = "payment-key-" + UUID.randomUUID();
-        OffsetDateTime now = OffsetDateTime.now();
+        TossConfirmResponse tossPayment = tossPayment(paymentKey, order.orderNo());
+        fakeTossPaymentClient.put(paymentKey, tossPayment);
 
-        paymentRepository.saveAndFlush(Payment.approved(
-            first.paymentOrderId(),
-            PaymentProvider.TOSS_PAYMENTS,
-            paymentKey,
-            "CARD",
-            BigDecimal.valueOf(10000),
-            now,
-            now,
-            now
-        ));
+        paymentWebhookService.handleTossWebhook(webhook(tossPayment));
+        paymentWebhookService.handleTossWebhook(webhook(tossPayment));
 
-        assertThatThrownBy(() -> paymentRepository.saveAndFlush(Payment.approved(
-            second.paymentOrderId(),
-            PaymentProvider.TOSS_PAYMENTS,
-            paymentKey,
-            "CARD",
-            BigDecimal.valueOf(10000),
-            now,
-            now,
-            now
-        )))
-            .isInstanceOf(DataIntegrityViolationException.class)
-            .satisfies(throwable -> {
-                ConstraintViolationException constraintViolation =
-                    findCause(throwable, ConstraintViolationException.class);
-                assertThat(constraintViolation).isNotNull();
-                assertThat(constraintViolation.getConstraintName())
-                    .isEqualTo(PAYMENT_KEY_UNIQUE_CONSTRAINT);
-                assertThat(constraintViolation.getSQLState())
-                    .isEqualTo(UNIQUE_VIOLATION_SQL_STATE);
-            });
+        assertThat(paymentRepository.countByPaymentKey(paymentKey)).isEqualTo(1);
+        assertExchangeCodeCount(order.ticketOrderId(), 1);
     }
 
-    private ConfirmPaymentRequest request(String paymentKey, String orderNo) {
-        return new ConfirmPaymentRequest(
+    private TossPaymentWebhookRequest webhook(TossConfirmResponse tossPayment) {
+        return new TossPaymentWebhookRequest(
+            "PAYMENT_STATUS_CHANGED",
+            "2026-08-04T11:20:00.123456",
+            new TossPaymentWebhookRequest.PaymentData(
+                tossPayment.paymentKey(),
+                tossPayment.orderId(),
+                tossPayment.totalAmount(),
+                tossPayment.status(),
+                tossPayment.method(),
+                tossPayment.requestedAt(),
+                tossPayment.approvedAt()
+            )
+        );
+    }
+
+    private TossConfirmResponse tossPayment(String paymentKey, String orderNo) {
+        return new TossConfirmResponse(
             paymentKey,
             orderNo,
-            BigDecimal.valueOf(10000)
+            BigDecimal.valueOf(10000),
+            "DONE",
+            "CARD",
+            OffsetDateTime.now().minusMinutes(2),
+            OffsetDateTime.now().minusMinutes(1)
         );
     }
 
@@ -327,11 +257,7 @@ class PaymentKeyConcurrencyIntegrationTest {
             .findByPaymentOrderId(paymentOrderId)
             .orElseThrow();
         assertThat(ticketOrder.getStatus()).isEqualTo(status.name());
-        if (status == TicketOrderStatus.CONFIRMED) {
-            assertThat(ticketOrder.getConfirmedAt()).isNotNull();
-        } else {
-            assertThat(ticketOrder.getConfirmedAt()).isNull();
-        }
+        assertThat(ticketOrder.getConfirmedAt()).isNotNull();
     }
 
     private void assertExchangeCodeCount(Long ticketOrderId, int expectedCount) {
@@ -343,30 +269,6 @@ class PaymentKeyConcurrencyIntegrationTest {
         assertThat(count).isEqualTo(expectedCount);
     }
 
-    private void await(CountDownLatch latch) {
-        try {
-            if (!latch.await(5, TimeUnit.SECONDS)) {
-                throw new IllegalStateException("Timed out waiting for latch.");
-            }
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(exception);
-        }
-    }
-
-    private <T extends Throwable> T findCause(
-            Throwable throwable,
-            Class<T> type) {
-        Throwable current = throwable;
-        while (current != null) {
-            if (type.isInstance(current)) {
-                return type.cast(current);
-            }
-            current = current.getCause();
-        }
-        return null;
-    }
-
     private record OrderFixture(
             Long paymentOrderId,
             Long ticketOrderId,
@@ -374,31 +276,36 @@ class PaymentKeyConcurrencyIntegrationTest {
     ) {
     }
 
+    static class FakeTossPaymentClient implements TossPaymentClient {
+
+        private final Map<String, TossConfirmResponse> payments = new ConcurrentHashMap<>();
+
+        @Override
+        public TossConfirmResponse confirm(TossConfirmRequest request) {
+            return payments.get(request.paymentKey());
+        }
+
+        @Override
+        public TossConfirmResponse getPayment(String paymentKey) {
+            return payments.get(paymentKey);
+        }
+
+        void put(String paymentKey, TossConfirmResponse response) {
+            payments.put(paymentKey, response);
+        }
+
+        void clear() {
+            payments.clear();
+        }
+    }
+
     @TestConfiguration
     static class FakeTossPaymentClientConfig {
 
         @Bean
         @Primary
-        TossPaymentClient tossPaymentClient() {
-            return new TossPaymentClient() {
-                @Override
-                public TossConfirmResponse confirm(TossConfirmRequest request) {
-                    return new TossConfirmResponse(
-                        request.paymentKey(),
-                        request.orderId(),
-                        request.amount(),
-                        "DONE",
-                        "CARD",
-                        OffsetDateTime.now(),
-                        OffsetDateTime.now()
-                    );
-                }
-
-                @Override
-                public TossConfirmResponse getPayment(String paymentKey) {
-                    throw new UnsupportedOperationException("Not used in this test.");
-                }
-            };
+        FakeTossPaymentClient tossPaymentClient() {
+            return new FakeTossPaymentClient();
         }
     }
 }

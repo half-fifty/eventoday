@@ -112,6 +112,107 @@ class RestClientTossPaymentClientTest {
         );
     }
 
+    @Test
+    void confirm_usesConfirmTimeoutInsteadOfWebhookTimeout() throws Exception {
+        startServer(exchange -> {
+            try {
+                Thread.sleep(200L);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+            respond(exchange, 200, """
+                {
+                  "paymentKey":"payment-key",
+                  "orderId":"ORDER-1",
+                  "totalAmount":10000,
+                  "status":"DONE",
+                  "method":"CARD",
+                  "requestedAt":"2026-08-03T10:00:00+09:00",
+                  "approvedAt":"2026-08-03T10:01:00+09:00"
+                }
+                """);
+        });
+        TossPaymentProperties properties = properties();
+        properties.setReadTimeoutMs(1000L);
+        properties.setWebhookReadTimeoutMs(50L);
+
+        TossConfirmResponse response =
+            new RestClientTossPaymentClient(properties).confirm(request());
+
+        assertThat(response.paymentKey()).isEqualTo("payment-key");
+    }
+
+    @Test
+    void getPayment_sendsBasicAuthorizationAndUsesPaymentPath() throws Exception {
+        String[] capturedAuthorization = new String[1];
+        String[] capturedPath = new String[1];
+        startServer(exchange -> {
+            capturedAuthorization[0] = exchange.getRequestHeaders()
+                .getFirst("Authorization");
+            capturedPath[0] = exchange.getRequestURI().getPath();
+            respond(exchange, 200, """
+                {
+                  "paymentKey":"payment-key",
+                  "orderId":"ORDER-1",
+                  "totalAmount":10000,
+                  "status":"DONE",
+                  "method":"CARD",
+                  "requestedAt":"2026-08-03T10:00:00+09:00",
+                  "approvedAt":"2026-08-03T10:01:00+09:00"
+                }
+                """);
+        });
+
+        TossConfirmResponse response = client().getPayment("payment-key");
+
+        assertThat(capturedAuthorization[0]).isEqualTo(
+            "Basic " + Base64.getEncoder()
+                .encodeToString("test-secret:".getBytes(StandardCharsets.UTF_8))
+        );
+        assertThat(capturedPath[0]).isEqualTo("/v1/payments/payment-key");
+        assertThat(response.orderId()).isEqualTo("ORDER-1");
+    }
+
+    @Test
+    void getPayment_mapsFourHundredResponse() throws Exception {
+        startServer(exchange -> respond(exchange, 404, "{}"));
+
+        assertClientException(
+            () -> client().getPayment("payment-key"),
+            GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID
+        );
+    }
+
+    @Test
+    void getPayment_usesWebhookTimeout() throws Exception {
+        startServer(exchange -> {
+            try {
+                Thread.sleep(300L);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+            respond(exchange, 200, """
+                {
+                  "paymentKey":"payment-key",
+                  "orderId":"ORDER-1",
+                  "totalAmount":10000,
+                  "status":"DONE",
+                  "method":"CARD",
+                  "requestedAt":"2026-08-03T10:00:00+09:00",
+                  "approvedAt":"2026-08-03T10:01:00+09:00"
+                }
+                """);
+        });
+        TossPaymentProperties properties = properties();
+        properties.setReadTimeoutMs(1000L);
+        properties.setWebhookReadTimeoutMs(100L);
+
+        assertClientException(
+            () -> new RestClientTossPaymentClient(properties).getPayment("payment-key"),
+            GlobalErrorCode.PAYMENT_GATEWAY_TIMEOUT
+        );
+    }
+
     private void assertClientException(
             Runnable runnable,
             GlobalErrorCode errorCode) {
@@ -131,6 +232,8 @@ class RestClientTossPaymentClientTest {
         properties.setBaseUrl("http://localhost:" + server.getAddress().getPort());
         properties.setConnectTimeoutMs(1000L);
         properties.setReadTimeoutMs(1000L);
+        properties.setWebhookConnectTimeoutMs(1000L);
+        properties.setWebhookReadTimeoutMs(1000L);
         return properties;
     }
 
@@ -145,6 +248,7 @@ class RestClientTossPaymentClientTest {
     private void startServer(Handler handler) throws IOException {
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/v1/payments/confirm", exchange -> handler.handle(exchange));
+        server.createContext("/v1/payments/payment-key", exchange -> handler.handle(exchange));
         executorService = Executors.newSingleThreadExecutor();
         server.setExecutor(executorService);
         server.start();

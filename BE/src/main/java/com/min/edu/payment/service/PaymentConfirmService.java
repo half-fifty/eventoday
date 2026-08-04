@@ -2,9 +2,6 @@ package com.min.edu.payment.service;
 
 import java.time.OffsetDateTime;
 
-import org.hibernate.exception.ConstraintViolationException;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
 import com.min.edu.common.exception.BusinessException;
@@ -30,8 +27,6 @@ import lombok.RequiredArgsConstructor;
 public class PaymentConfirmService {
 
     private static final String TOSS_DONE_STATUS = "DONE";
-    private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
-    static final String PAYMENT_KEY_UNIQUE_CONSTRAINT = "payments_payment_key_key";
 
     private final PaymentOrderRepository paymentOrderRepository;
     private final TicketOrderRepository ticketOrderRepository;
@@ -39,6 +34,7 @@ public class PaymentConfirmService {
     private final OrderAccessTokenProvider orderAccessTokenProvider;
     private final TossPaymentClient tossPaymentClient;
     private final PaymentFinalizer paymentFinalizer;
+    private final PaymentFinalizationExceptionTranslator exceptionTranslator;
 
     public ConfirmPaymentResponse confirm(
             Long memberId,
@@ -86,7 +82,7 @@ public class PaymentConfirmService {
         if (paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot(
                 request.getPaymentKey(),
                 paymentOrder.getId())) {
-            throw new BusinessException(GlobalErrorCode.PAYMENT_ALREADY_PROCESSED);
+            throw new BusinessException(GlobalErrorCode.PAYMENT_KEY_ALREADY_USED);
         }
 
         if (paymentOrder.isPaid()) {
@@ -178,32 +174,13 @@ public class PaymentConfirmService {
             TossConfirmResponse tossResponse) {
         try {
             return paymentFinalizer.finalizePayment(request, tossResponse);
-        } catch (PessimisticLockingFailureException exception) {
-            throw new BusinessException(GlobalErrorCode.PAYMENT_PROCESSING_CONFLICT);
-        } catch (DataIntegrityViolationException exception) {
-            if (isPaymentKeyUniqueViolation(exception)) {
-                throw new BusinessException(GlobalErrorCode.PAYMENT_KEY_ALREADY_USED);
+        } catch (RuntimeException exception) {
+            BusinessException businessException = exceptionTranslator.translate(exception);
+            if (businessException != null) {
+                throw businessException;
             }
 
             throw exception;
         }
-    }
-
-    private boolean isPaymentKeyUniqueViolation(DataIntegrityViolationException exception) {
-        Throwable current = exception;
-
-        while (current != null) {
-            if (current instanceof ConstraintViolationException constraintViolationException) {
-                return PAYMENT_KEY_UNIQUE_CONSTRAINT.equals(
-                    constraintViolationException.getConstraintName()
-                ) && UNIQUE_VIOLATION_SQL_STATE.equals(
-                    constraintViolationException.getSQLState()
-                );
-            }
-
-            current = current.getCause();
-        }
-
-        return false;
     }
 }

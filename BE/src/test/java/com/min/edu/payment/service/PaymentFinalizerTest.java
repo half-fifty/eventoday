@@ -3,6 +3,7 @@ package com.min.edu.payment.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -64,6 +65,7 @@ class PaymentFinalizerTest {
     void setUp() {
         PaymentFinalizationProperties properties = new PaymentFinalizationProperties();
         properties.setFinalizationLockTimeoutMs(300L);
+        properties.setWebhookFinalizationLockTimeoutMs(150L);
         paymentFinalizer = new PaymentFinalizer(
             entityManager,
             properties,
@@ -74,7 +76,7 @@ class PaymentFinalizerTest {
         );
 
         given(entityManager.createNativeQuery(any(String.class))).willReturn(query);
-        given(query.setParameter("timeout", "300ms")).willReturn(query);
+        given(query.setParameter(eq("timeout"), any())).willReturn(query);
         given(query.getSingleResult()).willReturn("");
     }
 
@@ -101,6 +103,27 @@ class PaymentFinalizerTest {
         assertThat(ticketOrder.getStatus()).isEqualTo(TicketOrderStatus.CONFIRMED.name());
         assertThat(ticketOrder.getConfirmedAt()).isEqualTo(tossResponse().approvedAt());
         verify(ticketExchangeCodeIssuer).issueIfAbsent(any(), any(), any());
+        verify(query).setParameter("timeout", "300ms");
+    }
+
+    @Test
+    void finalizePaymentFromWebhook_usesWebhookLockTimeout() {
+        PaymentOrder paymentOrder = pendingPaymentOrder();
+        TicketOrder ticketOrder = pendingTicketOrder();
+        Payment savedPayment = payment();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(false);
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(ticketOrder));
+        given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
+        given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
+
+        paymentFinalizer.finalizePaymentFromWebhook(request(), tossResponse());
+
+        verify(query).setParameter("timeout", "150ms");
     }
 
     @Test
@@ -151,6 +174,21 @@ class PaymentFinalizerTest {
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.PAYMENT_ALREADY_PROCESSED);
+    }
+
+    @Test
+    void finalizePayment_failsWhenPaymentKeyIsUsedByDifferentOrder() {
+        PaymentOrder paymentOrder = pendingPaymentOrder();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(true);
+
+        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(request(), tossResponse()))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.PAYMENT_KEY_ALREADY_USED);
     }
 
     private ConfirmPaymentRequest request() {

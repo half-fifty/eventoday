@@ -34,6 +34,7 @@ import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.toss.TossPaymentClient;
+import com.min.edu.payment.toss.dto.TossConfirmRequest;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
 
 @Import({
@@ -207,15 +208,25 @@ class PaymentFinalizationRollbackIntegrationTest {
         @Bean
         @Primary
         TossPaymentClient tossPaymentClient() {
-            return request -> new TossConfirmResponse(
-                request.paymentKey(),
-                request.orderId(),
-                request.amount(),
-                "DONE",
-                "CARD",
-                OffsetDateTime.now(),
-                OffsetDateTime.now()
-            );
+            return new TossPaymentClient() {
+                @Override
+                public TossConfirmResponse confirm(TossConfirmRequest request) {
+                    return new TossConfirmResponse(
+                        request.paymentKey(),
+                        request.orderId(),
+                        request.amount(),
+                        "DONE",
+                        "CARD",
+                        OffsetDateTime.now(),
+                        OffsetDateTime.now()
+                    );
+                }
+
+                @Override
+                public TossConfirmResponse getPayment(String paymentKey) {
+                    throw new UnsupportedOperationException("Not used in this test.");
+                }
+            };
         }
 
         @Bean
