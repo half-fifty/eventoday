@@ -53,6 +53,7 @@ public class SecurityConfig {
                                 "/auth/business/login"
                         ).permitAll()
                         .requestMatchers("/auth/me").authenticated()
+                        .requestMatchers("/notifications/**").authenticated()
                         .requestMatchers("/v1/files/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/booth-recruitments/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/events/*/booth-recruitment/management")
