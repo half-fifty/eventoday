@@ -48,7 +48,9 @@ public enum GlobalErrorCode {
     RECRUITMENT_PERIOD_INVALID(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_001", "모집 종료일은 시작일 이후여야 합니다."),
     RECRUITMENT_ALREADY_EXISTS(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_002", "이미 모집 공고가 등록된 행사입니다."),
     RECRUITMENT_STATUS_TRANSITION_INVALID(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_003", "허용되지 않는 상태 변경입니다."),
-    RECRUITMENT_CONCURRENT_MODIFICATION(HttpStatus.CONFLICT, "RECRUITMENT_409_001", "다른 요청에 의해 이미 처리되었습니다. 새로고침 후 다시 시도해주세요.");
+    RECRUITMENT_CONCURRENT_MODIFICATION(HttpStatus.CONFLICT, "RECRUITMENT_409_001", "다른 요청에 의해 이미 처리되었습니다. 새로고침 후 다시 시도해주세요."),
+    BOOTH_CODE_ALREADY_EXISTS(HttpStatus.BAD_REQUEST, "BOOTH_400_001", "이미 등록된 부스 번호입니다."),
+    BOOTH_DELETE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "BOOTH_400_002", "신청 또는 배정 이력이 있는 부스는 삭제할 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;
