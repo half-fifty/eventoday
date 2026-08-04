@@ -49,6 +49,8 @@ jobs:
           ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
           TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
+          AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
 
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
@@ -67,6 +69,8 @@ jobs:
             ORDER_ACCESS_TOKEN_SECRET
             TOSS_SECRET_KEY
             KAKAO_MAP_REST_API_KEY
+            AWS_ACCESS_KEY
+            AWS_SECRET_KEY
             VITE_API_BASE_URL
             VITE_KAKAO_MAP_JS_KEY
             FRONTEND_URL
@@ -164,6 +168,8 @@ jobs:
           ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
           TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
+          AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
 
         run: |
           set -euo pipefail
@@ -178,6 +184,8 @@ jobs:
             printf 'ORDER_ACCESS_TOKEN_SECRET=%s\n' "${ORDER_ACCESS_TOKEN_SECRET}"
             printf 'TOSS_SECRET_KEY=%s\n' "${TOSS_SECRET_KEY}"
             printf 'KAKAO_MAP_REST_API_KEY=%s\n' "${KAKAO_MAP_REST_API_KEY}"
+            printf 'AWS_ACCESS_KEY=%s\n' "${AWS_ACCESS_KEY}"
+            printf 'AWS_SECRET_KEY=%s\n' "${AWS_SECRET_KEY}"
           } | sudo kubectl create secret generic eventoday-secret \
             --namespace eventoday \
             --from-env-file=/dev/stdin \
