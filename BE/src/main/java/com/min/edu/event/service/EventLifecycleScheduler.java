@@ -25,14 +25,12 @@ public class EventLifecycleScheduler {
     @Transactional
     public void updateLifecycleStatuses() {
         OffsetDateTime now = OffsetDateTime.now();
-        eventRepository.findAllByStatusInAndEndAtLessThanEqual(
-                List.of(EventStatus.PUBLISHED, EventStatus.SUSPENDED), now)
-                .forEach(event -> event.end(now));
-        advertisementRepository.findAllByStatusAndStartAtLessThanEqual(
-                AdvertisementStatus.SCHEDULED, now).stream()
-                .filter(ad -> ad.getEndAt().isAfter(now)).forEach(ad -> ad.activate(now));
-        advertisementRepository.findAllByStatusInAndEndAtLessThanEqual(
-                List.of(AdvertisementStatus.SCHEDULED, AdvertisementStatus.ACTIVE), now)
-                .forEach(ad -> ad.end(now));
+        eventRepository.endExpired(List.of(EventStatus.PUBLISHED, EventStatus.SUSPENDED),
+                EventStatus.ENDED, now);
+        advertisementRepository.activateScheduled(AdvertisementStatus.SCHEDULED,
+                AdvertisementStatus.ACTIVE, now);
+        advertisementRepository.endExpired(
+                List.of(AdvertisementStatus.SCHEDULED, AdvertisementStatus.ACTIVE),
+                AdvertisementStatus.ENDED, now);
     }
 }

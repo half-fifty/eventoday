@@ -7,10 +7,16 @@ import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface EventRepository extends JpaRepository<Event, Long>, JpaSpecificationExecutor<Event> {
     boolean existsByIdAndOrganizerOrganizationId(Long id, Long organizerOrganizationId);
     boolean existsByIdAndStatus(Long id, EventStatus status);
-    List<Event> findAllByStatusInAndEndAtLessThanEqual(
-            Collection<EventStatus> statuses, OffsetDateTime endAt);
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Event e set e.status = :ended, e.updatedAt = :now "
+            + "where e.status in :statuses and e.endAt <= :now")
+    int endExpired(@Param("statuses") Collection<EventStatus> statuses,
+            @Param("ended") EventStatus ended, @Param("now") OffsetDateTime now);
 }

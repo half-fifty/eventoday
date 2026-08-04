@@ -351,7 +351,13 @@ export default function OrganizerAdmin() {
               </div>
               <div className="bg-white border border-hairline rounded-xl divide-y divide-divider-soft">
                 <div className="flex items-center gap-sm p-lg"><span className="w-6 h-6 rounded-full bg-status-available text-white flex items-center justify-center"><Icon name="check" className="text-[14px]" /></span>행사 기본정보 등록 <span className="text-ink-muted text-caption ml-auto">완료</span></div>
-                <div className="flex items-center gap-sm p-lg"><span className="w-6 h-6 rounded-full bg-status-available text-white flex items-center justify-center"><Icon name="check" className="text-[14px]" /></span>행사장 평면도 및 부스 좌표 등록 <span className="text-ink-muted text-caption ml-auto">완료</span></div>
+                <div className="flex items-center gap-sm p-lg">
+                  <span className={`w-6 h-6 rounded-full text-white flex items-center justify-center ${selectedEvent?.venueMapEnabled ? "bg-status-pending" : "bg-status-available"}`}>
+                    <Icon name={selectedEvent?.venueMapEnabled ? "schedule" : "check"} className="text-[14px]" />
+                  </span>
+                  행사장 평면도 및 부스 좌표 등록
+                  <span className="text-ink-muted text-caption ml-auto">{selectedEvent?.venueMapEnabled ? "평면도 파트 연동 필요" : "해당 없음"}</span>
+                </div>
                 <div className="flex items-center gap-sm p-lg">
                   <span className={`w-6 h-6 rounded-full text-white flex items-center justify-center ${recruitmentReady ? "bg-status-available" : "bg-status-pending"}`}><Icon name={recruitmentReady ? "check" : "schedule"} className="text-[14px]" /></span>
                   부스 모집 공고 완료 <span className="text-ink-muted text-caption ml-auto">{!selectedEvent?.boothRecruitmentEnabled ? "해당 없음" : recruitmentStatus === "COMPLETED" ? "완료" : recruitmentStatus || "확인 중"}</span>

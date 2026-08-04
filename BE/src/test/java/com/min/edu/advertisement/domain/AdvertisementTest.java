@@ -30,6 +30,16 @@ class AdvertisementTest {
         assertThrows(IllegalStateException.class, () -> ad.approve(10L, now));
     }
 
+    @Test
+    void 종료시각이_지난_광고는_승인할_수_없다() {
+        Advertisement ad = Advertisement.builder().id(1L).eventId(1L)
+                .applicantOrganizationId(1L).startAt(now.minusDays(2)).endAt(now)
+                .status(AdvertisementStatus.REVIEW_PENDING)
+                .createdAt(now.minusDays(3)).updatedAt(now.minusDays(3)).build();
+
+        assertThrows(IllegalStateException.class, () -> ad.approve(10L, now));
+    }
+
     private Advertisement ad(AdvertisementStatus status, OffsetDateTime startAt) {
         return Advertisement.builder().id(1L).eventId(1L).applicantOrganizationId(1L)
                 .startAt(startAt).endAt(now.plusDays(10)).status(status)

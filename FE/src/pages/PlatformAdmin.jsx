@@ -33,6 +33,20 @@ const eventStatusLabel = {
   approved: "승인 완료",
   rejected: "반려됨",
   inactive: "제출 전",
+  suspended: "공개 중단",
+  ended: "행사 종료",
+  cancelled: "취소됨",
+};
+const eventStatusView = {
+  PREPARING: "inactive",
+  SUBMITTED: "pending",
+  UNDER_REVIEW: "pending",
+  APPROVED: "approved",
+  PUBLISHED: "approved",
+  REJECTED: "rejected",
+  SUSPENDED: "suspended",
+  ENDED: "ended",
+  CANCELLED: "cancelled",
 };
 
 export default function PlatformAdmin() {
@@ -54,24 +68,24 @@ export default function PlatformAdmin() {
     setLoading(true);
     setLoadError("");
     try {
-      const [eventResult, adResult] = await Promise.all([
+      const [eventResult, adResult] = await Promise.allSettled([
         eventApi.adminList({ size: 100, sort: "createdAt,desc" }),
         advertisementApi.adminList({ size: 100, sort: "createdAt,desc" }),
       ]);
-      setRequests((eventResult?.data?.content || []).map((event) => ({
+      if (eventResult.status === "fulfilled") setRequests((eventResult.value?.data?.content || []).map((event) => ({
         id: event.id,
         name: event.name,
         organizer: `조직 #${event.organizerOrganizationId || "-"}`,
         submitted: event.updatedAt ? new Date(event.updatedAt).toLocaleDateString("ko-KR") : "-",
         place: `${event.venueName || "장소 미정"} · ${event.address || ""}`,
         booth: event.boothRecruitmentEnabled ? "부스 모집 사용" : "부스 모집 미사용",
-        status: ["SUBMITTED", "UNDER_REVIEW"].includes(event.status) ? "pending"
-          : ["APPROVED", "PUBLISHED"].includes(event.status) ? "approved"
-            : event.status === "REJECTED" ? "rejected" : "inactive",
+        status: eventStatusView[event.status] || "inactive",
         rawStatus: event.status,
         reason: event.rejectionReason,
       })));
-      setAds((adResult?.data?.content || []).map((ad) => ({
+      else setLoadError(eventResult.reason?.message || "행사 목록을 불러오지 못했습니다.");
+
+      if (adResult.status === "fulfilled") setAds((adResult.value?.data?.content || []).map((ad) => ({
         id: ad.id,
         target: ad.eventId ? `행사 #${ad.eventId}` : `부스 #${ad.boothId}`,
         type: ad.eventId ? "행사 광고" : "부스 광고",
@@ -82,6 +96,7 @@ export default function PlatformAdmin() {
           ? "approved" : ad.status === "REJECTED" ? "rejected" : "pending",
         rawStatus: ad.status,
       })));
+      else setLoadError((current) => [current, adResult.reason?.message || "광고 목록을 불러오지 못했습니다."].filter(Boolean).join(" "));
     } catch (error) {
       setLoadError(error.message || "관리 데이터를 불러오지 못했습니다.");
     } finally {
@@ -113,13 +128,18 @@ export default function PlatformAdmin() {
   };
   const toggleAccount = (id) => setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, active: !a.active } : a)));
   const decideAd = async (id, decision) => {
-    if (decision === "approved") await advertisementApi.approve(id);
-    else {
-      const reason = window.prompt("반려 사유를 입력하세요");
-      if (!reason) return;
-      await advertisementApi.reject(id, reason);
+    setLoadError("");
+    try {
+      if (decision === "approved") await advertisementApi.approve(id);
+      else {
+        const reason = window.prompt("반려 사유를 입력하세요");
+        if (!reason) return;
+        await advertisementApi.reject(id, reason);
+      }
+      await loadAdminData();
+    } catch (error) {
+      setLoadError(error.message || "광고 처리에 실패했습니다.");
     }
-    await loadAdminData();
   };
 
   const gotoPage = (key) => {

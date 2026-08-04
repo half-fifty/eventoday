@@ -121,12 +121,13 @@ export default function Home() {
     setLoadingEvents(true);
     setEventError("");
     try {
-      const [eventResult, adResult] = await Promise.all([
+      const [eventResult, adResult] = await Promise.allSettled([
         eventApi.list({ size: 6, sort: "startAt,asc", ...filters }),
         advertisementApi.active(),
       ]);
-      setEvents(eventResult?.data?.content || []);
-      setActiveAds(adResult?.data || []);
+      if (eventResult.status === "rejected") throw eventResult.reason;
+      setEvents(eventResult.value?.data?.content || []);
+      setActiveAds(adResult.status === "fulfilled" ? adResult.value?.data || [] : []);
     } catch (error) {
       setEventError(error.message || "행사 정보를 불러오지 못했습니다.");
     } finally {
@@ -139,6 +140,10 @@ export default function Home() {
   useEffect(() => {
     const id = setInterval(() => setHeroIdx((i) => (i + 1) % slideCount), 5000);
     return () => clearInterval(id);
+  }, [slideCount]);
+
+  useEffect(() => {
+    setHeroIdx((index) => index % slideCount);
   }, [slideCount]);
 
   useEffect(() => { loadEvents(); }, []);

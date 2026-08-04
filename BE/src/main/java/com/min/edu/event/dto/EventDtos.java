@@ -6,6 +6,7 @@ import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.domain.EventStatus;
 import com.min.edu.organization.domain.Organization;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -26,8 +27,8 @@ public final class EventDtos {
             @NotBlank @Size(max = 300) String address,
             @Size(max = 10) String postalCode,
             @Size(max = 200) String addressDetail,
-            BigDecimal latitude,
-            BigDecimal longitude,
+            @DecimalMin("-90") @DecimalMax("90") BigDecimal latitude,
+            @DecimalMin("-180") @DecimalMax("180") BigDecimal longitude,
             @Size(max = 50) String kakaoPlaceId,
             @NotNull OffsetDateTime startAt,
             @NotNull OffsetDateTime endAt,
@@ -47,13 +48,13 @@ public final class EventDtos {
             String venueName, String address, String addressDetail,
             BigDecimal latitude, BigDecimal longitude, OffsetDateTime startAt,
             OffsetDateTime endAt, BigDecimal ticketPrice, EventStatus status,
-            boolean boothRecruitmentEnabled) {
+            boolean boothRecruitmentEnabled, boolean venueMapEnabled) {
         public static Summary from(Event event) {
             return new Summary(event.getId(), event.getName(), event.getEventType(),
                     event.getShortDescription(), event.getVenueName(), event.getAddress(),
                     event.getAddressDetail(), event.getLatitude(), event.getLongitude(),
                     event.getStartAt(), event.getEndAt(), event.getTicketPrice(),
-                    event.getStatus(), event.isBoothRecruitmentEnabled());
+                    event.getStatus(), event.isBoothRecruitmentEnabled(), event.isVenueMapEnabled());
         }
     }
 

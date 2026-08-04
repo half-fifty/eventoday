@@ -89,6 +89,9 @@ public class Advertisement {
         if (status != AdvertisementStatus.REVIEW_PENDING && status != AdvertisementStatus.PAID) {
             throw new IllegalStateException("심사 대기 또는 결제 완료 광고만 승인할 수 있습니다.");
         }
+        if (!endAt.isAfter(now)) {
+            throw new IllegalStateException("종료된 광고는 승인할 수 없습니다.");
+        }
         this.status = startAt.isAfter(now) ? AdvertisementStatus.SCHEDULED : AdvertisementStatus.ACTIVE;
         this.reviewedBy = reviewerId;
         this.approvedAt = now;

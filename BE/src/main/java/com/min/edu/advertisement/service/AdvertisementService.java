@@ -20,6 +20,10 @@ import com.min.edu.organization.domain.OrganizationRole;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -50,11 +54,21 @@ public class AdvertisementService {
 
     public List<AdvertisementDtos.Response> findActive(Long eventId) {
         OffsetDateTime now = OffsetDateTime.now();
-        return advertisementRepository
-                .findAllByStatusInAndStartAtLessThanEqualAndEndAtGreaterThanEqual(
-                        List.of(AdvertisementStatus.ACTIVE, AdvertisementStatus.SCHEDULED), now, now)
-                .stream().filter(ad -> eventId == null || eventId.equals(ad.getEventId()))
-                .sorted(activeComparator()).map(AdvertisementDtos.Response::from).toList();
+        List<AdvertisementStatus> statuses =
+                List.of(AdvertisementStatus.ACTIVE, AdvertisementStatus.SCHEDULED);
+        List<Advertisement> advertisements = eventId == null
+                ? advertisementRepository
+                        .findAllByStatusInAndStartAtLessThanEqualAndEndAtGreaterThanEqual(
+                                statuses, now, now)
+                : advertisementRepository
+                        .findAllByEventIdAndStatusInAndStartAtLessThanEqualAndEndAtGreaterThanEqual(
+                                eventId, statuses, now, now);
+        Set<Long> eventIds = advertisements.stream().map(Advertisement::getEventId)
+                .filter(id -> id != null).collect(Collectors.toSet());
+        Map<Long, Event> eventsById = eventRepository.findAllById(eventIds).stream()
+                .collect(Collectors.toMap(Event::getId, Function.identity()));
+        return advertisements.stream().sorted(activeComparator(eventsById))
+                .map(AdvertisementDtos.Response::from).toList();
     }
 
     @Transactional
@@ -148,10 +162,11 @@ public class AdvertisementService {
         return AdvertisementDtos.Response.from(advertisementRepository.save(ad));
     }
 
-    private Comparator<Advertisement> activeComparator() {
+    private Comparator<Advertisement> activeComparator(Map<Long, Event> eventsById) {
         return Comparator.comparing((Advertisement ad) -> {
             if (ad.getEventId() == null) return OffsetDateTime.MAX;
-            return eventRepository.findById(ad.getEventId()).map(Event::getStartAt).orElse(OffsetDateTime.MAX);
+            Event event = eventsById.get(ad.getEventId());
+            return event == null ? OffsetDateTime.MAX : event.getStartAt();
         }).thenComparing(Advertisement::getId);
     }
     private Event getEvent(Long id) { return eventRepository.findById(id)
