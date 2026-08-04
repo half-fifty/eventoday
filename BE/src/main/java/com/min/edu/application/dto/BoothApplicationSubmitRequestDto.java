@@ -3,6 +3,7 @@ package com.min.edu.application.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -21,16 +22,20 @@ public class BoothApplicationSubmitRequestDto {
     private Long applicantOrganizationId;
 
     @NotBlank
+    @Size(max = 150)
     private String teamName;
 
     @NotBlank
+    @Size(max = 50)
     private String contactName;
 
     @NotBlank
     @Email
+    @Size(max = 255)
     private String contactEmail;
 
     @NotBlank
+    @Size(max = 30)
     private String contactPhone;
 
     @NotBlank
@@ -60,5 +65,6 @@ public class BoothApplicationSubmitRequestDto {
     private Long estimateFileId;
 
     /** 기타 첨부파일 ID 목록 (선택) */
+    @Size(max = 5)
     private List<Long> otherFileIds;
 }

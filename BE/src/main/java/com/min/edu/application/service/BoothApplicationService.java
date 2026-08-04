@@ -80,11 +80,13 @@ public class BoothApplicationService {
         validateBoothRequirements(booth, request);
 
         // 견적서 파일 존재 검증
-        validateEstimateFile(request.getEstimateFileId());
+        validateEstimateFile(request.getEstimateFileId(), member.getMemberId());
 
         // 기타 파일 존재 검증
-        List<Long> otherFileIds = request.getOtherFileIds() != null ? request.getOtherFileIds() : List.of();
-        validateOtherFiles(otherFileIds);
+        List<Long> otherFileIds = request.getOtherFileIds() != null
+                ? request.getOtherFileIds()
+                : List.of();
+        validateOtherFiles(otherFileIds, member.getMemberId());
 
         // 부스 상태 → APPLICATION_PENDING으로 변경
         booth.markAsPending(now);
@@ -113,8 +115,10 @@ public class BoothApplicationService {
         );
         boothApplicationRepository.save(application);
 
+        // 중복 제거 후 파일 연결
+        List<Long> uniqueOtherFileIds = otherFileIds.stream().distinct().toList();
         // 신청 파일 연결 (견적서 + 기타 파일)
-        List<BoothApplicationFile> files = buildApplicationFiles(application.getId(), request.getEstimateFileId(), otherFileIds, now);
+        List<BoothApplicationFile> files = buildApplicationFiles(application.getId(), request.getEstimateFileId(), uniqueOtherFileIds, now);
         boothApplicationFileRepository.saveAll(files);
 
         return BoothApplicationResponseDto.from(application);
@@ -175,7 +179,7 @@ public class BoothApplicationService {
     @Transactional
     public void cancel(Long applicationId, AuthenticatedMemberDto member) {
 
-        BoothApplication application = boothApplicationRepository.findById(applicationId)
+        BoothApplication application = boothApplicationRepository.findByIdWithLock(applicationId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
         // 본인 조직의 신청인지 검증 (ORG_MEMBER)
@@ -288,19 +292,22 @@ public class BoothApplicationService {
         }
     }
 
-    /** 견적서 파일이 실제로 존재하는지 검증 */
-    private void validateEstimateFile(Long estimateFileId) {
-        if (!fileAssetRepository.existsById(estimateFileId)) {
+    /** 견적서 파일이 실제로 존재하고 요청자 소유인지 검증 */
+    private void validateEstimateFile(Long estimateFileId, Long memberId) {
+        if (!fileAssetRepository.existsByIdAndUploadedBy(estimateFileId, memberId)) {
             throw new BusinessException(GlobalErrorCode.FILE_NOT_FOUND);
         }
     }
 
-    /** 기타 첨부 파일들이 실제로 존재하는지 검증 */
-    private void validateOtherFiles(List<Long> otherFileIds) {
-        for (Long fileId : otherFileIds) {
-            if (!fileAssetRepository.existsById(fileId)) {
-                throw new BusinessException(GlobalErrorCode.FILE_NOT_FOUND);
-            }
+    /** 기타 첨부 파일들이 존재하고 요청자 소유인지 검증 (중복 제거 후 일괄 조회) */
+    private void validateOtherFiles(List<Long> otherFileIds, Long memberId) {
+        if (otherFileIds.isEmpty()) {
+            return;
+        }
+        List<Long> uniqueIds = otherFileIds.stream().distinct().toList();
+        long foundCount = fileAssetRepository.countByIdInAndUploadedBy(uniqueIds, memberId);
+        if (foundCount != uniqueIds.size()) {
+            throw new BusinessException(GlobalErrorCode.FILE_NOT_FOUND);
         }
     }
 
