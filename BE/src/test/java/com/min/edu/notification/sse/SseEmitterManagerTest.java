@@ -16,6 +16,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -87,6 +88,25 @@ class SseEmitterManagerTest {
     void send_doesNothingWhenMemberHasNoConnection() {
         assertThatCode(() -> sseEmitterManager.send(999L, notificationResponse()))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void send_continuesToOtherConnectionsWhenRuntimeExceptionOccurs() throws Exception {
+        Long memberId = 1L;
+        RuntimeExceptionEmitter failedEmitter = new RuntimeExceptionEmitter();
+        RecordingEmitter healthyEmitter = new RecordingEmitter();
+        Set<SseEmitter> memberEmitters = new CopyOnWriteArraySet<>();
+        memberEmitters.add(failedEmitter);
+        memberEmitters.add(healthyEmitter);
+        emitterMap().put(memberId, memberEmitters);
+
+        assertThatCode(() -> sseEmitterManager.send(memberId, notificationResponse()))
+                .doesNotThrowAnyException();
+
+        assertThat(memberEmitters)
+                .doesNotContain(failedEmitter)
+                .contains(healthyEmitter);
+        assertThat(healthyEmitter.isNotificationSent()).isTrue();
     }
 
     @Test
@@ -211,6 +231,28 @@ class SseEmitterManagerTest {
 
         private void allowAdd() {
             addAllowed.countDown();
+        }
+    }
+
+    private static class RuntimeExceptionEmitter extends SseEmitter {
+
+        @Override
+        public void send(SseEventBuilder builder) {
+            throw new RuntimeException("종료된 비동기 SSE 연결입니다.");
+        }
+    }
+
+    private static class RecordingEmitter extends SseEmitter {
+
+        private boolean notificationSent;
+
+        @Override
+        public void send(SseEventBuilder builder) {
+            notificationSent = true;
+        }
+
+        private boolean isNotificationSent() {
+            return notificationSent;
         }
     }
 

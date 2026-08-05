@@ -45,7 +45,7 @@ public class SseEmitterManager {
                     SseEmitter.event()
                             .name("connect")
                             .data("connected"));
-        } catch (IOException exception) {
+        } catch (IOException | RuntimeException exception) {
             remove(memberId, emitter);
         }
 
@@ -96,7 +96,7 @@ public class SseEmitterManager {
                             .id(notification.id().toString())
                             .name("notification")
                             .data(notification));
-        } catch (IOException | IllegalStateException exception) {
+        } catch (IOException | RuntimeException exception) {
             remove(memberId, emitter);
         }
     }
