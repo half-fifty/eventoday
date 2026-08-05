@@ -43,6 +43,7 @@ export default function RecruitmentDetail() {
   const [selectedBooth, setSelectedBooth] = useState(null);
   const [eventLinkAvailable, setEventLinkAvailable] = useState(false);
   const [venueMaps, setVenueMaps] = useState([]);
+  const [venueMapError, setVenueMapError] = useState("");
   const [highlightedBoothId, setHighlightedBoothId] = useState(null);
   // 행사를 전환했을 때 이전 행사의 부스 목록 요청(더 보기 포함)이 늦게 도착해
   // 현재 행사의 상태를 덮어쓰는 것을 막기 위한 세대 가드.
@@ -130,13 +131,17 @@ export default function RecruitmentDetail() {
     let cancelled = false;
 
     setVenueMaps([]);
-    // 게시된 평면도가 없으면 빈 배열이 정상 응답이므로 별도 에러 처리는 하지 않는다.
+    setVenueMapError("");
+    // 게시된 평면도가 없으면 빈 배열이 정상 응답이라, "없음"과 "조회 실패"를 구분해 보여준다.
     listPublicVenueMaps(recruitment.eventId, "RECRUITMENT")
       .then((data) => {
         if (!cancelled) setVenueMaps(data ?? []);
       })
-      .catch(() => {
-        if (!cancelled) setVenueMaps([]);
+      .catch((err) => {
+        if (!cancelled) {
+          setVenueMaps([]);
+          setVenueMapError(err instanceof ApiError ? err.message : "평면도를 불러오지 못했습니다.");
+        }
       });
 
     return () => {
@@ -267,6 +272,12 @@ export default function RecruitmentDetail() {
                   </button>
                 </div>
               </div>
+
+              {venueMapError && (
+                <div className="border-t border-hairline mt-xl pt-lg">
+                  <p className="text-caption text-error">{venueMapError}</p>
+                </div>
+              )}
 
               {venueMaps.length > 0 && (
                 <div className="border-t border-hairline mt-xl pt-lg space-y-lg">
