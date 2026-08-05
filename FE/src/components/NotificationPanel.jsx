@@ -1,10 +1,19 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import Icon from "./Icon.jsx";
 import {
   formatNotificationTime,
   getNotificationMeta,
 } from "../notifications/notificationPresentation.js";
+
+const FOCUSABLE_ELEMENT_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
 
 function NotificationListItem({ notification, onSelect }) {
   const meta = getNotificationMeta(notification.notificationType);
@@ -75,19 +84,79 @@ export default function NotificationPanel({
   onSelect,
   onLoadMore,
 }) {
+  const panelRef = useRef(null);
+  const closeButtonRef = useRef(null);
+  const previousFocusRef = useRef(null);
+
   useEffect(() => {
     if (!isOpen) {
       return undefined;
     }
 
+    previousFocusRef.current = document.activeElement;
+    const focusFrame = window.requestAnimationFrame(() => {
+      closeButtonRef.current?.focus();
+    });
+
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const panel = panelRef.current;
+      if (panel === null) {
+        return;
+      }
+
+      const focusableElements = Array.from(
+        panel.querySelectorAll(FOCUSABLE_ELEMENT_SELECTOR)
+      );
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const focusIsOutsidePanel = !panel.contains(document.activeElement);
+
+      if (
+        event.shiftKey &&
+        (document.activeElement === firstElement || focusIsOutsidePanel)
+      ) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+
+      if (
+        !event.shiftKey &&
+        (document.activeElement === lastElement || focusIsOutsidePanel)
+      ) {
+        event.preventDefault();
+        firstElement.focus();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", handleKeyDown);
+
+      const previousFocus = previousFocusRef.current;
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus();
+      }
+      previousFocusRef.current = null;
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) {
@@ -104,6 +173,8 @@ export default function NotificationPanel({
       />
 
       <section
+        ref={panelRef}
+        tabIndex={-1}
         className="notification-panel-enter fixed inset-x-0 bottom-0 z-[190] flex max-h-[78vh] flex-col overflow-hidden rounded-t-[24px] border border-white/80 bg-white shadow-[0_-18px_60px_rgba(0,0,0,0.2)] sm:bottom-auto sm:left-auto sm:right-5 sm:top-[52px] sm:w-[390px] sm:max-h-[calc(100vh-68px)] sm:rounded-2xl sm:shadow-[0_20px_65px_rgba(25,33,50,0.22)]"
         role="dialog"
         aria-modal="true"
@@ -127,6 +198,7 @@ export default function NotificationPanel({
           </div>
 
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface-container hover:text-on-surface"
