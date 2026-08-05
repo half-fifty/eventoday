@@ -62,4 +62,15 @@ public class VenueMap {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public void publish(OffsetDateTime now) {
+        this.status = VenueMapStatus.PUBLISHED;
+        this.publishedAt = now;
+        this.updatedAt = now;
+    }
+
+    public void unpublish(OffsetDateTime now) {
+        this.status = VenueMapStatus.DRAFT;
+        this.updatedAt = now;
+    }
 }
