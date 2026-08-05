@@ -12,7 +12,7 @@ const listVenueMaps = async (eventId) => {
 };
 
 const listPublicVenueMap = async (eventId, mapType) => {
-  const response = await apiRequest(`/events/${eventId}/venue-maps/public?mapType=${mapType}`);
+  const response = await apiRequest(`/events/${eventId}/venue-maps/public?mapType=${encodeURIComponent(mapType)}`);
   return response.data;
 };
 

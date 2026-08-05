@@ -14,6 +14,20 @@ import { listBooths } from "../api/boothApi.js";
 const MAP_TYPE_LABEL = { RECRUITMENT: "모집 공고용", VISITOR: "관람객용" };
 const MAP_TYPE_OPTIONS = Object.keys(MAP_TYPE_LABEL);
 const EMPTY_UPLOAD_FORM = { floorName: "", mapType: "VISITOR", file: null };
+const BOOTH_PAGE_SIZE = 100; // BoothService.MAX_PAGE_SIZE
+
+// 부스가 100개를 넘는 행사도 팔레트에 전부 뜨도록, 마지막 페이지까지 순차 조회해 합친다.
+const listAllBooths = async (eventId) => {
+  let page = 0;
+  let all = [];
+  for (;;) {
+    const result = await listBooths(eventId, { page, size: BOOTH_PAGE_SIZE });
+    all = all.concat(result.content ?? []);
+    if (!result || result.last) break;
+    page += 1;
+  }
+  return all;
+};
 
 const readImageDimensions = (file) =>
   new Promise((resolve, reject) => {
@@ -49,12 +63,12 @@ export default function FloorplanManagementPanel({ eventId }) {
     setLoading(true);
     setError("");
     try {
-      const [mapList, boothPage] = await Promise.all([
+      const [mapList, allBooths] = await Promise.all([
         listVenueMaps(id),
-        listBooths(id, { size: 200 }),
+        listAllBooths(id),
       ]);
       setMaps(mapList);
-      setBooths(boothPage.content ?? []);
+      setBooths(allBooths);
     } catch (err) {
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "평면도 정보를 불러오지 못했습니다.");
     } finally {
@@ -194,6 +208,15 @@ export default function FloorplanManagementPanel({ eventId }) {
     window.addEventListener("mousemove", handleWindowMouseMove);
     window.addEventListener("mouseup", handleWindowMouseUp);
   };
+
+  // 드래그 중 컴포넌트가 언마운트(행사 전환 등)되면 window 리스너가 남아
+  // 사라진 컴포넌트의 setPositions를 계속 호출하는 것을 막는다.
+  useEffect(() => {
+    return () => {
+      window.removeEventListener("mousemove", handleWindowMouseMove);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
+    };
+  }, [handleWindowMouseMove, handleWindowMouseUp]);
 
   const unplacedBooths = booths.filter((b) => !positions.some((p) => p.boothId === b.id));
 

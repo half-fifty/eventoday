@@ -122,6 +122,14 @@ public class VenueMapService {
         requireEventManager(eventId, member);
         VenueMap venueMap = getByIdAndEventIdOrThrow(mapId, eventId);
 
+        long distinctBoothCount = request.getPositions().stream()
+            .map(BoothMapPositionUpsertRequestDto.PositionItem::getBoothId)
+            .distinct()
+            .count();
+        if (distinctBoothCount != request.getPositions().size()) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+
         OffsetDateTime now = OffsetDateTime.now();
         List<BoothMapPosition> positions = request.getPositions().stream()
             .map(item -> {
@@ -138,7 +146,11 @@ public class VenueMapService {
             })
             .toList();
 
+        // deleteByVenueMapId와 saveAll이 같은 트랜잭션에 있으면 Hibernate가 INSERT를 DELETE보다
+        // 먼저 실행해 (venue_map_id, booth_id) unique 제약을 위반할 수 있어, 명시적으로 flush해
+        // 삭제를 먼저 DB에 반영한다.
         boothMapPositionRepository.deleteByVenueMapId(venueMap.getId());
+        boothMapPositionRepository.flush();
         boothMapPositionRepository.saveAll(positions);
 
         return toResponse(venueMap);
