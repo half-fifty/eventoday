@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Icon from "./Icon.jsx";
+import NotificationBell from "./NotificationBell.jsx";
 import useAuth from "../hooks/useAuth.js";
 
 // Global top nav used on the main marketing/browse pages.
@@ -52,6 +53,7 @@ export default function TopNav({ active = "events" }) {
         {!loading && (
           isAuthenticated ? (
             <>
+              <NotificationBell />
               <Link
                 to="/mypage"
                 className="max-w-[160px] truncate text-white text-nav-link font-nav-link hover:text-primary-on-dark transition-colors"

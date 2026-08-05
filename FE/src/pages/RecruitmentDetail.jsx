@@ -7,6 +7,8 @@ import { ApiError } from "../api/apiClient.js";
 import { getPublicRecruitment } from "../api/recruitmentApi.js";
 import { listPublicBooths } from "../api/boothApi.js";
 import { eventApi } from "../api/eventApi.js";
+import { listPublicVenueMaps } from "../api/venueMapApi.js";
+import { fileDownloadUrl } from "../api/fileApi.js";
 
 const STATUS_BADGE = {
   OPEN: { label: "모집 중", cls: "bg-primary-container/10 text-primary-focus" },
@@ -40,6 +42,9 @@ export default function RecruitmentDetail() {
   const [loadingMoreBooths, setLoadingMoreBooths] = useState(false);
   const [selectedBooth, setSelectedBooth] = useState(null);
   const [eventLinkAvailable, setEventLinkAvailable] = useState(false);
+  const [venueMaps, setVenueMaps] = useState([]);
+  const [venueMapError, setVenueMapError] = useState("");
+  const [highlightedBoothId, setHighlightedBoothId] = useState(null);
   // 행사를 전환했을 때 이전 행사의 부스 목록 요청(더 보기 포함)이 늦게 도착해
   // 현재 행사의 상태를 덮어쓰는 것을 막기 위한 세대 가드.
   const boothGenerationRef = useRef(0);
@@ -125,6 +130,29 @@ export default function RecruitmentDetail() {
     if (!recruitment?.eventId) return;
     let cancelled = false;
 
+    setVenueMaps([]);
+    setVenueMapError("");
+    // 게시된 평면도가 없으면 빈 배열이 정상 응답이라, "없음"과 "조회 실패"를 구분해 보여준다.
+    listPublicVenueMaps(recruitment.eventId, "RECRUITMENT")
+      .then((data) => {
+        if (!cancelled) setVenueMaps(data ?? []);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setVenueMaps([]);
+          setVenueMapError(err instanceof ApiError ? err.message : "평면도를 불러오지 못했습니다.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [recruitment?.eventId]);
+
+  useEffect(() => {
+    if (!recruitment?.eventId) return;
+    let cancelled = false;
+
     setEventLinkAvailable(false);
     // 공개 행사 상세는 PUBLISHED 상태에서만 조회 가능하므로, 조회 성공할 때만 링크를 노출한다.
     eventApi.detail(recruitment.eventId)
@@ -141,6 +169,25 @@ export default function RecruitmentDetail() {
   }, [recruitment?.eventId]);
 
   const badge = recruitment ? STATUS_BADGE[recruitment.status] ?? { label: recruitment.status, cls: "bg-surface-container" } : null;
+
+  // 평면도 핀은 게시된 위치 목록 기준이라, 아직 로드되지 않은(더 보기 이전) 부스일 수도 있다.
+  // 그런 경우엔 상세 모달 대신 조용히 무시한다.
+  const selectBoothFromPin = (boothId) => {
+    const booth = booths.find((b) => b.id === boothId);
+    if (!booth) {
+      setBoothError("이 부스는 아직 목록에 없습니다. \"부스 더 보기\"를 눌러 주세요.");
+      return;
+    }
+    setBoothError("");
+    setHighlightedBoothId(boothId);
+    setSelectedBooth(booth);
+  };
+
+  const selectBoothFromList = (booth) => {
+    setBoothError("");
+    setHighlightedBoothId(booth.id);
+    setSelectedBooth(booth);
+  };
 
   return (
     <div className="bg-surface text-on-surface">
@@ -226,6 +273,45 @@ export default function RecruitmentDetail() {
                 </div>
               </div>
 
+              {venueMapError && (
+                <div className="border-t border-hairline mt-xl pt-lg">
+                  <p className="text-caption text-error">{venueMapError}</p>
+                </div>
+              )}
+
+              {venueMaps.length > 0 && (
+                <div className="border-t border-hairline mt-xl pt-lg space-y-lg">
+                  {venueMaps.map((venueMap) => (
+                    <div key={venueMap.id}>
+                      <h4 className="font-body-strong text-body mb-md">부스 배치도 · {venueMap.floorName}</h4>
+                      <div className="bg-white rounded-2xl border border-hairline p-lg">
+                        <div className="relative inline-block max-w-full select-none">
+                          <img
+                            src={fileDownloadUrl(venueMap.imageFileId)}
+                            alt={`${venueMap.floorName} 평면도`}
+                            className="block max-w-full rounded-lg"
+                          />
+                          {(venueMap.positions ?? []).map((p) => (
+                            <button
+                              key={p.boothId}
+                              type="button"
+                              onClick={() => selectBoothFromPin(p.boothId)}
+                              title={p.displayName || p.boothCode}
+                              className={`absolute w-7 h-7 -ml-3.5 -mt-7 flex items-center justify-center text-white text-[10px] font-bold rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform ${
+                                p.boothId === highlightedBoothId ? "bg-error scale-125" : "bg-primary"
+                              }`}
+                              style={{ left: `${Number(p.xRatio) * 100}%`, top: `${Number(p.yRatio) * 100}%` }}
+                            >
+                              {p.boothCode?.slice(-2) ?? "?"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="border-t border-hairline mt-xl pt-lg">
                 <h4 className="font-body-strong text-body mb-md">등록된 부스 목록</h4>
                 {loadingBooths && <p className="text-caption text-ink-muted">부스 목록을 불러오는 중입니다.</p>}
@@ -241,8 +327,10 @@ export default function RecruitmentDetail() {
                         <button
                           key={b.id}
                           type="button"
-                          onClick={() => setSelectedBooth(b)}
-                          className="text-left bg-white border border-hairline rounded-2xl p-lg transition-colors hover:border-primary-focus"
+                          onClick={() => selectBoothFromList(b)}
+                          className={`text-left bg-white border rounded-2xl p-lg transition-colors hover:border-primary-focus ${
+                            b.id === highlightedBoothId ? "border-error" : "border-hairline"
+                          }`}
                         >
                           <span className={`inline-block text-[11px] font-bold px-sm py-1 rounded-full mb-sm ${boothBadge.cls}`}>
                             {boothBadge.label}

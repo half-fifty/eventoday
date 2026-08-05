@@ -45,6 +45,10 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
           NTS_BUSINESS_API_KEY: ${{ secrets.NTS_BUSINESS_API_KEY }}
           ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
           TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
@@ -65,6 +69,10 @@ jobs:
             JWT_SECRET
             GOOGLE_CLIENT_ID
             GOOGLE_CLIENT_SECRET
+            NAVER_CLIENT_ID
+            NAVER_CLIENT_SECRET
+            KAKAO_CLIENT_ID
+            KAKAO_CLIENT_SECRET
             NTS_BUSINESS_API_KEY
             ORDER_ACCESS_TOKEN_SECRET
             TOSS_SECRET_KEY
@@ -177,6 +185,10 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
           NTS_BUSINESS_API_KEY: ${{ secrets.NTS_BUSINESS_API_KEY }}
           ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
           TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
@@ -193,6 +205,10 @@ jobs:
             printf 'JWT_SECRET=%s\n' "${JWT_SECRET}"
             printf 'GOOGLE_CLIENT_ID=%s\n' "${GOOGLE_CLIENT_ID}"
             printf 'GOOGLE_CLIENT_SECRET=%s\n' "${GOOGLE_CLIENT_SECRET}"
+            printf 'NAVER_CLIENT_ID=%s\n' "${NAVER_CLIENT_ID}"
+            printf 'NAVER_CLIENT_SECRET=%s\n' "${NAVER_CLIENT_SECRET}"
+            printf 'KAKAO_CLIENT_ID=%s\n' "${KAKAO_CLIENT_ID}"
+            printf 'KAKAO_CLIENT_SECRET=%s\n' "${KAKAO_CLIENT_SECRET}"
             printf 'NTS_BUSINESS_API_KEY=%s\n' "${NTS_BUSINESS_API_KEY}"
             printf 'ORDER_ACCESS_TOKEN_SECRET=%s\n' "${ORDER_ACCESS_TOKEN_SECRET}"
             printf 'TOSS_SECRET_KEY=%s\n' "${TOSS_SECRET_KEY}"

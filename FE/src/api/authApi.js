@@ -8,6 +8,16 @@ const loginWithGoogle = () => {
     `${API_BASE_URL}/oauth2/authorization/google`;
 };
 
+const loginWithNaver = () => {
+  window.location.href =
+    `${API_BASE_URL}/oauth2/authorization/naver`;
+};
+
+const loginWithKakao = () => {
+  window.location.href =
+    `${API_BASE_URL}/oauth2/authorization/kakao`;
+};
+
 const getCurrentMember = async () => {
   const response = await apiRequest("/auth/me");
   return response.data;
@@ -27,6 +37,8 @@ const logout = async () => {
 
 export {
   loginWithGoogle,
+  loginWithKakao,
+  loginWithNaver,
   getCurrentMember,
   reissueTokens,
   logout,

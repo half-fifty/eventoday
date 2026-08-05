@@ -2,24 +2,26 @@ package com.min.edu.notification.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// notification_type / reference_type: 명세서에서 "주요 유형"으로만 예시가 주어져 닫힌 목록이 아니므로 String으로 두었습니다.
 @Entity
 @Table(name = "notifications")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-@Builder
+@Builder(access = AccessLevel.PRIVATE)
 public class Notification {
 
     @Id
@@ -30,8 +32,12 @@ public class Notification {
     @Column(name = "member_id", nullable = false)
     private Long memberId;
 
+    @Column(name = "event_id", nullable = false, unique = true, updatable = false)
+    private UUID eventId;
+
     @Column(name = "notification_type", nullable = false, length = 40)
-    private String notificationType;
+    @Enumerated(EnumType.STRING)
+    private NotificationType notificationType;
 
     @Column(name = "reference_type", length = 30)
     private String referenceType;
@@ -50,4 +56,34 @@ public class Notification {
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    public static Notification create(
+            UUID eventId,
+            Long memberId,
+            NotificationType notificationType,
+            String referenceType,
+            Long referenceId,
+            String title,
+            String content) {
+        return Notification.builder()
+                .eventId(eventId)
+                .memberId(memberId)
+                .notificationType(notificationType)
+                .referenceType(referenceType)
+                .referenceId(referenceId)
+                .title(title)
+                .content(content)
+                .createdAt(OffsetDateTime.now())
+                .build();
+    }
+
+    public void markAsRead() {
+        if (this.readAt == null) {
+            this.readAt = OffsetDateTime.now();
+        }
+    }
+
+    public boolean isRead() {
+        return this.readAt != null;
+    }
 }
