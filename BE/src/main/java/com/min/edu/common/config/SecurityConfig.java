@@ -54,6 +54,9 @@ public class SecurityConfig {
                         ).permitAll()
                         .requestMatchers("/auth/me").authenticated()
                         .requestMatchers("/notifications/**").authenticated()
+                        // PUBLIC 파일(공개 평면도 이미지 등)은 비로그인 사용자도 내려받을 수 있어야 한다.
+                        // 접근 가능 여부(PUBLIC/PRIVATE) 판단은 FileService에서 계속 수행한다.
+                        .requestMatchers(HttpMethod.GET, "/v1/files/*/download").permitAll()
                         .requestMatchers("/v1/files/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/booth-recruitments/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/events/*/booth-recruitment/management")
@@ -68,6 +71,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/events/*/booth-recruitment").authenticated()
                         .requestMatchers(HttpMethod.GET, "/events/*/booths/public").permitAll()
                         .requestMatchers("/events/*/booths/**").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/events/*/venue-maps/public").permitAll()
+                        .requestMatchers("/events/*/venue-maps/**").authenticated()
                         .anyRequest().permitAll())
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo
