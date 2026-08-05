@@ -6,7 +6,8 @@ import {
   useState,
 } from "react";
 
-import { API_BASE_URL } from "../api/apiClient.js";
+import { API_BASE_URL, ApiError } from "../api/apiClient.js";
+import { getCurrentMember } from "../api/authApi.js";
 import {
   getNotifications,
   getUnreadCount,
@@ -21,6 +22,24 @@ import { getNotificationTarget } from "./notificationPresentation.js";
 const PAGE_SIZE = 20;
 const MAX_VISIBLE_TOASTS = 3;
 const MAX_REMEMBERED_NOTIFICATION_IDS = 100;
+const INITIAL_RECONNECT_DELAY_MILLIS = 1000;
+const MAX_RECONNECT_DELAY_MILLIS = 30000;
+const RECONNECT_JITTER_RATIO = 0.25;
+
+const getReconnectDelay = (attempt) => {
+  const exponentialDelay = Math.min(
+    INITIAL_RECONNECT_DELAY_MILLIS * (2 ** attempt),
+    MAX_RECONNECT_DELAY_MILLIS
+  );
+  const jitter = Math.floor(
+    Math.random() * exponentialDelay * RECONNECT_JITTER_RATIO
+  );
+
+  return Math.min(
+    exponentialDelay + jitter,
+    MAX_RECONNECT_DELAY_MILLIS
+  );
+};
 
 const mergeUniqueNotifications = (currentNotifications, newNotifications) => {
   const notificationMap = new Map();
@@ -44,8 +63,16 @@ const createToastKey = () => {
 };
 
 export default function NotificationSseProvider({ children, onNavigate }) {
-  const { isAuthenticated, loading } = useAuth();
+  const {
+    isAuthenticated,
+    loading,
+    clearAuthentication,
+  } = useAuth();
   const eventSourceRef = useRef(null);
+  const connectRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectEnabledRef = useRef(false);
   const panelOpenRef = useRef(false);
   const currentPageRef = useRef(0);
   const seenNotificationIdsRef = useRef(new Set());
@@ -170,14 +197,59 @@ export default function NotificationSseProvider({ children, onNavigate }) {
     }
   }, [rememberNotificationId]);
 
-  const disconnect = useCallback(() => {
-    if (eventSourceRef.current === null) {
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current === null) {
       return;
     }
 
-    eventSourceRef.current.close();
-    eventSourceRef.current = null;
+    window.clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = null;
   }, []);
+
+  const disconnect = useCallback(() => {
+    const eventSource = eventSourceRef.current;
+    if (eventSource === null) {
+      return;
+    }
+
+    eventSourceRef.current = null;
+    eventSource.close();
+  }, []);
+
+  const scheduleReconnect = useCallback(() => {
+    if (
+      !reconnectEnabledRef.current ||
+      reconnectTimerRef.current !== null
+    ) {
+      return;
+    }
+
+    const delay = getReconnectDelay(reconnectAttemptRef.current);
+    reconnectAttemptRef.current += 1;
+
+    reconnectTimerRef.current = window.setTimeout(async () => {
+      reconnectTimerRef.current = null;
+
+      if (!reconnectEnabledRef.current) {
+        return;
+      }
+
+      try {
+        await getCurrentMember();
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          reconnectEnabledRef.current = false;
+          clearAuthentication();
+          return;
+        }
+
+        scheduleReconnect();
+        return;
+      }
+
+      connectRef.current?.();
+    }, delay);
+  }, [clearAuthentication]);
 
   const connect = useCallback(() => {
     if (loading || !isAuthenticated) {
@@ -198,6 +270,21 @@ export default function NotificationSseProvider({ children, onNavigate }) {
       `${normalizedBaseUrl}/notifications/stream`,
       { withCredentials: true }
     );
+    eventSourceRef.current = eventSource;
+
+    eventSource.addEventListener("open", () => {
+      if (eventSourceRef.current !== eventSource) {
+        return;
+      }
+
+      const wasReconnecting = reconnectAttemptRef.current > 0;
+      reconnectAttemptRef.current = 0;
+      clearReconnectTimer();
+
+      if (wasReconnecting) {
+        fetchInitialNotifications();
+      }
+    });
 
     eventSource.addEventListener("notification", (event) => {
       try {
@@ -207,8 +294,25 @@ export default function NotificationSseProvider({ children, onNavigate }) {
       }
     });
 
-    eventSourceRef.current = eventSource;
-  }, [handleIncomingNotification, isAuthenticated, loading]);
+    eventSource.addEventListener("error", () => {
+      if (eventSourceRef.current !== eventSource) {
+        return;
+      }
+
+      eventSourceRef.current = null;
+      eventSource.close();
+      scheduleReconnect();
+    });
+  }, [
+    clearReconnectTimer,
+    fetchInitialNotifications,
+    handleIncomingNotification,
+    isAuthenticated,
+    loading,
+    scheduleReconnect,
+  ]);
+
+  connectRef.current = connect;
 
   const closePanel = useCallback(() => {
     panelOpenRef.current = false;
@@ -286,6 +390,9 @@ export default function NotificationSseProvider({ children, onNavigate }) {
 
   useEffect(() => {
     if (loading || !isAuthenticated) {
+      reconnectEnabledRef.current = false;
+      reconnectAttemptRef.current = 0;
+      clearReconnectTimer();
       disconnect();
       panelOpenRef.current = false;
       currentPageRef.current = 0;
@@ -300,15 +407,19 @@ export default function NotificationSseProvider({ children, onNavigate }) {
       return undefined;
     }
 
+    reconnectEnabledRef.current = true;
     connect();
     fetchInitialNotifications();
 
     const handlePageHide = () => {
+      reconnectEnabledRef.current = false;
+      clearReconnectTimer();
       disconnect();
     };
 
     const handlePageShow = (event) => {
       if (event.persisted) {
+        reconnectEnabledRef.current = true;
         connect();
         fetchInitialNotifications();
       }
@@ -318,11 +429,20 @@ export default function NotificationSseProvider({ children, onNavigate }) {
     window.addEventListener("pageshow", handlePageShow);
 
     return () => {
+      reconnectEnabledRef.current = false;
+      clearReconnectTimer();
       window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("pageshow", handlePageShow);
       disconnect();
     };
-  }, [connect, disconnect, fetchInitialNotifications, isAuthenticated, loading]);
+  }, [
+    clearReconnectTimer,
+    connect,
+    disconnect,
+    fetchInitialNotifications,
+    isAuthenticated,
+    loading,
+  ]);
 
   const contextValue = useMemo(() => ({
     unreadCount,
