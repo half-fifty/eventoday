@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
-import { loginWithGoogle, loginWithNaver } from "../api/authApi.js";
+import { loginWithGoogle, loginWithKakao, loginWithNaver } from "../api/authApi.js";
 import { loginBusiness } from "../api/businessAuthApi.js";
 import useAuth from "../hooks/useAuth.js";
 
@@ -64,6 +64,14 @@ export default function Login() {
       redirectPath
     );
     loginWithNaver();
+  };
+
+  const handleKakaoLogin = () => {
+    sessionStorage.setItem(
+      POST_LOGIN_REDIRECT_KEY,
+      redirectPath
+    );
+    loginWithKakao();
   };
 
   const handleBusinessLogin = async (event) => {
@@ -174,6 +182,19 @@ export default function Login() {
                 >
                   <span className="flex h-10 w-10 items-center justify-center text-[18px] font-black" aria-hidden="true">N</span>
                   <span className="grow pr-10 text-center">네이버로 계속하기</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleKakaoLogin}
+                  className="flex h-10 w-full items-center rounded-[20px] bg-[#FEE500] text-[14px] font-semibold text-black/85 transition-colors hover:bg-[#f5dc00] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FEE500] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                >
+                  <span className="flex h-10 w-10 items-center justify-center" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-black/85">
+                      <path d="M12 3C6.477 3 2 6.477 2 10.765c0 2.736 1.82 5.143 4.57 6.526l-1.16 4.255a.36.36 0 0 0 .548.392l4.99-3.302c.345.035.696.053 1.052.053 5.523 0 10-3.477 10-7.764S17.523 3 12 3Z" />
+                    </svg>
+                  </span>
+                  <span className="grow pr-10 text-center">카카오로 계속하기</span>
                 </button>
               </div>
             </div>
