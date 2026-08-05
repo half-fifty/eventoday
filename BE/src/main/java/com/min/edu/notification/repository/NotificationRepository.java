@@ -38,7 +38,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     Optional<Notification> findByEventId(UUID eventId);
 
-    Page<Notification> findByMemberIdOrderByCreatedAtDesc(
+    Page<Notification> findByMemberIdOrderByCreatedAtDescIdDesc(
             Long memberId,
             Pageable pageable);
 

@@ -78,7 +78,7 @@ class NotificationServiceTest {
     void getNotifications_returnsOnlyRequestedMemberPage() {
         PageRequest pageable = PageRequest.of(1, 5);
         Notification notification = createNotification(1L, "알림");
-        given(notificationRepository.findByMemberIdOrderByCreatedAtDesc(1L, pageable))
+        given(notificationRepository.findByMemberIdOrderByCreatedAtDescIdDesc(1L, pageable))
                 .willReturn(new PageImpl<>(List.of(notification), pageable, 6));
 
         Page<NotificationResponseDto> response =
@@ -90,7 +90,7 @@ class NotificationServiceTest {
         assertThat(response.getSize()).isEqualTo(5);
         assertThat(response.getTotalElements()).isEqualTo(6);
         verify(notificationRepository)
-                .findByMemberIdOrderByCreatedAtDesc(1L, pageable);
+                .findByMemberIdOrderByCreatedAtDescIdDesc(1L, pageable);
     }
 
     @Test

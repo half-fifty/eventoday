@@ -29,7 +29,7 @@ class NotificationRepositoryTest {
     private JdbcTemplate jdbcTemplate;
 
     @Test
-    void findByMemberIdOrderByCreatedAtDesc_returnsOnlyMemberNotificationsInLatestOrder() {
+    void findByMemberIdOrderByCreatedAtDescIdDesc_returnsOnlyMemberNotificationsInLatestOrder() {
         Long memberId = insertMember();
         Long otherMemberId = insertMember();
         OffsetDateTime baseTime = OffsetDateTime.parse("2026-08-05T10:00:00+09:00");
@@ -38,12 +38,38 @@ class NotificationRepositoryTest {
         insertNotification(otherMemberId, "다른 회원 알림", baseTime.plusMinutes(2), null);
 
         Page<Notification> result = notificationRepository
-                .findByMemberIdOrderByCreatedAtDesc(memberId, PageRequest.of(0, 10));
+                .findByMemberIdOrderByCreatedAtDescIdDesc(memberId, PageRequest.of(0, 10));
 
         assertThat(result.getTotalElements()).isEqualTo(2);
         assertThat(result.getContent())
                 .extracting(Notification::getId)
                 .containsExactly(latestId, olderId);
+    }
+
+    @Test
+    void findByMemberIdOrderByCreatedAtDescIdDesc_usesIdAsTieBreakerAcrossPages() {
+        Long memberId = insertMember();
+        OffsetDateTime sameCreatedAt =
+                OffsetDateTime.parse("2026-08-05T10:00:00+09:00");
+        Long firstId = insertNotification(memberId, "알림 1", sameCreatedAt, null);
+        Long secondId = insertNotification(memberId, "알림 2", sameCreatedAt, null);
+        Long thirdId = insertNotification(memberId, "알림 3", sameCreatedAt, null);
+
+        Page<Notification> firstPage = notificationRepository
+                .findByMemberIdOrderByCreatedAtDescIdDesc(
+                        memberId,
+                        PageRequest.of(0, 2));
+        Page<Notification> secondPage = notificationRepository
+                .findByMemberIdOrderByCreatedAtDescIdDesc(
+                        memberId,
+                        PageRequest.of(1, 2));
+
+        assertThat(firstPage.getContent())
+                .extracting(Notification::getId)
+                .containsExactly(thirdId, secondId);
+        assertThat(secondPage.getContent())
+                .extracting(Notification::getId)
+                .containsExactly(firstId);
     }
 
     @Test

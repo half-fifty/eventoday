@@ -54,7 +54,7 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public Page<NotificationResponseDto> getNotifications(Long memberId, Pageable pageable) {
-        return notificationRepository.findByMemberIdOrderByCreatedAtDesc(memberId, pageable)
+        return notificationRepository.findByMemberIdOrderByCreatedAtDescIdDesc(memberId, pageable)
                 .map(NotificationResponseDto::from);
     }
 
