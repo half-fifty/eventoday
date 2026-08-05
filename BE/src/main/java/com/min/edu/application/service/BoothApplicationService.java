@@ -1,5 +1,6 @@
 package com.min.edu.application.service;
 
+import com.min.edu.application.dto.BoothApplicationPageResponse;
 import com.min.edu.application.dto.BoothApplicationResponseDto;
 import com.min.edu.application.dto.BoothApplicationSubmitRequestDto;
 import com.min.edu.application.support.ApplicationNoGenerator;
@@ -18,25 +19,34 @@ import com.min.edu.booth.repository.BoothOrganizationMemberRepository;
 import com.min.edu.booth.repository.BoothRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.domain.EventRole;
+import com.min.edu.event.repository.EventMemberRepository;
+import com.min.edu.event.repository.EventRepository;
 import com.min.edu.file.repository.FileAssetRepository;
+import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
 import com.min.edu.recruitment.repository.BoothRecruitmentRepository;
-import com.min.edu.event.domain.EventRole;
-import com.min.edu.event.repository.EventMemberRepository;
-import com.min.edu.member.domain.PlatformRole;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import jakarta.persistence.criteria.Predicate;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class BoothApplicationService {
+
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final BoothRecruitmentRepository boothRecruitmentRepository;
     private final BoothRepository boothRepository;
@@ -46,6 +56,7 @@ public class BoothApplicationService {
     private final FileAssetRepository fileAssetRepository;
     private final ApplicationNoGenerator applicationNoGenerator;
     private final EventMemberRepository eventMemberRepository;
+    private final EventRepository eventRepository;
 
     /**
      * 부스 신청 제출
@@ -118,7 +129,8 @@ public class BoothApplicationService {
         // 중복 제거 후 파일 연결
         List<Long> uniqueOtherFileIds = otherFileIds.stream().distinct().toList();
         // 신청 파일 연결 (견적서 + 기타 파일)
-        List<BoothApplicationFile> files = buildApplicationFiles(application.getId(), request.getEstimateFileId(), uniqueOtherFileIds, now);
+        List<BoothApplicationFile> files = buildApplicationFiles(
+                application.getId(), request.getEstimateFileId(), uniqueOtherFileIds, now);
         boothApplicationFileRepository.saveAll(files);
 
         return BoothApplicationResponseDto.from(application);
@@ -203,6 +215,124 @@ public class BoothApplicationService {
 
         log.info("부스 신청 취소 - applicationId: {}, boothId: {}, memberId: {}",
                 applicationId, booth.getId(), member.getMemberId());
+    }
+
+    /**
+     * 행사 신청 목록·검색
+     * - EVENT_MANAGER / PLATFORM_ADMIN만 접근 가능
+     * - Specification으로 동적 쿼리 구성 (null 파라미터는 조건에서 제외하여 PostgreSQL 타입 추론 오류 방지)
+     */
+    @Transactional(readOnly = true)
+    public BoothApplicationPageResponse listByEvent(
+            Long eventId,
+            BoothApplicationStatus status,
+            String teamName,
+            String boothCode,
+            OffsetDateTime submittedFrom,
+            OffsetDateTime submittedTo,
+            int page,
+            int size,
+            AuthenticatedMemberDto member) {
+
+        if (!eventRepository.existsById(eventId)) {
+            throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
+        }
+
+        requireEventManager(eventId, member);
+        validatePageRequest(page, size);
+
+        // 행사에 속한 모집공고 ID 조회
+        List<Long> recruitmentIds = boothRecruitmentRepository.findIdsByEventId(eventId);
+        if (recruitmentIds.isEmpty()) {
+            return new BoothApplicationPageResponse(List.of(), page, size, 0, 0, true, true, true);
+        }
+
+        // boothCode 필터가 있으면 boothId 목록으로 변환
+        final List<Long> boothIds;
+        if (boothCode != null && !boothCode.isBlank()) {
+            List<Long> ids = boothRepository.findIdsByBoothCodeLike(normalizeKeyword(boothCode));
+            if (ids.isEmpty()) {
+                return new BoothApplicationPageResponse(List.of(), page, size, 0, 0, true, true, true);
+            }
+            boothIds = ids;
+        } else {
+            boothIds = null;
+        }
+
+        final String normalizedTeamName = normalizeKeyword(teamName);
+
+        // null인 조건은 쿼리에 포함하지 않음 (PostgreSQL 파라미터 타입 추론 오류 방지)
+        Specification<BoothApplication> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            // 행사 소속 신청만 (recruitmentId IN 모집공고 목록)
+            predicates.add(root.get("recruitmentId").in(recruitmentIds));
+
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (normalizedTeamName != null) {
+                predicates.add(cb.like(cb.lower(root.get("teamName")), normalizedTeamName, '!'));
+            }
+            if (boothIds != null) {
+                predicates.add(root.get("boothId").in(boothIds));
+            }
+            if (submittedFrom != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("submittedAt"), submittedFrom));
+            }
+            if (submittedTo != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("submittedAt"), submittedTo));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<BoothApplication> result = boothApplicationRepository.findAll(
+                spec,
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "submittedAt")));
+
+        return new BoothApplicationPageResponse(
+                result.getContent().stream().map(BoothApplicationResponseDto::from).toList(),
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.isFirst(),
+                result.isLast(),
+                result.isEmpty()
+        );
+    }
+
+    /** EVENT_MANAGER 또는 PLATFORM_ADMIN 권한 검증 */
+    private void requireEventManager(Long eventId, AuthenticatedMemberDto member) {
+        if (member.getPlatformRole() == PlatformRole.PLATFORM_ADMIN) {
+            return;
+        }
+        boolean isEventManager = eventMemberRepository
+                .existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
+                        eventId, member.getMemberId(), EventRole.EVENT_MANAGER);
+        if (!isEventManager) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+    }
+
+    /** 페이지 요청 크기 상한 검증 */
+    private void validatePageRequest(int page, int size) {
+        if (size > MAX_PAGE_SIZE) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+
+    /** LIKE 검색용 키워드 정규화 - 소문자 변환 및 % 래핑 */
+    private String normalizeKeyword(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return null;
+        }
+        String escaped = keyword.toLowerCase(Locale.ROOT)
+                .replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
+        return "%" + escaped + "%";
     }
 
     /** 조직 소속 여부 확인 (권한 예외 없이 boolean 반환) */
