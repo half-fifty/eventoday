@@ -59,6 +59,9 @@ export default function MyPage() {
   const loginDescription = isBusinessMember
     ? `${member.organization?.name || "사업자"} · 사업자 계정`
     : "일반 회원";
+  const memberEmail = member.email?.endsWith("@oauth.invalid")
+    ? "이메일 정보 없음"
+    : member.email;
 
   const organizationTypeLabel = {
     ORGANIZER: "박람회 개최측",
@@ -304,7 +307,7 @@ export default function MyPage() {
             <div className="space-y-lg">
               <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
                 <div className="p-lg"><p className="text-[11px] text-ink-muted">닉네임</p><p className="text-body">{member.nickname}</p></div>
-                <div className="p-lg"><p className="text-[11px] text-ink-muted">이메일</p><p className="text-body">{member.email}</p></div>
+                <div className="p-lg"><p className="text-[11px] text-ink-muted">이메일</p><p className="text-body">{memberEmail}</p></div>
                 <div className="p-lg"><p className="text-[11px] text-ink-muted">계정 유형</p><p className="text-body">{isBusinessMember ? "사업자 계정" : "일반 회원"}</p></div>
                 {isBusinessMember && member.organization && (
                   <>
