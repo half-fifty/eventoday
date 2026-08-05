@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
-import { loginWithGoogle } from "../api/authApi.js";
+import { loginWithGoogle, loginWithNaver } from "../api/authApi.js";
 import { loginBusiness } from "../api/businessAuthApi.js";
 import useAuth from "../hooks/useAuth.js";
 
@@ -56,6 +56,14 @@ export default function Login() {
       redirectPath
     );
     loginWithGoogle();
+  };
+
+  const handleNaverLogin = () => {
+    sessionStorage.setItem(
+      POST_LOGIN_REDIRECT_KEY,
+      redirectPath
+    );
+    loginWithNaver();
   };
 
   const handleBusinessLogin = async (event) => {
@@ -138,25 +146,36 @@ export default function Login() {
           {loginType === "social" ? (
             <div>
               <p className="mb-md text-center text-caption text-white/60">일반 회원은 소셜 계정으로 로그인해 주세요.</p>
-              <button
-                type="button"
-                onClick={handleGoogleLogin}
-                className="group relative h-10 w-full select-none appearance-none overflow-hidden whitespace-nowrap rounded-[20px] border border-[#747775] bg-white p-0 text-center align-middle [font-family:Roboto,Arial,sans-serif] text-[14px] tracking-[0.25px] text-[#1f1f1f] outline-none transition-[background-color,border-color,box-shadow] duration-[218ms] hover:shadow-[0_1px_2px_0_rgba(60,64,67,0.30),0_1px_3px_1px_rgba(60,64,67,0.15)] focus-visible:ring-2 focus-visible:ring-[#1a73e8]"
-              >
-                <span className="absolute inset-0 opacity-0 transition-opacity duration-[218ms] group-hover:bg-[#303030] group-hover:opacity-[0.08]" />
-                <span className="relative flex h-full w-full items-center justify-between">
-                  <span className="h-10 w-10 p-[9px]">
-                    <svg aria-hidden="true" viewBox="0 0 18 18" className="h-5 w-5">
-                      <path fill="#EA4335" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.797 2.715v2.258h2.909c1.702-1.567 2.684-3.875 2.684-6.613Z" />
-                      <path fill="#4285F4" d="M9 18c2.43 0 4.467-.806 5.956-2.182l-2.909-2.258c-.806.54-1.835.859-3.047.859-2.344 0-4.328-1.585-5.037-3.714H.956v2.333A9 9 0 0 0 9 18Z" />
-                      <path fill="#FBBC05" d="M3.963 10.705A5.413 5.413 0 0 1 3.682 9c0-.592.102-1.167.281-1.705V4.962H.956A9 9 0 0 0 0 9c0 1.452.347 2.827.956 4.038l3.007-2.333Z" />
-                      <path fill="#34A853" d="M9 3.58c1.322 0 2.508.454 3.441 1.346l2.582-2.582C13.463.892 11.426 0 9 0A9 9 0 0 0 .956 4.962l3.007 2.333C4.672 5.166 6.656 3.58 9 3.58Z" />
-                    </svg>
+              <div className="space-y-sm">
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  className="group relative h-10 w-full select-none appearance-none overflow-hidden whitespace-nowrap rounded-[20px] border border-[#747775] bg-white p-0 text-center align-middle [font-family:Roboto,Arial,sans-serif] text-[14px] tracking-[0.25px] text-[#1f1f1f] outline-none transition-[background-color,border-color,box-shadow] duration-[218ms] hover:shadow-[0_1px_2px_0_rgba(60,64,67,0.30),0_1px_3px_1px_rgba(60,64,67,0.15)] focus-visible:ring-2 focus-visible:ring-[#1a73e8]"
+                >
+                  <span className="absolute inset-0 opacity-0 transition-opacity duration-[218ms] group-hover:bg-[#303030] group-hover:opacity-[0.08]" />
+                  <span className="relative flex h-full w-full items-center justify-between">
+                    <span className="h-10 w-10 p-[9px]">
+                      <svg aria-hidden="true" viewBox="0 0 18 18" className="h-5 w-5">
+                        <path fill="#EA4335" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.797 2.715v2.258h2.909c1.702-1.567 2.684-3.875 2.684-6.613Z" />
+                        <path fill="#4285F4" d="M9 18c2.43 0 4.467-.806 5.956-2.182l-2.909-2.258c-.806.54-1.835.859-3.047.859-2.344 0-4.328-1.585-5.037-3.714H.956v2.333A9 9 0 0 0 9 18Z" />
+                        <path fill="#FBBC05" d="M3.963 10.705A5.413 5.413 0 0 1 3.682 9c0-.592.102-1.167.281-1.705V4.962H.956A9 9 0 0 0 0 9c0 1.452.347 2.827.956 4.038l3.007-2.333Z" />
+                        <path fill="#34A853" d="M9 3.58c1.322 0 2.508.454 3.441 1.346l2.582-2.582C13.463.892 11.426 0 9 0A9 9 0 0 0 .956 4.962l3.007 2.333C4.672 5.166 6.656 3.58 9 3.58Z" />
+                      </svg>
+                    </span>
+                    <span className="grow overflow-hidden text-ellipsis font-medium">Google로 계속하기</span>
+                    <span className="h-10 w-10" aria-hidden="true" />
                   </span>
-                  <span className="grow overflow-hidden text-ellipsis font-medium">Google로 계속하기</span>
-                  <span className="h-10 w-10" aria-hidden="true" />
-                </span>
-              </button>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleNaverLogin}
+                  className="flex h-10 w-full items-center rounded-[20px] bg-[#03C75A] text-[14px] font-semibold text-white transition-colors hover:bg-[#02b351] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#03C75A] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                >
+                  <span className="flex h-10 w-10 items-center justify-center text-[18px] font-black" aria-hidden="true">N</span>
+                  <span className="grow pr-10 text-center">네이버로 계속하기</span>
+                </button>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleBusinessLogin} className="space-y-md">
