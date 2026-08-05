@@ -77,6 +77,37 @@ class NotificationRepositoryTest {
         assertThat(count).isEqualTo(2L);
     }
 
+    @Test
+    void insertIfAbsent_insertsSameEventOnlyOnce() {
+        Long memberId = insertMember();
+        UUID eventId = UUID.fromString("b9d8a554-940f-4d72-b6de-711616158aad");
+        OffsetDateTime createdAt = OffsetDateTime.parse("2026-08-05T10:00:00+09:00");
+
+        int firstResult = notificationRepository.insertIfAbsent(
+                eventId,
+                memberId,
+                "EVENT_SCHEDULE_CHANGED",
+                "EVENT",
+                10L,
+                "일정 변경",
+                "행사 일정이 변경되었습니다.",
+                createdAt);
+        int duplicateResult = notificationRepository.insertIfAbsent(
+                eventId,
+                memberId,
+                "EVENT_SCHEDULE_CHANGED",
+                "EVENT",
+                10L,
+                "일정 변경",
+                "행사 일정이 변경되었습니다.",
+                createdAt);
+
+        assertThat(firstResult).isEqualTo(1);
+        assertThat(duplicateResult).isZero();
+        assertThat(notificationRepository.findByEventId(eventId)).isPresent();
+        assertThat(notificationRepository.count()).isEqualTo(1L);
+    }
+
     private Long insertMember() {
         String uniqueValue = UUID.randomUUID().toString();
         OffsetDateTime now = OffsetDateTime.now();
@@ -103,13 +134,14 @@ class NotificationRepositoryTest {
             OffsetDateTime readAt) {
         return jdbcTemplate.queryForObject("""
                 INSERT INTO notifications (
-                    member_id, notification_type, reference_type, reference_id,
-                    title, content, read_at, created_at
+                    event_id, member_id, notification_type, reference_type,
+                    reference_id, title, content, read_at, created_at
                 )
-                VALUES (?, 'EVENT_SCHEDULE_CHANGED', 'EVENT', 10, ?, ?, ?, ?)
+                VALUES (?, ?, 'EVENT_SCHEDULE_CHANGED', 'EVENT', 10, ?, ?, ?, ?)
                 RETURNING id
                 """,
                 Long.class,
+                UUID.randomUUID(),
                 memberId,
                 title,
                 title + " 내용",

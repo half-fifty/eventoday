@@ -1,5 +1,7 @@
 package com.min.edu.notification.service;
 
+import java.util.Optional;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -21,16 +23,33 @@ import lombok.RequiredArgsConstructor;
 public class NotificationService {
     private final NotificationRepository notificationRepository;
 
-    public NotificationResponseDto create(NotificationCreateDto dto) {
+    public Optional<NotificationResponseDto> createIfAbsent(NotificationCreateDto dto) {
         Notification notification = Notification.create(
+                dto.eventId(),
                 dto.memberId(),
                 dto.notificationType(),
                 dto.referenceType(),
                 dto.referenceId(),
                 dto.title(),
                 dto.content());
-        Notification savedNotification = notificationRepository.save(notification);
-        return NotificationResponseDto.from(savedNotification);
+        int inserted = notificationRepository.insertIfAbsent(
+                notification.getEventId(),
+                notification.getMemberId(),
+                notification.getNotificationType().name(),
+                notification.getReferenceType(),
+                notification.getReferenceId(),
+                notification.getTitle(),
+                notification.getContent(),
+                notification.getCreatedAt());
+
+        if (inserted == 0) {
+            return Optional.empty();
+        }
+
+        Notification savedNotification = notificationRepository
+                .findByEventId(dto.eventId())
+                .orElseThrow(() -> new IllegalStateException("저장된 알림을 조회할 수 없습니다."));
+        return Optional.of(NotificationResponseDto.from(savedNotification));
     }
 
     @Transactional(readOnly = true)

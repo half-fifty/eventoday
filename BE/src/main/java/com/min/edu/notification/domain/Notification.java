@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -30,6 +31,9 @@ public class Notification {
 
     @Column(name = "member_id", nullable = false)
     private Long memberId;
+
+    @Column(name = "event_id", nullable = false, unique = true, updatable = false)
+    private UUID eventId;
 
     @Column(name = "notification_type", nullable = false, length = 40)
     @Enumerated(EnumType.STRING)
@@ -54,6 +58,7 @@ public class Notification {
     private OffsetDateTime createdAt;
 
     public static Notification create(
+            UUID eventId,
             Long memberId,
             NotificationType notificationType,
             String referenceType,
@@ -61,6 +66,7 @@ public class Notification {
             String title,
             String content) {
         return Notification.builder()
+                .eventId(eventId)
                 .memberId(memberId)
                 .notificationType(notificationType)
                 .referenceType(referenceType)

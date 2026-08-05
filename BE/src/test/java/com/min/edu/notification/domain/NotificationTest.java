@@ -3,15 +3,20 @@ package com.min.edu.notification.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
 class NotificationTest {
 
+    private static final UUID EVENT_ID =
+            UUID.fromString("b9d8a554-940f-4d72-b6de-711616158aad");
+
     @Test
     void create_createsUnreadNotification() {
         Notification notification = createNotification();
 
+        assertThat(notification.getEventId()).isEqualTo(EVENT_ID);
         assertThat(notification.getMemberId()).isEqualTo(1L);
         assertThat(notification.getNotificationType())
                 .isEqualTo(NotificationType.EVENT_SCHEDULE_CHANGED);
@@ -47,6 +52,7 @@ class NotificationTest {
 
     private Notification createNotification() {
         return Notification.create(
+                EVENT_ID,
                 1L,
                 NotificationType.EVENT_SCHEDULE_CHANGED,
                 "EVENT",
