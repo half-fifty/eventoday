@@ -18,9 +18,16 @@ public class SseEmitterManager {
     public SseEmitter connect(Long memberId) {
         SseEmitter emitter = new SseEmitter(TIMEOUT_MILLIS);
 
-        emitters.computeIfAbsent(
+        emitters.compute(
                 memberId,
-                key -> ConcurrentHashMap.newKeySet()).add(emitter);
+                (key, memberEmitters) -> {
+                    if (memberEmitters == null) {
+                        memberEmitters = ConcurrentHashMap.newKeySet();
+                    }
+
+                    memberEmitters.add(emitter);
+                    return memberEmitters;
+                });
 
         emitter.onCompletion(
                 () -> remove(memberId, emitter));
