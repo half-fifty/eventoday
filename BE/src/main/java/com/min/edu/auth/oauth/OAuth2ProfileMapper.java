@@ -15,6 +15,9 @@ public class OAuth2ProfileMapper {
         if ("google".equalsIgnoreCase(registrationId)) {
             return mapGoogle(attributes);
         }
+        if ("naver".equalsIgnoreCase(registrationId)) {
+            return mapNaver(attributes);
+        }
         throw new OAuth2LoginException(
                 GlobalErrorCode.UNSUPPORTED_OAUTH_PROVIDER);
     }
@@ -43,8 +46,36 @@ public class OAuth2ProfileMapper {
                 .build();
     }
 
+    private OAuth2ProfileDto mapNaver(
+            Map<String, Object> attributes) {
+        Object responseValue = attributes.get("response");
+
+        if (!(responseValue instanceof Map<?, ?> response)) {
+            throw new OAuth2LoginException(
+                GlobalErrorCode.OAUTH_REQUIRED_ATTRIBUTE_MISSING
+            );
+        }
+
+        String subject = getRequiredValue(response, "id");
+        String email = getRequiredValue(response, "email");
+        String name = getRequiredValue(response, "name");
+        String nickname = getOptionalValue(response, "nickname");
+
+        String displayName = nickname;
+        if (displayName == null || displayName.isBlank()) {
+            displayName = name;
+        }
+
+        return OAuth2ProfileDto.builder()
+            .provider(OauthProvider.NAVER)
+            .subject(subject)
+            .email(email)
+            .displayName(displayName)
+            .build();
+    }
+
     private String getRequiredValue(
-            Map<String, Object> attributes,
+            Map<?, ?> attributes,
             String key) {
         Object value = attributes.get(key);
 
@@ -57,7 +88,7 @@ public class OAuth2ProfileMapper {
     }
 
     private String getOptionalValue(
-            Map<String, Object> attributes,
+            Map<?, ?> attributes,
             String key) {
         Object value = attributes.get(key);
 
