@@ -3,6 +3,7 @@ package com.min.edu.booth.controller;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.dto.BoothReservationSlotResponse;
 import com.min.edu.booth.dto.CreateBoothReservationSlotRequest;
+import com.min.edu.booth.dto.UpdateBoothReservationSlotRequest;
 import com.min.edu.booth.service.BoothReservationSlotService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,5 +28,28 @@ public class BoothReservationSlotController {
         BoothReservationSlotResponse response =
                 boothReservationSlotService.createReservationSlot(boothId, request, principal);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PatchMapping("/{boothId}/reservation-slots/{slotId}")
+    public ResponseEntity<BoothReservationSlotResponse> updateReservationSlot(
+            @PathVariable Long boothId,
+            @PathVariable Long slotId,
+            @Valid @RequestBody UpdateBoothReservationSlotRequest request,
+            @AuthenticationPrincipal AuthenticatedMemberDto principal) {
+
+        BoothReservationSlotResponse response =
+                boothReservationSlotService.updateReservationSlot(boothId, slotId, request, principal);
+        return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/{boothId}/reservation-slots/{slotId}/close")
+    public ResponseEntity<BoothReservationSlotResponse> closeReservationSlot(
+            @PathVariable Long boothId,
+            @PathVariable Long slotId,
+            @AuthenticationPrincipal AuthenticatedMemberDto principal) {
+
+        BoothReservationSlotResponse response =
+                boothReservationSlotService.closeReservationSlot(boothId, slotId, principal);
+        return ResponseEntity.ok(response);
     }
 }

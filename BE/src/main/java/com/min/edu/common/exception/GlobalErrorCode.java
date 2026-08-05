@@ -88,7 +88,12 @@ public enum GlobalErrorCode {
     RECRUITMENT_CONCURRENT_MODIFICATION(HttpStatus.CONFLICT, "RECRUITMENT_409_001", "다른 요청에 의해 이미 처리되었습니다. 새로고침 후 다시 시도해주세요."),
     NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND,"NOTIFICATION_404_001","알림을 찾을 수 없습니다.");
 
+
+
+
     private final HttpStatus status;
     private final String code;
     private final String message;
+
+
 }
