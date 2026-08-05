@@ -6,7 +6,11 @@ import org.springframework.http.HttpStatus;
 
 @Getter
 @RequiredArgsConstructor
-public enum GlobalErrorCode {
+public enum GlobalErrorCode implements ErrorCode {
+
+
+
+
 
     KAKAO_MAP_API_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "EVENT_503_001", "카카오 장소 검색 서비스를 이용할 수 없습니다."),
 

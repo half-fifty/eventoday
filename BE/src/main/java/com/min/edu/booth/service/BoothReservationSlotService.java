@@ -42,12 +42,10 @@ public class BoothReservationSlotService {
 
         requireBoothManager(boothId, actor);
 
-        // 유니크 제약 확인 (동시 요청은 아래 save의 DB 제약 위반 처리로 방어)
         if (boothReservationSlotRepository.existsByBoothIdAndStartAt(boothId, request.getStartAt())) {
             throw new BusinessException(GlobalErrorCode.RESERVATION_SLOT_TIME_CONFLICT);
         }
 
-        // startAt < endAt 검증 (같은 경우도 거부)
         if (!request.getStartAt().isBefore(request.getEndAt())) {
             throw new IllegalArgumentException("startAt은 endAt보다 작아야 합니다.");
         }
@@ -76,35 +74,39 @@ public class BoothReservationSlotService {
         return toResponse(saved);
     }
 
+    @Transactional
     public BoothReservationSlotResponse updateReservationSlot(
             Long boothId,
             Long slotId,
             UpdateBoothReservationSlotRequest request,
-            AuthenticatedMemberDto actor) {
+            AuthenticatedMemberDto principal) {
 
-        requireBoothManager(boothId, actor);
+        requireBoothManager(boothId, principal);
 
-        BoothReservationSlot slot = getSlot(boothId, slotId);
+        BoothReservationSlot slot = boothReservationSlotRepository.findByIdWithLock(slotId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
-        // 마감된 시간대는 수정 불가
+        if (!slot.getBoothId().equals(boothId)) {
+            throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
+        }
+
         if (slot.getStatus() == BoothReservationSlotStatus.CLOSED) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
-        // startAt < endAt 검증 (같은 경우도 거부)
-        if (!request.getStartAt().isBefore(request.getEndAt())) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
-        }
-
-        // 이미 예약된 인원보다 정원을 줄일 수 없음
         if (request.getCapacity() < slot.getReservedCount()) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
-        // 자기 자신을 제외한 시간대 중복 확인 (동시 요청은 아래 flush의 DB 제약 위반 처리로 방어)
-        if (boothReservationSlotRepository.existsByBoothIdAndStartAtAndIdNot(
-                boothId, request.getStartAt(), slotId)) {
-            throw new BusinessException(GlobalErrorCode.RESERVATION_SLOT_TIME_CONFLICT);
+        if (!slot.getStartAt().equals(request.getStartAt())) {
+            if (boothReservationSlotRepository.existsByBoothIdAndStartAtAndIdNot(
+                    slot.getBoothId(), request.getStartAt(), slotId)) {
+                throw new BusinessException(GlobalErrorCode.RESERVATION_SLOT_TIME_CONFLICT);
+            }
+        }
+
+        if (!request.getStartAt().isBefore(request.getEndAt())) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
         BoothReservationSlot updated = BoothReservationSlot.builder()
@@ -119,29 +121,25 @@ public class BoothReservationSlotService {
                 .updatedAt(OffsetDateTime.now())
                 .build();
 
-        BoothReservationSlot saved;
-        try {
-            saved = boothReservationSlotRepository.saveAndFlush(updated);
-        } catch (DataIntegrityViolationException e) {
-            if (isSlotUniqueConstraintViolation(e)) {
-                throw new BusinessException(GlobalErrorCode.RESERVATION_SLOT_TIME_CONFLICT, e);
-            }
-            throw e;
-        }
-
+        BoothReservationSlot saved = boothReservationSlotRepository.saveAndFlush(updated);
         return toResponse(saved);
     }
 
+    @Transactional
     public BoothReservationSlotResponse closeReservationSlot(
             Long boothId,
             Long slotId,
-            AuthenticatedMemberDto actor) {
+            AuthenticatedMemberDto principal) {
 
-        requireBoothManager(boothId, actor);
+        requireBoothManager(boothId, principal);
 
-        BoothReservationSlot slot = getSlot(boothId, slotId);
+        BoothReservationSlot slot = boothReservationSlotRepository.findByIdWithLock(slotId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
-        // 이미 마감된 경우 그대로 반환 (멱등 처리)
+        if (!slot.getBoothId().equals(boothId)) {
+            throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
+        }
+
         if (slot.getStatus() == BoothReservationSlotStatus.CLOSED) {
             return toResponse(slot);
         }
@@ -158,17 +156,8 @@ public class BoothReservationSlotService {
                 .updatedAt(OffsetDateTime.now())
                 .build();
 
-        return toResponse(boothReservationSlotRepository.save(closed));
-    }
-
-    private BoothReservationSlot getSlot(Long boothId, Long slotId) {
-        BoothReservationSlot slot = boothReservationSlotRepository.findById(slotId)
-                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
-        // 다른 부스의 슬롯 ID로 접근하는 경우 차단
-        if (!slot.getBoothId().equals(boothId)) {
-            throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
-        }
-        return slot;
+        BoothReservationSlot saved = boothReservationSlotRepository.saveAndFlush(closed);
+        return toResponse(saved);
     }
 
     private BoothReservationSlotResponse toResponse(BoothReservationSlot slot) {

@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/booths")
 public class BoothReservationController {
 
-    private final BoothReservationService reservationService;
+    private final BoothReservationService boothReservationService;
 
     @PostMapping("/{boothId}/reservations")
     public ResponseEntity<BoothReservationResponse> createReservation(
@@ -24,7 +24,7 @@ public class BoothReservationController {
             @RequestBody @Valid CreateBoothReservationRequest request,
             @AuthenticationPrincipal AuthenticatedMemberDto principal) {
 
-        BoothReservationResponse response = reservationService.createReservation(
+        BoothReservationResponse response = boothReservationService.createReservation(
                 boothId, request, principal.getMemberId()
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -36,7 +36,7 @@ public class BoothReservationController {
             @PathVariable Long reservationId,
             @AuthenticationPrincipal AuthenticatedMemberDto principal) {
 
-        reservationService.cancelReservation(reservationId, principal.getMemberId());
+        boothReservationService.cancelReservation(reservationId, boothId, principal.getMemberId());
         return ResponseEntity.noContent().build();
     }
 }
