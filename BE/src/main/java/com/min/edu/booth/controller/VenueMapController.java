@@ -37,9 +37,10 @@ public class VenueMapController {
         return ApiResponse.success(venueMapService.list(eventId, member));
     }
 
-    // 공개 조회: 관람객/부스 모집 화면에서 게시된 평면도만 노출
+    // 공개 조회: 관람객/부스 모집 화면에서 게시된 평면도만 노출.
+    // 같은 mapType이라도 층별로 각각 게시될 수 있어 목록으로 반환한다.
     @GetMapping("/events/{eventId}/venue-maps/public")
-    public ApiResponse<VenueMapResponseDto> getPublished(
+    public ApiResponse<List<VenueMapResponseDto>> getPublished(
             @PathVariable Long eventId,
             @RequestParam VenueMapType mapType) {
         return ApiResponse.success(venueMapService.getPublished(eventId, mapType));

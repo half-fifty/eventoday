@@ -2,6 +2,9 @@ package com.min.edu.booth.service;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,18 +48,16 @@ public class VenueMapService {
         requireEventExists(eventId);
         requireEventManager(eventId, member);
 
-        return venueMapRepository.findByEventIdOrderByFloorNameAscVersionDesc(eventId).stream()
-            .map(this::toResponse)
-            .toList();
+        return toResponses(eventId, venueMapRepository.findByEventIdOrderByFloorNameAscVersionDesc(eventId));
     }
 
+    // 같은 mapType이라도 층(floorName)별로 각각 게시될 수 있으므로, 게시된 모든 층을 반환한다.
     @Transactional(readOnly = true)
-    public VenueMapResponseDto getPublished(Long eventId, VenueMapType mapType) {
-        VenueMap venueMap = venueMapRepository
-            .findFirstByEventIdAndMapTypeAndStatusOrderByVersionDesc(eventId, mapType, VenueMapStatus.PUBLISHED)
-            .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+    public List<VenueMapResponseDto> getPublished(Long eventId, VenueMapType mapType) {
+        List<VenueMap> venueMaps = venueMapRepository
+            .findByEventIdAndMapTypeAndStatusOrderByFloorNameAsc(eventId, mapType, VenueMapStatus.PUBLISHED);
 
-        return toResponse(venueMap);
+        return toResponses(eventId, venueMaps);
     }
 
     @Transactional
@@ -85,7 +86,7 @@ public class VenueMapService {
             .build();
 
         VenueMap saved = venueMapRepository.save(venueMap);
-        return toResponse(saved);
+        return toResponses(eventId, List.of(saved)).get(0);
     }
 
     @Transactional
@@ -100,7 +101,7 @@ public class VenueMapService {
             .ifPresent(previous -> previous.unpublish(now));
 
         venueMap.publish(now);
-        return toResponse(venueMap);
+        return toResponses(eventId, List.of(venueMap)).get(0);
     }
 
     @Transactional
@@ -122,28 +123,33 @@ public class VenueMapService {
         requireEventManager(eventId, member);
         VenueMap venueMap = getByIdAndEventIdOrThrow(mapId, eventId);
 
-        long distinctBoothCount = request.getPositions().stream()
+        List<BoothMapPositionUpsertRequestDto.PositionItem> items = request.getPositions();
+        Set<Long> boothIds = items.stream()
             .map(BoothMapPositionUpsertRequestDto.PositionItem::getBoothId)
-            .distinct()
-            .count();
-        if (distinctBoothCount != request.getPositions().size()) {
+            .collect(Collectors.toSet());
+        if (boothIds.size() != items.size()) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
+        // 부스 하나씩 조회하지 않고 이벤트 소속 부스를 한 번에 조회해 요청에 포함된 모든 boothId가
+        // 실제로 존재하는지 검증한다 (positions가 많을 때의 N+1 방지).
+        Set<Long> existingBoothIds = boothRepository.findByEventIdAndIdIn(eventId, boothIds).stream()
+            .map(Booth::getId)
+            .collect(Collectors.toSet());
+        if (!existingBoothIds.containsAll(boothIds)) {
+            throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
+        }
+
         OffsetDateTime now = OffsetDateTime.now();
-        List<BoothMapPosition> positions = request.getPositions().stream()
-            .map(item -> {
-                boothRepository.findByIdAndEventId(item.getBoothId(), eventId)
-                    .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
-                return BoothMapPosition.builder()
-                    .venueMapId(venueMap.getId())
-                    .boothId(item.getBoothId())
-                    .xRatio(item.getXRatio())
-                    .yRatio(item.getYRatio())
-                    .createdAt(now)
-                    .updatedAt(now)
-                    .build();
-            })
+        List<BoothMapPosition> positions = items.stream()
+            .map(item -> BoothMapPosition.builder()
+                .venueMapId(venueMap.getId())
+                .boothId(item.getBoothId())
+                .xRatio(item.getXRatio())
+                .yRatio(item.getYRatio())
+                .createdAt(now)
+                .updatedAt(now)
+                .build())
             .toList();
 
         // deleteByVenueMapId와 saveAll이 같은 트랜잭션에 있으면 Hibernate가 INSERT를 DELETE보다
@@ -153,36 +159,59 @@ public class VenueMapService {
         boothMapPositionRepository.flush();
         boothMapPositionRepository.saveAll(positions);
 
-        return toResponse(venueMap);
+        return toResponses(eventId, List.of(venueMap)).get(0);
     }
 
-    private VenueMapResponseDto toResponse(VenueMap venueMap) {
-        List<BoothMapPositionResponseDto> positions = boothMapPositionRepository.findByVenueMapId(venueMap.getId()).stream()
-            .map(position -> {
-                Booth booth = boothRepository.findByIdAndEventId(position.getBoothId(), venueMap.getEventId()).orElse(null);
-                return BoothMapPositionResponseDto.builder()
-                    .boothId(position.getBoothId())
-                    .boothCode(booth != null ? booth.getBoothCode() : null)
-                    .displayName(booth != null ? booth.getDisplayName() : null)
-                    .xRatio(position.getXRatio())
-                    .yRatio(position.getYRatio())
+    // venueMap마다 좌표/부스를 개별 조회하면 N+1이 발생하므로, 대상 평면도들의 좌표와
+    // 관련 부스를 각각 한 번씩만 조회해 메모리에서 조립한다.
+    private List<VenueMapResponseDto> toResponses(Long eventId, List<VenueMap> venueMaps) {
+        if (venueMaps.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> mapIds = venueMaps.stream().map(VenueMap::getId).toList();
+        List<BoothMapPosition> allPositions = boothMapPositionRepository.findByVenueMapIdIn(mapIds);
+
+        Set<Long> boothIds = allPositions.stream().map(BoothMapPosition::getBoothId).collect(Collectors.toSet());
+        Map<Long, Booth> boothsById = boothIds.isEmpty()
+            ? Map.of()
+            : boothRepository.findByEventIdAndIdIn(eventId, boothIds).stream()
+                .collect(Collectors.toMap(Booth::getId, booth -> booth));
+
+        Map<Long, List<BoothMapPosition>> positionsByMapId = allPositions.stream()
+            .collect(Collectors.groupingBy(BoothMapPosition::getVenueMapId));
+
+        return venueMaps.stream()
+            .map(venueMap -> {
+                List<BoothMapPositionResponseDto> positions = positionsByMapId
+                    .getOrDefault(venueMap.getId(), List.of()).stream()
+                    .map(position -> {
+                        Booth booth = boothsById.get(position.getBoothId());
+                        return BoothMapPositionResponseDto.builder()
+                            .boothId(position.getBoothId())
+                            .boothCode(booth != null ? booth.getBoothCode() : null)
+                            .displayName(booth != null ? booth.getDisplayName() : null)
+                            .xRatio(position.getXRatio())
+                            .yRatio(position.getYRatio())
+                            .build();
+                    })
+                    .toList();
+
+                return VenueMapResponseDto.builder()
+                    .id(venueMap.getId())
+                    .eventId(venueMap.getEventId())
+                    .mapType(venueMap.getMapType())
+                    .floorName(venueMap.getFloorName())
+                    .imageFileId(venueMap.getImageFileId())
+                    .originalWidth(venueMap.getOriginalWidth())
+                    .originalHeight(venueMap.getOriginalHeight())
+                    .version(venueMap.getVersion())
+                    .status(venueMap.getStatus())
+                    .publishedAt(venueMap.getPublishedAt())
+                    .positions(positions)
                     .build();
             })
             .toList();
-
-        return VenueMapResponseDto.builder()
-            .id(venueMap.getId())
-            .eventId(venueMap.getEventId())
-            .mapType(venueMap.getMapType())
-            .floorName(venueMap.getFloorName())
-            .imageFileId(venueMap.getImageFileId())
-            .originalWidth(venueMap.getOriginalWidth())
-            .originalHeight(venueMap.getOriginalHeight())
-            .version(venueMap.getVersion())
-            .status(venueMap.getStatus())
-            .publishedAt(venueMap.getPublishedAt())
-            .positions(positions)
-            .build();
     }
 
     private VenueMap getByIdAndEventIdOrThrow(Long mapId, Long eventId) {

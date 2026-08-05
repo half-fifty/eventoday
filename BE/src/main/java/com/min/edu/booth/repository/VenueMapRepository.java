@@ -19,7 +19,9 @@ public interface VenueMapRepository extends JpaRepository<VenueMap, Long> {
         Long eventId, VenueMapType mapType, String floorName
     );
 
-    Optional<VenueMap> findFirstByEventIdAndMapTypeAndStatusOrderByVersionDesc(
+    // 같은 mapType이라도 층(floorName)별로 각각 게시될 수 있어, 공개 조회는
+    // 게시된 모든 층을 반환해야 한다 (버전 최고값 한 건만 리턴하면 다른 층이 가려짐).
+    List<VenueMap> findByEventIdAndMapTypeAndStatusOrderByFloorNameAsc(
         Long eventId, VenueMapType mapType, VenueMapStatus status
     );
 

@@ -1,5 +1,6 @@
 package com.min.edu.booth.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -206,7 +207,8 @@ class VenueMapControllerTest {
 
         mockMvc.perform(get("/events/{eventId}/venue-maps/public", eventId)
                 .param("mapType", "VISITOR"))
-            .andExpect(status().isNotFound());
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(0));
 
         mockMvc.perform(patch("/events/{eventId}/venue-maps/{mapId}/publish", eventId, mapId)
                 .header("Authorization", "Bearer " + eventManagerToken))
@@ -216,7 +218,51 @@ class VenueMapControllerTest {
         mockMvc.perform(get("/events/{eventId}/venue-maps/public", eventId)
                 .param("mapType", "VISITOR"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.floorName").value("1층"));
+            .andExpect(jsonPath("$.data.length()").value(1))
+            .andExpect(jsonPath("$.data[0].floorName").value("1층"));
+    }
+
+    @Test
+    void 같은_mapType이라도_층이_다르면_동시에_게시될_수_있다() throws Exception {
+        String firstFloorJson = createMapJson();
+        String secondFloorJson = objectMapper.writeValueAsString(new LinkedHashMap<String, Object>() {{
+            put("mapType", "VISITOR");
+            put("floorName", "2층");
+            put("imageFileId", imageFileId);
+            put("originalWidth", 1200);
+            put("originalHeight", 800);
+        }});
+
+        long firstMapId = createAndPublish(firstFloorJson);
+        long secondMapId = createAndPublish(secondFloorJson);
+
+        mockMvc.perform(get("/events/{eventId}/venue-maps/public", eventId)
+                .param("mapType", "VISITOR"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(2))
+            .andExpect(jsonPath("$.data[0].floorName").value("1층"))
+            .andExpect(jsonPath("$.data[1].floorName").value("2층"));
+
+        assertThat(firstMapId).isNotEqualTo(secondMapId);
+    }
+
+    private long createAndPublish(String createJson) throws Exception {
+        String createResponse = mockMvc.perform(post("/events/{eventId}/venue-maps", eventId)
+                .header("Authorization", "Bearer " + eventManagerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createJson))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        long mapId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
+
+        mockMvc.perform(patch("/events/{eventId}/venue-maps/{mapId}/publish", eventId, mapId)
+                .header("Authorization", "Bearer " + eventManagerToken))
+            .andExpect(status().isOk());
+
+        return mapId;
     }
 
     @Test

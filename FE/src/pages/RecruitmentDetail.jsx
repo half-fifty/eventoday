@@ -7,7 +7,7 @@ import { ApiError } from "../api/apiClient.js";
 import { getPublicRecruitment } from "../api/recruitmentApi.js";
 import { listPublicBooths } from "../api/boothApi.js";
 import { eventApi } from "../api/eventApi.js";
-import { listPublicVenueMap } from "../api/venueMapApi.js";
+import { listPublicVenueMaps } from "../api/venueMapApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
 
 const STATUS_BADGE = {
@@ -42,7 +42,7 @@ export default function RecruitmentDetail() {
   const [loadingMoreBooths, setLoadingMoreBooths] = useState(false);
   const [selectedBooth, setSelectedBooth] = useState(null);
   const [eventLinkAvailable, setEventLinkAvailable] = useState(false);
-  const [venueMap, setVenueMap] = useState(null);
+  const [venueMaps, setVenueMaps] = useState([]);
   const [highlightedBoothId, setHighlightedBoothId] = useState(null);
   // 행사를 전환했을 때 이전 행사의 부스 목록 요청(더 보기 포함)이 늦게 도착해
   // 현재 행사의 상태를 덮어쓰는 것을 막기 위한 세대 가드.
@@ -129,14 +129,14 @@ export default function RecruitmentDetail() {
     if (!recruitment?.eventId) return;
     let cancelled = false;
 
-    setVenueMap(null);
-    // 게시된 평면도가 없는 행사가 대부분이라 404는 정상 상황으로 취급하고 조용히 넘어간다.
-    listPublicVenueMap(recruitment.eventId, "RECRUITMENT")
+    setVenueMaps([]);
+    // 게시된 평면도가 없으면 빈 배열이 정상 응답이므로 별도 에러 처리는 하지 않는다.
+    listPublicVenueMaps(recruitment.eventId, "RECRUITMENT")
       .then((data) => {
-        if (!cancelled) setVenueMap(data);
+        if (!cancelled) setVenueMaps(data ?? []);
       })
       .catch(() => {
-        if (!cancelled) setVenueMap(null);
+        if (!cancelled) setVenueMaps([]);
       });
 
     return () => {
@@ -169,14 +169,17 @@ export default function RecruitmentDetail() {
   // 그런 경우엔 상세 모달 대신 조용히 무시한다.
   const selectBoothFromPin = (boothId) => {
     const booth = booths.find((b) => b.id === boothId);
-    // 아직 로드되지 않은(더 보기 이전) 부스면 하이라이트만 켜고 모달은 못 여는 상태가
-    // 되어 혼란스러우니, 매칭되는 경우에만 반영한다.
-    if (!booth) return;
+    if (!booth) {
+      setBoothError("이 부스는 아직 목록에 없습니다. \"부스 더 보기\"를 눌러 주세요.");
+      return;
+    }
+    setBoothError("");
     setHighlightedBoothId(boothId);
     setSelectedBooth(booth);
   };
 
   const selectBoothFromList = (booth) => {
+    setBoothError("");
     setHighlightedBoothId(booth.id);
     setSelectedBooth(booth);
   };
@@ -265,32 +268,36 @@ export default function RecruitmentDetail() {
                 </div>
               </div>
 
-              {venueMap && (
-                <div className="border-t border-hairline mt-xl pt-lg">
-                  <h4 className="font-body-strong text-body mb-md">부스 배치도 · {venueMap.floorName}</h4>
-                  <div className="bg-white rounded-2xl border border-hairline p-lg">
-                    <div className="relative inline-block max-w-full select-none">
-                      <img
-                        src={fileDownloadUrl(venueMap.imageFileId)}
-                        alt={`${venueMap.floorName} 평면도`}
-                        className="block max-w-full rounded-lg"
-                      />
-                      {venueMap.positions.map((p) => (
-                        <button
-                          key={p.boothId}
-                          type="button"
-                          onClick={() => selectBoothFromPin(p.boothId)}
-                          title={p.displayName || p.boothCode}
-                          className={`absolute w-7 h-7 -ml-3.5 -mt-7 flex items-center justify-center text-white text-[10px] font-bold rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform ${
-                            p.boothId === highlightedBoothId ? "bg-error scale-125" : "bg-primary"
-                          }`}
-                          style={{ left: `${Number(p.xRatio) * 100}%`, top: `${Number(p.yRatio) * 100}%` }}
-                        >
-                          {p.boothCode?.slice(-2) ?? "?"}
-                        </button>
-                      ))}
+              {venueMaps.length > 0 && (
+                <div className="border-t border-hairline mt-xl pt-lg space-y-lg">
+                  {venueMaps.map((venueMap) => (
+                    <div key={venueMap.id}>
+                      <h4 className="font-body-strong text-body mb-md">부스 배치도 · {venueMap.floorName}</h4>
+                      <div className="bg-white rounded-2xl border border-hairline p-lg">
+                        <div className="relative inline-block max-w-full select-none">
+                          <img
+                            src={fileDownloadUrl(venueMap.imageFileId)}
+                            alt={`${venueMap.floorName} 평면도`}
+                            className="block max-w-full rounded-lg"
+                          />
+                          {(venueMap.positions ?? []).map((p) => (
+                            <button
+                              key={p.boothId}
+                              type="button"
+                              onClick={() => selectBoothFromPin(p.boothId)}
+                              title={p.displayName || p.boothCode}
+                              className={`absolute w-7 h-7 -ml-3.5 -mt-7 flex items-center justify-center text-white text-[10px] font-bold rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform ${
+                                p.boothId === highlightedBoothId ? "bg-error scale-125" : "bg-primary"
+                              }`}
+                              style={{ left: `${Number(p.xRatio) * 100}%`, top: `${Number(p.yRatio) * 100}%` }}
+                            >
+                              {p.boothCode?.slice(-2) ?? "?"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
               )}
 

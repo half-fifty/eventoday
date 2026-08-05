@@ -11,7 +11,8 @@ const listVenueMaps = async (eventId) => {
   return response.data;
 };
 
-const listPublicVenueMap = async (eventId, mapType) => {
+// 같은 mapType이라도 층별로 각각 게시될 수 있어 게시된 평면도 목록을 반환한다.
+const listPublicVenueMaps = async (eventId, mapType) => {
   const response = await apiRequest(`/events/${eventId}/venue-maps/public?mapType=${encodeURIComponent(mapType)}`);
   return response.data;
 };
@@ -40,7 +41,7 @@ const upsertPositions = async (eventId, mapId, positions) => {
 
 export {
   listVenueMaps,
-  listPublicVenueMap,
+  listPublicVenueMaps,
   createVenueMap,
   publishVenueMap,
   deleteVenueMap,

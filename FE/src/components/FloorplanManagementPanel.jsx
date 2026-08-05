@@ -17,14 +17,16 @@ const EMPTY_UPLOAD_FORM = { floorName: "", mapType: "VISITOR", file: null };
 const BOOTH_PAGE_SIZE = 100; // BoothService.MAX_PAGE_SIZE
 
 // 부스가 100개를 넘는 행사도 팔레트에 전부 뜨도록, 마지막 페이지까지 순차 조회해 합친다.
+// result.last가 없는 응답이 오더라도 무한 루프에 빠지지 않도록 페이지 상한과
+// "가득 차지 않은 페이지" 조건을 함께 종료 조건으로 둔다.
+const MAX_BOOTH_PAGES = 50; // 방어적 상한 (최대 5,000개 부스)
 const listAllBooths = async (eventId) => {
-  let page = 0;
   let all = [];
-  for (;;) {
+  for (let page = 0; page < MAX_BOOTH_PAGES; page += 1) {
     const result = await listBooths(eventId, { page, size: BOOTH_PAGE_SIZE });
-    all = all.concat(result.content ?? []);
-    if (!result || result.last) break;
-    page += 1;
+    const content = result?.content ?? [];
+    all = all.concat(content);
+    if (!result || result.last || content.length < BOOTH_PAGE_SIZE) break;
   }
   return all;
 };
