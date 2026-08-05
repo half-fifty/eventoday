@@ -65,4 +65,25 @@ public class BoothReservation {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public void updateStatus(BoothReservationStatus status) {
+        this.status = status;
+    }
+
+    public void updateCancelledAt(OffsetDateTime cancelledAt) {
+        this.cancelledAt = cancelledAt;
+    }
+
+    public void updateCheckedInAt(OffsetDateTime checkedInAt) {
+        this.checkedInAt = checkedInAt;
+    }
+
+    public void updateNoShowAt(OffsetDateTime noShowAt) {
+        this.noShowAt = noShowAt;
+    }
+
+    public void updateUpdatedAt(OffsetDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
 }
