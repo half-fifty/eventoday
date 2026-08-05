@@ -138,6 +138,15 @@ public class FileService {
     }
 
     /**
+     * 다른 도메인이 자신의 엔티티에 fileId를 참조로 저장하기 전에,
+     * 해당 회원이 그 파일에 접근 가능한지만 검증한다 (presigned URL은 발급하지 않음).
+     */
+    @Transactional(readOnly = true)
+    public void assertAccessible(Long fileId, Long memberId) {
+        findAndCheckAccess(fileId, memberId);
+    }
+
+    /**
      * 파일을 조회하고 접근 권한을 검증하는 공통 메서드.
      * PRIVATE 파일은 업로드한 본인만 접근 가능하다.
      */

@@ -66,6 +66,8 @@ public class SecurityConfig {
                             .authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/events/*/booth-recruitment").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/events/*/booth-recruitment").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/events/*/booths/public").permitAll()
+                        .requestMatchers("/events/*/booths/**").authenticated()
                         .anyRequest().permitAll())
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo

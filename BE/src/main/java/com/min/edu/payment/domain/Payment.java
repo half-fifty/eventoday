@@ -60,4 +60,43 @@ public class Payment {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public static Payment approved(
+            Long paymentOrderId,
+            String pgProvider,
+            String paymentKey,
+            String method,
+            BigDecimal amount,
+            OffsetDateTime requestedAt,
+            OffsetDateTime approvedAt,
+            OffsetDateTime now) {
+        return Payment.builder()
+            .paymentOrderId(paymentOrderId)
+            .pgProvider(pgProvider)
+            .paymentKey(paymentKey)
+            .method(method)
+            .amount(amount)
+            .status(PaymentStatus.PAID.name())
+            .requestedAt(requestedAt)
+            .approvedAt(approvedAt)
+            .updatedAt(now)
+            .build();
+    }
+
+    public boolean isPaid() {
+        return PaymentStatus.PAID.name().equals(status);
+    }
+
+    public boolean isRefunded() {
+        return PaymentStatus.REFUNDED.name().equals(status);
+    }
+
+    public void markRefunded(OffsetDateTime now) {
+        if (!isPaid()) {
+            throw new IllegalStateException("Payment is not paid.");
+        }
+
+        this.status = PaymentStatus.REFUNDED.name();
+        this.updatedAt = now;
+    }
 }

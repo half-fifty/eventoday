@@ -17,6 +17,7 @@ import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.recruitment.dto.BoothRecruitmentCreateRequestDto;
+import com.min.edu.recruitment.dto.BoothRecruitmentEndAtUpdateRequestDto;
 import com.min.edu.recruitment.dto.BoothRecruitmentResponseDto;
 import com.min.edu.recruitment.dto.BoothRecruitmentUpdateRequestDto;
 import com.min.edu.recruitment.repository.BoothRecruitmentRepository;
@@ -77,11 +78,10 @@ public class BoothRecruitmentService {
             Long eventId,
             BoothRecruitmentUpdateRequestDto request,
             AuthenticatedMemberDto member) {
+        requireEventManager(eventId, member);
         BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
 
-        requireEventManager(eventId, member);
-
-        if (recruitment.getStatus() == BoothRecruitmentStatus.COMPLETED) {
+        if (recruitment.getStatus() != BoothRecruitmentStatus.BEFORE_OPEN) {
             throw new BusinessException(GlobalErrorCode.RECRUITMENT_STATUS_TRANSITION_INVALID);
         }
 
@@ -106,10 +106,32 @@ public class BoothRecruitmentService {
     }
 
     @Transactional
-    public BoothRecruitmentResponseDto close(Long eventId, AuthenticatedMemberDto member) {
+    public BoothRecruitmentResponseDto updateEndAt(
+            Long eventId,
+            BoothRecruitmentEndAtUpdateRequestDto request,
+            AuthenticatedMemberDto member) {
+        requireEventManager(eventId, member);
         BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
 
+        if (recruitment.getStatus() != BoothRecruitmentStatus.OPEN) {
+            throw new BusinessException(GlobalErrorCode.RECRUITMENT_STATUS_TRANSITION_INVALID);
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        validatePeriod(recruitment.getRecruitmentStartAt(), request.getRecruitmentEndAt());
+        if (!request.getRecruitmentEndAt().isAfter(now)) {
+            throw new BusinessException(GlobalErrorCode.RECRUITMENT_PERIOD_INVALID);
+        }
+
+        recruitment.updateEndAt(request.getRecruitmentEndAt(), now);
+
+        return BoothRecruitmentResponseDto.from(recruitment);
+    }
+
+    @Transactional
+    public BoothRecruitmentResponseDto close(Long eventId, AuthenticatedMemberDto member) {
         requireEventManager(eventId, member);
+        BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
 
         if (recruitment.getStatus() != BoothRecruitmentStatus.BEFORE_OPEN
                 && recruitment.getStatus() != BoothRecruitmentStatus.OPEN) {
@@ -123,9 +145,8 @@ public class BoothRecruitmentService {
 
     @Transactional
     public BoothRecruitmentResponseDto complete(Long eventId, AuthenticatedMemberDto member) {
-        BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
-
         requireEventManager(eventId, member);
+        BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
 
         if (recruitment.getStatus() != BoothRecruitmentStatus.CLOSED) {
             throw new BusinessException(GlobalErrorCode.RECRUITMENT_STATUS_TRANSITION_INVALID);
@@ -138,9 +159,8 @@ public class BoothRecruitmentService {
 
     @Transactional
     public void delete(Long eventId, AuthenticatedMemberDto member) {
-        BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
-
         requireEventManager(eventId, member);
+        BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
 
         if (recruitment.getStatus() != BoothRecruitmentStatus.BEFORE_OPEN) {
             throw new BusinessException(GlobalErrorCode.RECRUITMENT_STATUS_TRANSITION_INVALID);
@@ -151,11 +171,8 @@ public class BoothRecruitmentService {
 
     @Transactional(readOnly = true)
     public BoothRecruitmentResponseDto getManagement(Long eventId, AuthenticatedMemberDto member) {
-        BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
-
         requireEventManager(eventId, member);
-
-        return BoothRecruitmentResponseDto.from(recruitment);
+        return BoothRecruitmentResponseDto.from(getByEventIdOrThrow(eventId));
     }
 
     @Transactional(readOnly = true)

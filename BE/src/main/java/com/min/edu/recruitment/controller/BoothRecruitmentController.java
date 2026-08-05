@@ -16,6 +16,7 @@ import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.BoothRecruitmentStatus;
 import com.min.edu.common.response.ApiResponse;
 import com.min.edu.recruitment.dto.BoothRecruitmentCreateRequestDto;
+import com.min.edu.recruitment.dto.BoothRecruitmentEndAtUpdateRequestDto;
 import com.min.edu.recruitment.dto.BoothRecruitmentResponseDto;
 import com.min.edu.recruitment.dto.BoothRecruitmentUpdateRequestDto;
 import com.min.edu.recruitment.service.BoothRecruitmentService;
@@ -69,6 +70,17 @@ public class BoothRecruitmentController {
             @AuthenticationPrincipal AuthenticatedMemberDto member) {
         return ApiResponse.success(
             boothRecruitmentService.update(eventId, request, member)
+        );
+    }
+
+    // REC-API-005b
+    @PatchMapping("/events/{eventId}/booth-recruitment/end-at")
+    public ApiResponse<BoothRecruitmentResponseDto> updateEndAt(
+            @PathVariable Long eventId,
+            @Valid @RequestBody BoothRecruitmentEndAtUpdateRequestDto request,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        return ApiResponse.success(
+            boothRecruitmentService.updateEndAt(eventId, request, member)
         );
     }
 
