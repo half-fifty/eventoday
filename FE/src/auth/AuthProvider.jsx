@@ -36,13 +36,17 @@ const AuthProvider = ({ children }) => {
     refreshMember();
   }, [refreshMember]);
 
+  const clearAuthentication = useCallback(() => {
+    setMember(null);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await requestLogout();
     } finally {
-      setMember(null);
+      clearAuthentication();
     }
-  }, []);
+  }, [clearAuthentication]);
 
   const value = useMemo(() => {
     return {
@@ -50,9 +54,10 @@ const AuthProvider = ({ children }) => {
       loading,
       isAuthenticated: member !== null,
       refreshMember,
+      clearAuthentication,
       logout,
     };
-  }, [member, loading, refreshMember, logout]);
+  }, [clearAuthentication, member, loading, refreshMember, logout]);
 
   return (
     <AuthContext.Provider value={value}>
