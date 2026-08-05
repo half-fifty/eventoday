@@ -36,6 +36,7 @@ dependencies {
     implementation 'org.flywaydb:flyway-database-postgresql'
     implementation 'software.amazon.awssdk:s3:2.26.12'
     implementation 'software.amazon.awssdk:sts:2.26.12'
+    implementation 'org.springframework.boot:spring-boot-starter-kafka'
     compileOnly 'org.projectlombok:lombok'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     runtimeOnly 'org.postgresql:postgresql'

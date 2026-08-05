@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
+import NotificationBell from "../components/NotificationBell.jsx";
 
 const initialBooths = [
   { id: "A01", name: "맛있는 식탁", zone: "A구역 1층", congestion: 62, interest: false, icon: "lunch_dining" },
@@ -73,8 +74,9 @@ export default function EventOngoing() {
       {/* Top Nav */}
       <header className="fixed top-0 w-full h-[44px] z-[100] bg-black flex justify-between items-center px-lg">
         <Link to="/" className="font-hero-display text-tagline text-white">EXPO HUB</Link>
-        <div className="flex gap-sm">
+        <div className="flex items-center gap-sm">
           <button className="text-white/80 hover:text-white transition-colors"><Icon name="search" className="text-[20px]" /></button>
+          <NotificationBell />
           <button onClick={() => setQrSheetOpen(true)} className="text-white/80 hover:text-white transition-colors"><Icon name="qr_code_2" className="text-[20px]" /></button>
         </div>
       </header>

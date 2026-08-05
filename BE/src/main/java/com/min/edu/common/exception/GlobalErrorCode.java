@@ -72,7 +72,6 @@ public enum GlobalErrorCode {
     RECRUITMENT_PERIOD_INVALID(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_001", "모집 종료일은 시작일 이후여야 합니다."),
     RECRUITMENT_ALREADY_EXISTS(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_002", "이미 모집 공고가 등록된 행사입니다."),
     RECRUITMENT_STATUS_TRANSITION_INVALID(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_003", "허용되지 않는 상태 변경입니다."),
-    RECRUITMENT_CONCURRENT_MODIFICATION(HttpStatus.CONFLICT, "RECRUITMENT_409_001", "다른 요청에 의해 이미 처리되었습니다. 새로고침 후 다시 시도해주세요."),
     BOOTH_DELETE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "BOOTH_400_002", "사용 가능 상태인 부스만 삭제할 수 있습니다."),
     BOOTH_NOT_ASSIGNED(HttpStatus.BAD_REQUEST, "BOOTH_400_003", "배정된 부스만 소개를 등록할 수 있습니다."),
     BOOTH_STATUS_TRANSITION_INVALID(HttpStatus.BAD_REQUEST, "BOOTH_400_004", "허용되지 않는 부스 상태 변경입니다."),
@@ -85,7 +84,9 @@ public enum GlobalErrorCode {
     BOOTH_NOT_AVAILABLE(HttpStatus.CONFLICT, "BOOTH_409_003", "해당 부스는 신청 가능한 상태가 아닙니다."),
     BOOTH_APPLICATION_CONFLICT(HttpStatus.CONFLICT, "BOOTH_409_004", "다른 신청에 의해 이미 처리되었습니다. 잠시 후 다시 시도해주세요."),
     APPLICATION_NUMBER_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "BOOTH_500_002", "신청번호 생성에 실패했습니다."),
-    APPLICATION_CANNOT_BE_CANCELLED(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_003", "현재 상태에서는 신청을 취소할 수 없습니다.");
+    APPLICATION_CANNOT_BE_CANCELLED(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_003", "현재 상태에서는 신청을 취소할 수 없습니다."),
+    RECRUITMENT_CONCURRENT_MODIFICATION(HttpStatus.CONFLICT, "RECRUITMENT_409_001", "다른 요청에 의해 이미 처리되었습니다. 새로고침 후 다시 시도해주세요."),
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND,"NOTIFICATION_404_001","알림을 찾을 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;
