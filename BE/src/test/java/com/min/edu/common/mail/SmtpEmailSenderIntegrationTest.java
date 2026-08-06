@@ -9,8 +9,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 
+@EnabledIfEnvironmentVariable(named = "RUN_SMTP_TEST", matches = "true")
 class SmtpEmailSenderIntegrationTest {
 
     @Test
