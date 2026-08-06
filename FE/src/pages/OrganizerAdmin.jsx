@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import RecruitmentManagementPanel from "../components/RecruitmentManagementPanel.jsx";
 import BoothManagementPanel from "../components/BoothManagementPanel.jsx";
+import FloorplanManagementPanel from "../components/FloorplanManagementPanel.jsx";
 import { eventApi } from "../api/eventApi.js";
 import { getManagementRecruitment } from "../api/recruitmentApi.js";
 
@@ -349,18 +350,7 @@ export default function OrganizerAdmin() {
           {page === "assignment" && <BoothManagementPanel eventId={selectedEventId} />}
 
           {/* FLOORPLAN */}
-          {page === "floorplan" && (
-            <section className="space-y-lg">
-              <div className="flex justify-between items-center">
-                <h1 className="font-display-lg text-[26px]">평면도 · 좌표 관리</h1>
-                <button className="px-lg py-sm border border-hairline rounded-full text-caption font-body-strong">평면도 업로드</button>
-              </div>
-              <div className="bg-surface-pearl border-2 border-dashed border-hairline rounded-xl p-xxl text-center text-ink-muted">
-                <Icon name="map" className="text-[32px] block mb-sm" />
-                평면도 이미지가 아직 없습니다. 업로드하면 부스를 드래그해 좌표를 지정할 수 있어요.
-              </div>
-            </section>
-          )}
+          {page === "floorplan" && <FloorplanManagementPanel eventId={selectedEventId} />}
 
           {/* APPROVAL */}
           {page === "approval" && (

@@ -59,4 +59,13 @@ public class BoothReservationSlot {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public void incrementReservedCount(Integer count) {
+        this.reservedCount += count;
+    }
+
+    public void decrementReservedCount(Integer count) {
+        this.reservedCount -= count;
+    }
+
 }

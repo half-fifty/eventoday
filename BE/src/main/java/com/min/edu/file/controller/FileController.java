@@ -86,12 +86,15 @@ public class FileController {
             @PathVariable Long fileId,
             @AuthenticationPrincipal AuthenticatedMemberDto authenticatedMember) {
 
-        String presignedUrl = fileService.getFileDownloadUrl(
-                fileId,
-                authenticatedMember.getMemberId()
-        );
+        // 비로그인 사용자도 PUBLIC 파일은 내려받을 수 있어야 하므로 authenticatedMember가 null일 수 있다.
+        // PRIVATE 파일 접근 제한은 FileService.findAndCheckAccess가 memberId==null을 소유자 불일치로 처리해 계속 막는다.
+        Long memberId = authenticatedMember != null ? authenticatedMember.getMemberId() : null;
+        String presignedUrl = fileService.getFileDownloadUrl(fileId, memberId);
 
+        // 302 응답은 URL을 키로 브라우저에 캐시될 수 있어, no-store가 없으면 같은 기기에서
+        // 계정을 바꿔도 이전 사용자의 PRIVATE 파일 Location이 재사용될 위험이 있다.
         return ResponseEntity.status(HttpStatus.FOUND)
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .header(HttpHeaders.LOCATION, presignedUrl)
                 .build();
     }
