@@ -164,4 +164,15 @@ public class BoothApplication {
         this.reviewedBy = reviewerMemberId;
         this.updatedAt = now;
     }
+
+    /**
+     * 신청 승인 - 상태 APPROVED로 변경, 검토 담당자·검토 시각 기록
+     * reviewedAt은 최종 처리(승인/반려) 시각
+     */
+    public void approve(Long reviewerMemberId, OffsetDateTime now) {
+        this.status = BoothApplicationStatus.APPROVED;
+        this.reviewedBy = reviewerMemberId;
+        this.reviewedAt = now;
+        this.updatedAt = now;
+    }
 }

@@ -231,4 +231,13 @@ public class Booth {
         this.status = BoothStatus.AVAILABLE;
         this.updatedAt = now;
     }
+
+    /**
+     * 신청 승인 시 부스를 ASSIGNED 상태로 변경하고 배정 조직 기록
+     */
+    public void markAsAssigned(Long organizationId, OffsetDateTime now) {
+        this.status = BoothStatus.ASSIGNED;
+        this.assignedOrganizationId = organizationId;
+        this.updatedAt = now;
+    }
 }

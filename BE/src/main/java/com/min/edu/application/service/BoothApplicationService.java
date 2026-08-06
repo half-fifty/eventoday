@@ -240,6 +240,43 @@ public class BoothApplicationService {
         application.startReview(member.getMemberId(), now);
     }
 
+    /**
+     * 신청 승인·부스 배정
+     * - UNDER_REVIEW 상태에서만 APPROVED로 전환 가능
+     * - 부스 상태: APPLICATION_PENDING → ASSIGNED, assignedOrganizationId 기록
+     * - EVENT_MANAGER / PLATFORM_ADMIN만 접근 가능
+     * - 신청서와 부스 변경을 하나의 트랜잭션으로 처리
+     */
+    @Transactional
+    public void approve(Long applicationId, AuthenticatedMemberDto member) {
+
+        // 비관적 락으로 신청 조회 (동시 처리 방지)
+        BoothApplication application = boothApplicationRepository.findByIdWithLock(applicationId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // 해당 신청이 속한 행사의 EVENT_MANAGER인지 검증
+        requireEventManagerOfApplication(application, member);
+
+        // UNDER_REVIEW 상태에서만 승인 가능
+        if (application.getStatus() != BoothApplicationStatus.UNDER_REVIEW) {
+            throw new BusinessException(GlobalErrorCode.APPLICATION_APPROVE_NOT_ALLOWED);
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+
+        // 신청 승인 처리
+        application.approve(member.getMemberId(), now);
+
+        // 부스 상태 ASSIGNED로 변경 + 배정 조직 기록 (비관적 락)
+        Booth booth = boothRepository.findByIdWithLock(application.getBoothId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        booth.markAsAssigned(application.getApplicantOrganizationId(), now);
+
+        log.info("부스 신청 승인 - applicationId: {}, boothId: {}, organizationId: {}, reviewedBy: {}",
+                applicationId, booth.getId(), application.getApplicantOrganizationId(), member.getMemberId());
+    }
+
     /** 신청에 연결된 행사의 EVENT_MANAGER 권한 검증 (예외 발생형) */
     private void requireEventManagerOfApplication(BoothApplication application, AuthenticatedMemberDto member) {
         if (member.getPlatformRole() == PlatformRole.PLATFORM_ADMIN) {

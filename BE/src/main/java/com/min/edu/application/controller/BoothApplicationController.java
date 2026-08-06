@@ -93,4 +93,13 @@ public class BoothApplicationController {
         boothApplicationService.startReview(applicationId, member);
         return ApiResponse.success();
     }
+
+    // APP-API-007: 신청 승인·부스 배정 (EVENT_MANAGER)
+    @PostMapping("/booth-applications/{applicationId}/approval")
+    public ApiResponse<Void> approve(
+            @PathVariable Long applicationId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        boothApplicationService.approve(applicationId, member);
+        return ApiResponse.success();
+    }
 }
