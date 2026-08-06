@@ -155,4 +155,13 @@ public class BoothApplication {
         this.cancelledAt = now;
         this.updatedAt = now;
     }
+
+    /**
+     * 검토 시작 - 상태 UNDER_REVIEW로 변경, 검토 담당자 기록
+     */
+    public void startReview(Long reviewerMemberId, OffsetDateTime now) {
+        this.status = BoothApplicationStatus.UNDER_REVIEW;
+        this.reviewedBy = reviewerMemberId;
+        this.updatedAt = now;
+    }
 }

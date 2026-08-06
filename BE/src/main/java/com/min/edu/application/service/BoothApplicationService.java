@@ -218,6 +218,47 @@ public class BoothApplicationService {
     }
 
     /**
+     * 검토 시작 (APP-API-006)
+     * - SUBMITTED 상태에서만 UNDER_REVIEW로 전환 가능
+     * - EVENT_MANAGER / PLATFORM_ADMIN만 접근 가능
+     */
+    @Transactional
+    public void startReview(Long applicationId, AuthenticatedMemberDto member) {
+
+        BoothApplication application = boothApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // 해당 신청이 속한 행사의 EVENT_MANAGER인지 검증
+        requireEventManagerOfApplication(application, member);
+
+        // SUBMITTED 상태에서만 검토 시작 가능
+        if (application.getStatus() != BoothApplicationStatus.SUBMITTED) {
+            throw new BusinessException(GlobalErrorCode.APPLICATION_REVIEW_NOT_ALLOWED);
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        application.startReview(member.getMemberId(), now);
+    }
+
+    /** 신청에 연결된 행사의 EVENT_MANAGER 권한 검증 (예외 발생형) */
+    private void requireEventManagerOfApplication(BoothApplication application, AuthenticatedMemberDto member) {
+        if (member.getPlatformRole() == PlatformRole.PLATFORM_ADMIN) {
+            return;
+        }
+        boolean isManager = boothRecruitmentRepository.findById(application.getRecruitmentId())
+                .map(recruitment -> eventMemberRepository
+                        .existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
+                                recruitment.getEventId(),
+                                member.getMemberId(),
+                                EventRole.EVENT_MANAGER
+                        ))
+                .orElse(false);
+        if (!isManager) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+    }
+
+    /**
      * 행사 신청 목록·검색
      * - EVENT_MANAGER / PLATFORM_ADMIN만 접근 가능
      * - Specification으로 동적 쿼리 구성 (null 파라미터는 조건에서 제외하여 PostgreSQL 타입 추론 오류 방지)

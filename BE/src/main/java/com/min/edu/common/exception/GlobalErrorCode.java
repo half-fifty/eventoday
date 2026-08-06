@@ -89,6 +89,7 @@ public enum GlobalErrorCode implements ErrorCode {
     BOOTH_APPLICATION_CONFLICT(HttpStatus.CONFLICT, "BOOTH_409_004", "다른 신청에 의해 이미 처리되었습니다. 잠시 후 다시 시도해주세요."),
     APPLICATION_NUMBER_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "BOOTH_500_002", "신청번호 생성에 실패했습니다."),
     APPLICATION_CANNOT_BE_CANCELLED(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_003", "현재 상태에서는 신청을 취소할 수 없습니다."),
+    APPLICATION_REVIEW_NOT_ALLOWED(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_004", "현재 상태에서는 검토를 시작할 수 없습니다."),
     RECRUITMENT_CONCURRENT_MODIFICATION(HttpStatus.CONFLICT, "RECRUITMENT_409_001", "다른 요청에 의해 이미 처리되었습니다. 새로고침 후 다시 시도해주세요."),
     NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND,"NOTIFICATION_404_001","알림을 찾을 수 없습니다.");
 

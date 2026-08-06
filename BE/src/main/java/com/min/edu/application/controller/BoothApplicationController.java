@@ -84,4 +84,13 @@ public class BoothApplicationController {
                         submittedFrom, submittedTo, page, size, member)
         );
     }
+
+    // APP-API-006: 검토 시작 (EVENT_MANAGER)
+    @PostMapping("/booth-applications/{applicationId}/review-start")
+    public ApiResponse<Void> startReview(
+            @PathVariable Long applicationId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        boothApplicationService.startReview(applicationId, member);
+        return ApiResponse.success();
+    }
 }
