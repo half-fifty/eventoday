@@ -20,13 +20,13 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
-        GlobalErrorCode errorCode = e.getErrorCode();
+        ErrorCode errorCode = e.getErrorCode();
         return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidationException(MethodArgumentNotValidException e) {
-        GlobalErrorCode errorCode = GlobalErrorCode.INVALID_INPUT_VALUE;
+        ErrorCode errorCode = GlobalErrorCode.INVALID_INPUT_VALUE;
         String message = e.getBindingResult().getFieldErrors().stream()
             .findFirst()
             .map(fieldError -> fieldError.getDefaultMessage())
