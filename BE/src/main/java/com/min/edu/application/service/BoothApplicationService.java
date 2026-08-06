@@ -3,6 +3,7 @@ package com.min.edu.application.service;
 import com.min.edu.application.dto.BoothApplicationPageResponse;
 import com.min.edu.application.dto.BoothApplicationResponseDto;
 import com.min.edu.application.dto.BoothApplicationSubmitRequestDto;
+import com.min.edu.application.dto.BoothApplicationRejectRequestDto;
 import com.min.edu.application.support.ApplicationNoGenerator;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.Booth;
@@ -275,6 +276,43 @@ public class BoothApplicationService {
 
         log.info("부스 신청 승인 - applicationId: {}, boothId: {}, organizationId: {}, reviewedBy: {}",
                 applicationId, booth.getId(), application.getApplicantOrganizationId(), member.getMemberId());
+    }
+
+    /**
+     * 신청 반려·부스 복원
+     * - UNDER_REVIEW 상태에서만 REJECTED로 전환 가능
+     * - 부스 상태: APPLICATION_PENDING → AVAILABLE 복원
+     * - EVENT_MANAGER / PLATFORM_ADMIN만 접근 가능
+     * - 신청서 반려와 부스 복원을 하나의 트랜잭션으로 처리
+     */
+    @Transactional
+    public void reject(Long applicationId, BoothApplicationRejectRequestDto request, AuthenticatedMemberDto member) {
+
+        // 비관적 락으로 신청 조회 (동시 처리 방지)
+        BoothApplication application = boothApplicationRepository.findByIdWithLock(applicationId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // 해당 신청이 속한 행사의 EVENT_MANAGER인지 검증
+        requireEventManagerOfApplication(application, member);
+
+        // UNDER_REVIEW 상태에서만 반려 가능
+        if (application.getStatus() != BoothApplicationStatus.UNDER_REVIEW) {
+            throw new BusinessException(GlobalErrorCode.APPLICATION_REJECT_NOT_ALLOWED);
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+
+        // 신청 반려 처리
+        application.reject(member.getMemberId(), request.getRejectionReason(), now);
+
+        // 부스 상태 AVAILABLE로 복원 (비관적 락)
+        Booth booth = boothRepository.findByIdWithLock(application.getBoothId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        booth.markAsAvailable(now);
+
+        log.info("부스 신청 반려 - applicationId: {}, boothId: {}, reviewedBy: {}",
+                applicationId, booth.getId(), member.getMemberId());
     }
 
     /** 신청에 연결된 행사의 EVENT_MANAGER 권한 검증 (예외 발생형) */

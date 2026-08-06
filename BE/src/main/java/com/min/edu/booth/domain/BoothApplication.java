@@ -175,4 +175,15 @@ public class BoothApplication {
         this.reviewedAt = now;
         this.updatedAt = now;
     }
+
+    /**
+     * 신청 반려 - 상태 REJECTED로 변경, 반려 사유·검토 담당자·검토 시각 기록
+     */
+    public void reject(Long reviewerMemberId, String rejectionReason, OffsetDateTime now) {
+        this.status = BoothApplicationStatus.REJECTED;
+        this.reviewedBy = reviewerMemberId;
+        this.reviewedAt = now;
+        this.rejectionReason = rejectionReason;
+        this.updatedAt = now;
+    }
 }

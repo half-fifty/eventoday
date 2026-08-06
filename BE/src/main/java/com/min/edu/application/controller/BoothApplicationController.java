@@ -3,6 +3,7 @@ package com.min.edu.application.controller;
 import com.min.edu.application.dto.BoothApplicationResponseDto;
 import com.min.edu.application.dto.BoothApplicationSubmitRequestDto;
 import com.min.edu.application.dto.BoothApplicationPageResponse;
+import com.min.edu.application.dto.BoothApplicationRejectRequestDto;
 import com.min.edu.application.service.BoothApplicationService;
 import com.min.edu.booth.domain.BoothApplicationStatus;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
@@ -100,6 +101,16 @@ public class BoothApplicationController {
             @PathVariable Long applicationId,
             @AuthenticationPrincipal AuthenticatedMemberDto member) {
         boothApplicationService.approve(applicationId, member);
+        return ApiResponse.success();
+    }
+
+    // APP-API-008: 신청 반려·부스 복원 (EVENT_MANAGER)
+    @PostMapping("/booth-applications/{applicationId}/rejection")
+    public ApiResponse<Void> reject(
+            @PathVariable Long applicationId,
+            @Valid @RequestBody BoothApplicationRejectRequestDto request,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        boothApplicationService.reject(applicationId, request, member);
         return ApiResponse.success();
     }
 }
