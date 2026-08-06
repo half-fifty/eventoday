@@ -330,7 +330,7 @@ public class BoothApplicationService {
     @Transactional(readOnly = true)
     public List<BoothApplicationFileResponseDto> listFiles(Long applicationId, AuthenticatedMemberDto member) {
 
-        BoothApplication application = boothApplicationRepository.findById(applicationId)
+        BoothApplication application = boothApplicationRepository.findByIdWithLock(applicationId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
         // getDetail()과 동일한 권한 검증 패턴
@@ -415,7 +415,7 @@ public class BoothApplicationService {
         // boothCode 필터가 있으면 boothId 목록으로 변환
         final List<Long> boothIds;
         if (boothCode != null && !boothCode.isBlank()) {
-            List<Long> ids = boothRepository.findIdsByBoothCodeLike(normalizeKeyword(boothCode));
+            List<Long> ids = boothRepository.findIdsByBoothCodeLike(eventId, normalizeKeyword(boothCode));
             if (ids.isEmpty()) {
                 return new BoothApplicationPageResponse(List.of(), page, size, 0, 0, true, true, true);
             }
@@ -483,7 +483,7 @@ public class BoothApplicationService {
 
     /** 페이지 요청 크기 상한 검증 */
     private void validatePageRequest(int page, int size) {
-        if (size > MAX_PAGE_SIZE) {
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
     }
