@@ -72,12 +72,10 @@ class ExchangeCodeRequestRepositoryTest {
         Long memberId = insertMember("admin-list");
         Long eventOneId = insertEvent("admin-one");
         Long eventTwoId = insertEvent("admin-two");
-        Long requestedOld = insertRequest(eventOneId, memberId, "REQUESTED",
-            OffsetDateTime.parse("2030-08-06T10:00:00+09:00"));
-        Long requestedNew = insertRequest(eventTwoId, memberId, "REQUESTED",
-            OffsetDateTime.parse("2030-08-06T11:00:00+09:00"));
-        insertRequest(eventOneId, memberId, "APPROVED",
-            OffsetDateTime.parse("2030-08-06T12:00:00+09:00"));
+        OffsetDateTime base = OffsetDateTime.now().plusHours(1);
+        Long requestedOld = insertRequest(eventOneId, memberId, "REQUESTED", base);
+        Long requestedNew = insertRequest(eventTwoId, memberId, "REQUESTED", base.plusMinutes(1));
+        insertRequest(eventOneId, memberId, "APPROVED", base.plusMinutes(2));
 
         Page<ExchangeCodeRequestView> page = repository.findAdminRequests(
             ExchangeCodeRequestStatus.REQUESTED,

@@ -1,5 +1,6 @@
 package com.min.edu.admission.controller;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -14,6 +15,7 @@ import com.min.edu.admission.domain.ExchangeCodeRequestStatus;
 import com.min.edu.admission.dto.ExchangeCodeRequestDtos;
 import com.min.edu.admission.service.ExchangeCodeRequestService;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
+import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.common.exception.GlobalExceptionHandler;
 import com.min.edu.member.domain.PlatformRole;
 import java.time.OffsetDateTime;
@@ -179,6 +181,21 @@ class ExchangeCodeRequestControllerTest {
     }
 
     @Test
+    void getEventRequests_returnsBadRequestWhenStatusIsInvalid() throws Exception {
+        mockMvc.perform(get("/events/1/exchange-code-requests")
+                .param("status", "FOO"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value(GlobalErrorCode.INVALID_INPUT_VALUE.getCode()))
+            .andExpect(jsonPath("$.message").value(containsString("status")))
+            .andExpect(jsonPath("$.message").value(containsString("REQUESTED")))
+            .andExpect(jsonPath("$.message").value(containsString("APPROVED")))
+            .andExpect(jsonPath("$.message").value(containsString("REJECTED")))
+            .andExpect(jsonPath("$.message").value(containsString("ISSUED")));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void getRequestDetail_returnsDetail() throws Exception {
         given(service.getRequestDetail(eq(7L), any(AuthenticatedMemberDto.class)))
             .willReturn(response(7L, ExchangeCodeRequestStatus.REQUESTED));
@@ -207,6 +224,20 @@ class ExchangeCodeRequestControllerTest {
             any(AuthenticatedMemberDto.class),
             any(Pageable.class)
         );
+    }
+
+    @Test
+    void getAdminRequests_returnsBadRequestWhenStatusIsInvalid() throws Exception {
+        mockMvc.perform(get("/admin/exchange-code-requests")
+                .param("status", "UNKNOWN"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value(GlobalErrorCode.INVALID_INPUT_VALUE.getCode()))
+            .andExpect(jsonPath("$.message").value(containsString("REQUESTED")))
+            .andExpect(jsonPath("$.message").value(containsString("APPROVED")))
+            .andExpect(jsonPath("$.message").value(containsString("REJECTED")))
+            .andExpect(jsonPath("$.message").value(containsString("ISSUED")));
+
+        verifyNoInteractions(service);
     }
 
     @Test
