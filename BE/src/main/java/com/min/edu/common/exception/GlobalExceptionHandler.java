@@ -8,9 +8,14 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+
+import java.util.Arrays;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -39,6 +44,14 @@ public class GlobalExceptionHandler {
             HttpMessageNotReadableException e) {
         GlobalErrorCode errorCode = GlobalErrorCode.INVALID_INPUT_VALUE;
         return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentTypeMismatchException(
+            MethodArgumentTypeMismatchException e) {
+        GlobalErrorCode errorCode = GlobalErrorCode.INVALID_INPUT_VALUE;
+        String message = buildTypeMismatchMessage(e);
+        return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode, message));
     }
 
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
@@ -73,5 +86,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e) {
         GlobalErrorCode errorCode = GlobalErrorCode.FILE_SIZE_EXCEEDED;
         return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode));
+    }
+
+    private String buildTypeMismatchMessage(MethodArgumentTypeMismatchException e) {
+        String parameterName = Objects.toString(e.getName(), "parameter");
+        String value = Objects.toString(e.getValue(), "");
+        Class<?> requiredType = e.getRequiredType();
+        if (requiredType != null && requiredType.isEnum()) {
+            String allowedValues = Arrays.stream(requiredType.getEnumConstants())
+                .map(Object::toString)
+                .collect(Collectors.joining(", "));
+            return parameterName + " 값이 올바르지 않습니다: " + value + ". 허용 값: " + allowedValues;
+        }
+        return parameterName + " 값이 올바르지 않습니다: " + value;
     }
 }

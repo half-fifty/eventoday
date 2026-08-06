@@ -73,6 +73,10 @@ public class SecurityConfig {
                         .requestMatchers("/events/*/booths/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/events/*/venue-maps/public").permitAll()
                         .requestMatchers("/events/*/venue-maps/**").authenticated()
+                        .requestMatchers("/events/*/exchange-code-requests").authenticated()
+                        .requestMatchers("/exchange-code-requests/**").authenticated()
+                        .requestMatchers("/admin/exchange-code-requests").authenticated()
+                        .requestMatchers("/admin/exchange-code-requests/**").authenticated()
                         .anyRequest().permitAll())
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo
