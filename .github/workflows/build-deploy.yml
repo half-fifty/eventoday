@@ -55,6 +55,8 @@ jobs:
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
           AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
           AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
 
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
@@ -79,6 +81,8 @@ jobs:
             KAKAO_MAP_REST_API_KEY
             AWS_ACCESS_KEY
             AWS_SECRET_KEY
+            SMTP_USERNAME
+            SMTP_PASSWORD
             VITE_API_BASE_URL
             VITE_KAKAO_MAP_JS_KEY
             FRONTEND_URL
@@ -195,6 +199,8 @@ jobs:
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
           AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
           AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
 
         run: |
           set -euo pipefail
@@ -215,6 +221,8 @@ jobs:
             printf 'KAKAO_MAP_REST_API_KEY=%s\n' "${KAKAO_MAP_REST_API_KEY}"
             printf 'AWS_ACCESS_KEY=%s\n' "${AWS_ACCESS_KEY}"
             printf 'AWS_SECRET_KEY=%s\n' "${AWS_SECRET_KEY}"
+            printf 'SMTP_USERNAME=%s\n' "${SMTP_USERNAME}"
+            printf 'SMTP_PASSWORD=%s\n' "${SMTP_PASSWORD}"
           } | sudo kubectl create secret generic eventoday-secret \
             --namespace eventoday \
             --from-env-file=/dev/stdin \
