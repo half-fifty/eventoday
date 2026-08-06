@@ -4,6 +4,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -147,7 +148,9 @@ class BoothRecruitmentControllerTest {
                 .content(createRequestJson()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.eventId").value(eventId))
-            .andExpect(jsonPath("$.data.status").value("BEFORE_OPEN"));
+            .andExpect(jsonPath("$.data.status").value("BEFORE_OPEN"))
+            // 관리 화면용 응답은 행사 요약 정보를 함께 조회하지 않는다 (공개 상세 조회에서만 채워짐).
+            .andExpect(jsonPath("$.data.eventName").value(nullValue()));
     }
 
     @Test
@@ -242,7 +245,10 @@ class BoothRecruitmentControllerTest {
         mockMvc.perform(get("/booth-recruitments/{recruitmentId}", recruitmentId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id").value(recruitmentId))
-            .andExpect(jsonPath("$.data.status").value("CLOSED"));
+            .andExpect(jsonPath("$.data.status").value("CLOSED"))
+            .andExpect(jsonPath("$.data.eventName").value("테스트 박람회"))
+            .andExpect(jsonPath("$.data.eventType").value("EXHIBITION"))
+            .andExpect(jsonPath("$.data.eventVenueName").value("테스트홀"));
     }
 
     @Test

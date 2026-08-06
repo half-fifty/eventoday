@@ -204,6 +204,11 @@ export default function RecruitmentDetail() {
               {(recruitment.eventName || recruitment.eventVenueName) && (
                 <div className="bg-surface-pearl border border-hairline rounded-2xl p-lg mb-lg space-y-1">
                   <h4 className="font-body-strong text-body mb-sm">행사 정보</h4>
+                  {recruitment.eventType && (
+                    <span className="inline-block text-[11px] font-bold px-sm py-0.5 rounded-full bg-primary-container/10 text-primary-focus mb-1">
+                      {recruitment.eventType}
+                    </span>
+                  )}
                   {recruitment.eventName && <p className="font-body-strong text-body-strong">{recruitment.eventName}</p>}
                   {recruitment.eventShortDescription && (
                     <p className="text-caption text-secondary">{recruitment.eventShortDescription}</p>
