@@ -31,16 +31,23 @@ public class BoothNoShowService {
 
         // 2. 각 예약에 대해 노쇼 처리
         for (BoothReservation reservation : expiredReservations) {
-            // 3. 예약 상태 변경: RESERVED → NO_SHOW
+            // 3. 예약 상태 확인 (RESERVED 상태만 처리)
+            if (reservation.getStatus() != BoothReservationStatus.RESERVED) {
+                continue;  // 다른 스레드가 이미 처리했으면 skip
+            }
+
+            // 4. 예약 상태 변경: RESERVED → NO_SHOW (원자적 처리)
             reservation.updateStatus(BoothReservationStatus.NO_SHOW);
             reservation.updateNoShowAt(now);
             reservation.updateUpdatedAt(now);
             reservationRepository.saveAndFlush(reservation);
 
-            // 4. 슬롯 빈자리 복원
-            BoothReservationSlot slot = slotRepository.findById(reservation.getBoothReservationSlotId())
+            // 5. 슬롯 빈자리 복원 (잠금 적용)
+            BoothReservationSlot slot = slotRepository.findByIdWithLock(reservation.getBoothReservationSlotId())
                     .orElse(null);
+
             if (slot != null) {
+                // 상태 변경 성공 후에만 슬롯 감소
                 slot.decrementReservedCount(reservation.getPartySize());
                 slotRepository.saveAndFlush(slot);
             }
