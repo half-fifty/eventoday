@@ -4,6 +4,7 @@ import com.min.edu.application.dto.BoothApplicationResponseDto;
 import com.min.edu.application.dto.BoothApplicationSubmitRequestDto;
 import com.min.edu.application.dto.BoothApplicationPageResponse;
 import com.min.edu.application.dto.BoothApplicationRejectRequestDto;
+import com.min.edu.application.dto.BoothApplicationFileResponseDto;
 import com.min.edu.application.service.BoothApplicationService;
 import com.min.edu.booth.domain.BoothApplicationStatus;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
@@ -112,5 +113,15 @@ public class BoothApplicationController {
             @AuthenticationPrincipal AuthenticatedMemberDto member) {
         boothApplicationService.reject(applicationId, request, member);
         return ApiResponse.success();
+    }
+
+    // APP-API-009: 신청 첨부파일 목록 (ORG_MEMBER / EVENT_MANAGER)
+    @GetMapping("/booth-applications/{applicationId}/files")
+    public ApiResponse<List<BoothApplicationFileResponseDto>> listFiles(
+            @PathVariable Long applicationId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        return ApiResponse.success(
+                boothApplicationService.listFiles(applicationId, member)
+        );
     }
 }

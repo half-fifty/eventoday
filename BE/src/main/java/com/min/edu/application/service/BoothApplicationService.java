@@ -4,6 +4,7 @@ import com.min.edu.application.dto.BoothApplicationPageResponse;
 import com.min.edu.application.dto.BoothApplicationResponseDto;
 import com.min.edu.application.dto.BoothApplicationSubmitRequestDto;
 import com.min.edu.application.dto.BoothApplicationRejectRequestDto;
+import com.min.edu.application.dto.BoothApplicationFileResponseDto;
 import com.min.edu.application.support.ApplicationNoGenerator;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.Booth;
@@ -24,6 +25,8 @@ import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.file.repository.FileAssetRepository;
+import com.min.edu.file.domain.FileAsset;
+import com.min.edu.file.storage.FileStorageService;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
@@ -32,6 +35,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -58,6 +62,7 @@ public class BoothApplicationService {
     private final ApplicationNoGenerator applicationNoGenerator;
     private final EventMemberRepository eventMemberRepository;
     private final EventRepository eventRepository;
+    private final FileStorageService fileStorageService;
 
     /**
      * 부스 신청 제출
@@ -313,6 +318,50 @@ public class BoothApplicationService {
 
         log.info("부스 신청 반려 - applicationId: {}, boothId: {}, reviewedBy: {}",
                 applicationId, booth.getId(), member.getMemberId());
+    }
+
+    /**
+     * 신청 첨부파일 목록 조회
+     * - ORG_MEMBER: 본인 조직의 신청만 조회 가능
+     * - EVENT_MANAGER: 해당 행사 신청 조회 가능
+     * - PLATFORM_ADMIN: 모두 조회 가능
+     * - PRIVATE 파일도 Presigned URL로 접근 가능하도록 FileStorageService 직접 사용
+     */
+    @Transactional(readOnly = true)
+    public List<BoothApplicationFileResponseDto> listFiles(Long applicationId, AuthenticatedMemberDto member) {
+
+        BoothApplication application = boothApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // getDetail()과 동일한 권한 검증 패턴
+        if (member.getPlatformRole() != PlatformRole.PLATFORM_ADMIN
+                && !isOrganizationMember(application.getApplicantOrganizationId(), member.getMemberId())
+                && !isEventManagerOfApplication(application, member.getMemberId())) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+
+        // 신청에 연결된 파일 목록 조회
+        List<BoothApplicationFile> appFiles =
+                boothApplicationFileRepository.findAllByBoothApplicationId(applicationId);
+
+        // fileId 목록으로 FileAsset 일괄 조회 후 Map으로 변환
+        List<Long> fileIds = appFiles.stream()
+                .map(BoothApplicationFile::getFileId)
+                .toList();
+
+        Map<Long, FileAsset> fileAssetMap = fileAssetRepository.findAllById(fileIds)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(FileAsset::getId, f -> f));
+
+        // Presigned URL 생성 후 응답 DTO 조립
+        return appFiles.stream()
+                .filter(f -> fileAssetMap.containsKey(f.getFileId()))
+                .map(f -> {
+                    FileAsset asset = fileAssetMap.get(f.getFileId());
+                    String downloadUrl = fileStorageService.generatePresignedUrl(asset.getStorageKey());
+                    return BoothApplicationFileResponseDto.of(f.getFileType(), asset, downloadUrl);
+                })
+                .toList();
     }
 
     /** 신청에 연결된 행사의 EVENT_MANAGER 권한 검증 (예외 발생형) */
