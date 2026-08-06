@@ -65,6 +65,9 @@ public class BoothRecruitment {
     @Column(name = "notice", columnDefinition = "TEXT")
     private String notice;
 
+    @Column(name = "business_number_required", nullable = false)
+    private boolean businessNumberRequired;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private BoothRecruitmentStatus status;
@@ -95,6 +98,7 @@ public class BoothRecruitment {
             String contactEmail,
             String contactPhone,
             String notice,
+            boolean businessNumberRequired,
             OffsetDateTime now) {
         return BoothRecruitment.builder()
             .eventId(eventId)
@@ -109,6 +113,7 @@ public class BoothRecruitment {
             .contactEmail(contactEmail)
             .contactPhone(contactPhone)
             .notice(notice)
+            .businessNumberRequired(businessNumberRequired)
             .status(BoothRecruitmentStatus.BEFORE_OPEN)
             .createdAt(now)
             .updatedAt(now)
@@ -127,6 +132,7 @@ public class BoothRecruitment {
             String contactEmail,
             String contactPhone,
             String notice,
+            boolean businessNumberRequired,
             OffsetDateTime now) {
         this.title = title;
         this.recruitmentStartAt = recruitmentStartAt;
@@ -139,6 +145,7 @@ public class BoothRecruitment {
         this.contactEmail = contactEmail;
         this.contactPhone = contactPhone;
         this.notice = notice;
+        this.businessNumberRequired = businessNumberRequired;
         this.updatedAt = now;
     }
 

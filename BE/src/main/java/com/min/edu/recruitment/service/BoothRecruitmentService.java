@@ -12,6 +12,7 @@ import com.min.edu.booth.domain.BoothRecruitment;
 import com.min.edu.booth.domain.BoothRecruitmentStatus;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.domain.Event;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventRepository;
@@ -61,6 +62,7 @@ public class BoothRecruitmentService {
             request.getContactEmail(),
             request.getContactPhone(),
             request.getNotice(),
+            request.getBusinessNumberRequired(),
             now
         );
 
@@ -99,6 +101,7 @@ public class BoothRecruitmentService {
             request.getContactEmail(),
             request.getContactPhone(),
             request.getNotice(),
+            request.getBusinessNumberRequired(),
             OffsetDateTime.now()
         );
 
@@ -184,7 +187,9 @@ public class BoothRecruitmentService {
             throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
         }
 
-        return BoothRecruitmentResponseDto.from(recruitment);
+        Event event = eventRepository.findById(recruitment.getEventId()).orElse(null);
+
+        return BoothRecruitmentResponseDto.from(recruitment, event);
     }
 
     @Transactional(readOnly = true)

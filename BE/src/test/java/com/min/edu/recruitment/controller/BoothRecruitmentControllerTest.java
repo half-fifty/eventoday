@@ -263,6 +263,7 @@ class BoothRecruitmentControllerTest {
             put("contactName", "김수정");
             put("contactEmail", "updated@example.com");
             put("contactPhone", "010-9999-8888");
+            put("businessNumberRequired", false);
         }});
 
         mockMvc.perform(patch("/events/{eventId}/booth-recruitment", eventId)
@@ -449,6 +450,7 @@ class BoothRecruitmentControllerTest {
             put("contactName", "홍길동");
             put("contactEmail", "contact@example.com");
             put("contactPhone", "010-1234-5678");
+            put("businessNumberRequired", true);
         }});
     }
 }

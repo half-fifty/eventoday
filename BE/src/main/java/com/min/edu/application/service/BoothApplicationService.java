@@ -28,8 +28,10 @@ import com.min.edu.file.repository.FileAssetRepository;
 import com.min.edu.file.domain.FileAsset;
 import com.min.edu.file.storage.FileStorageService;
 import com.min.edu.member.domain.PlatformRole;
+import com.min.edu.organization.domain.Organization;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
+import com.min.edu.organization.repository.OrganizationRepository;
 import com.min.edu.recruitment.repository.BoothRecruitmentRepository;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -58,6 +60,7 @@ public class BoothApplicationService {
     private final BoothApplicationRepository boothApplicationRepository;
     private final BoothApplicationFileRepository boothApplicationFileRepository;
     private final BoothOrganizationMemberRepository boothOrganizationMemberRepository;
+    private final OrganizationRepository organizationRepository;
     private final FileAssetRepository fileAssetRepository;
     private final ApplicationNoGenerator applicationNoGenerator;
     private final EventMemberRepository eventMemberRepository;
@@ -83,6 +86,15 @@ public class BoothApplicationService {
 
         // 신청자가 해당 조직의 OWNER 또는 MANAGER인지 검증
         requireOrganizationManager(request.getApplicantOrganizationId(), member.getMemberId());
+
+        // 모집 공고가 사업자등록번호를 필수로 요구하면, 신청 조직에 등록된 사업자번호가 있는지 확인
+        if (recruitment.isBusinessNumberRequired()) {
+            Organization organization = organizationRepository.findById(request.getApplicantOrganizationId())
+                    .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+            if (organization.getBusinessNumber() == null || organization.getBusinessNumber().isBlank()) {
+                throw new BusinessException(GlobalErrorCode.BUSINESS_NUMBER_REQUIRED_FOR_APPLICATION);
+            }
+        }
 
         // 부스 조회 (비관적 락 - 동시 신청 충돌 방지)
         Booth booth = boothRepository.findByIdWithLock(request.getBoothId())

@@ -42,4 +42,7 @@ public class BoothRecruitmentCreateRequestDto {
     private String contactPhone;
 
     private String notice;
+
+    @NotNull
+    private Boolean businessNumberRequired;
 }
