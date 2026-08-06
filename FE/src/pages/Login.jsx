@@ -147,7 +147,7 @@ export default function Login() {
               onClick={() => setLoginType("business")}
               className={`h-10 rounded-lg text-caption font-semibold transition-colors ${loginType === "business" ? "bg-white text-black" : "text-white/60 hover:text-white"}`}
             >
-              사업자
+              사업자·단체
             </button>
           </div>
 
@@ -201,7 +201,7 @@ export default function Login() {
           ) : (
             <form onSubmit={handleBusinessLogin} className="space-y-md">
               <label className="block">
-                <span className="mb-xs block text-caption text-white/70">사업자등록번호</span>
+                <span className="mb-xs block text-caption text-white/70">사업자등록번호 / 고유번호</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -212,6 +212,9 @@ export default function Login() {
                   required
                   className="h-[48px] w-full rounded-xl border border-white/20 bg-white/10 px-md text-white outline-none placeholder:text-white/30 focus:border-primary-on-dark"
                 />
+                <span className="mt-xs block text-[12px] leading-relaxed text-white/50">
+                  일반 사업자는 사업자등록번호를, 비영리단체·공공기관은 고유번호를 입력해 주세요.
+                </span>
               </label>
               <label className="block">
                 <span className="mb-xs block text-caption text-white/70">비밀번호</span>
