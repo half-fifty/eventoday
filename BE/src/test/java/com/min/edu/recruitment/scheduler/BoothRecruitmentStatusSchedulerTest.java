@@ -166,6 +166,7 @@ class BoothRecruitmentStatusSchedulerTest {
             "contact@example.com",
             "010-1234-5678",
             null,
+            true,
             OffsetDateTime.now()
         );
     }
