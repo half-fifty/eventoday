@@ -124,6 +124,8 @@ class ExchangeCodeQueryServiceTest {
         assertThat(item.maskedCode()).isEqualTo("A13F************3FCD");
         assertThat(item.source()).isEqualTo(ExchangeCodeDtos.Source.TICKET_ORDER);
         assertThat(item.holderNickname()).isEqualTo("holder");
+        verify(eventMemberRepository, never())
+            .existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(any(), any(), any());
     }
 
     @Test

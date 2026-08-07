@@ -10,6 +10,7 @@ import com.min.edu.admission.dto.ExchangeCodeRequestView;
 import com.min.edu.admission.dto.ExchangeCodeView;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -122,23 +123,28 @@ class ExchangeCodeRequestRepositoryTest {
         Long memberId = insertMember("external-code");
         Long eventId = insertEvent("external-code-event");
         Long requestId = insertRequest(eventId, memberId, "ISSUED", OffsetDateTime.now());
+        OffsetDateTime firstExpiresAt = OffsetDateTime.now().plusDays(10).truncatedTo(ChronoUnit.MICROS);
+        OffsetDateTime secondExpiresAt = firstExpiresAt.plusDays(1);
         Long firstId = insertExchangeCodeForRequest(
             eventId,
             requestId,
             "AAAAAA-AAAAAA-AAAAAA",
-            OffsetDateTime.now().plusDays(1)
+            firstExpiresAt
         );
         Long secondId = insertExchangeCodeForRequest(
             eventId,
             requestId,
             "BBBBBB-BBBBBB-BBBBBB",
-            OffsetDateTime.now().plusDays(1)
+            secondExpiresAt
         );
 
         assertThat(exchangeCodeRepository.countByExchangeCodeRequestId(requestId)).isEqualTo(2);
         assertThat(exchangeCodeRepository.findAllByExchangeCodeRequestIdOrderByIdAsc(requestId))
             .extracting(com.min.edu.admission.domain.ExchangeCode::getId)
             .containsExactly(firstId, secondId);
+        assertThat(exchangeCodeRepository.findAllByExchangeCodeRequestIdOrderByIdAsc(requestId))
+            .extracting(code -> code.getExpiresAt().toInstant())
+            .containsExactly(firstExpiresAt.toInstant(), secondExpiresAt.toInstant());
     }
 
     @Test
@@ -484,7 +490,15 @@ class ExchangeCodeRequestRepositoryTest {
             Long requestId,
             String code,
             OffsetDateTime expiresAt) {
-        return insertExchangeCodeForRequest(eventId, requestId, code, "ISSUED", expiresAt, null);
+        return insertExchangeCodeForRequest(
+            eventId,
+            requestId,
+            code,
+            "ISSUED",
+            OffsetDateTime.now(),
+            expiresAt,
+            null
+        );
     }
 
     private Long insertExchangeCodeForRequest(
@@ -493,6 +507,25 @@ class ExchangeCodeRequestRepositoryTest {
             String code,
             String status,
             OffsetDateTime createdAt,
+            Long holderMemberId) {
+        return insertExchangeCodeForRequest(
+            eventId,
+            requestId,
+            code,
+            status,
+            createdAt,
+            createdAt.plusDays(1),
+            holderMemberId
+        );
+    }
+
+    private Long insertExchangeCodeForRequest(
+            Long eventId,
+            Long requestId,
+            String code,
+            String status,
+            OffsetDateTime createdAt,
+            OffsetDateTime expiresAt,
             Long holderMemberId) {
         OffsetDateTime now = OffsetDateTime.now();
         return jdbcTemplate.queryForObject("""
@@ -509,7 +542,7 @@ class ExchangeCodeRequestRepositoryTest {
             holderMemberId,
             code,
             status,
-            createdAt.plusDays(1),
+            expiresAt,
             createdAt,
             now
         );

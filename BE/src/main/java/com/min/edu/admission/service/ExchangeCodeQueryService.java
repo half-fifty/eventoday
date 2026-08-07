@@ -143,12 +143,16 @@ public class ExchangeCodeQueryService {
                 OrganizationMemberStatus.ACTIVE,
                 MANAGER_ROLES
             );
+        if (organizerManager) {
+            return;
+        }
+
         boolean assigned = eventMemberRepository.existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
             event.getId(),
             actor.getMemberId(),
             EventRole.EVENT_MANAGER
         );
-        if (!organizerManager && !assigned) {
+        if (!assigned) {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
     }
