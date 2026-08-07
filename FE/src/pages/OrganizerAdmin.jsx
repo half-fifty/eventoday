@@ -40,7 +40,7 @@ export default function OrganizerAdmin() {
   const [organizationId, setOrganizationId] = useState(requestedOrganizationId || localStorage.getItem("organizationId") || "");
   const [managedOrganizations, setManagedOrganizations] = useState([]);
   const [managedEvents, setManagedEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState(requestedEventId);
+  const [selectedEventId, setSelectedEventId] = useState("");
   const [eventLoadError, setEventLoadError] = useState("");
   const [submittingEvent, setSubmittingEvent] = useState(false);
   const [publishingEvent, setPublishingEvent] = useState(false);
@@ -74,8 +74,7 @@ export default function OrganizerAdmin() {
         && managedOrganizations.some((org) => String(org.id) === requestedOrganizationId)) {
       setOrganizationId(requestedOrganizationId);
     }
-    if (requestedEventId) setSelectedEventId(requestedEventId);
-  }, [requestedOrganizationId, requestedEventId, managedOrganizations]);
+  }, [requestedOrganizationId, managedOrganizations]);
 
   useEffect(() => {
     if (organizationId) localStorage.setItem("organizationId", organizationId);
@@ -84,16 +83,36 @@ export default function OrganizerAdmin() {
   useEffect(() => {
     if (!organizationId) {
       setManagedEvents([]);
+      setSelectedEventId("");
       return;
     }
+    let active = true;
+    setManagedEvents([]);
+    setSelectedEventId("");
+    setEventLoadError("");
     eventApi.organizationList(organizationId, { size: 100, sort: "createdAt,desc" })
       .then((result) => {
+        if (!active) return;
         const list = result?.data?.content || [];
         setManagedEvents(list);
-        if (!selectedEventId && list.length > 0) setSelectedEventId(String(list[0].id));
       })
-      .catch((error) => setEventLoadError(error.message || "행사 목록을 불러오지 못했습니다."));
+      .catch((error) => {
+        if (active) setEventLoadError(error.message || "행사 목록을 불러오지 못했습니다.");
+      });
+    return () => { active = false; };
   }, [organizationId]);
+
+  useEffect(() => {
+    if (managedEvents.length === 0) {
+      setSelectedEventId("");
+      return;
+    }
+    const requestedEventExists = requestedEventId
+      && managedEvents.some((event) => String(event.id) === requestedEventId);
+    setSelectedEventId(requestedEventExists
+      ? requestedEventId
+      : String(managedEvents[0].id));
+  }, [managedEvents, requestedEventId]);
 
   const selectedEvent = managedEvents.find((event) => String(event.id) === String(selectedEventId));
 
