@@ -77,6 +77,8 @@ public class SecurityConfig {
                         .requestMatchers("/exchange-code-requests/**").authenticated()
                         .requestMatchers("/admin/exchange-code-requests").authenticated()
                         .requestMatchers("/admin/exchange-code-requests/**").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/events/*/exchange-codes").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/members/me/exchange-codes").authenticated()
                         .anyRequest().permitAll())
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo
