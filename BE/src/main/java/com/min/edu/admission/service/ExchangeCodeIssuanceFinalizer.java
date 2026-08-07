@@ -49,13 +49,15 @@ public class ExchangeCodeIssuanceFinalizer {
 
         Event event = eventRepository.findById(request.getEventId())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.EVENT_NOT_FOUND));
+        OffsetDateTime now = OffsetDateTime.now();
+        validateEventNotEnded(event, now);
+
         Member recipient = memberRepository.findById(request.getRequestedBy())
             .orElseThrow(() -> new BusinessException(
                 GlobalErrorCode.EXCHANGE_CODE_REQUEST_RECIPIENT_NOT_FOUND
             ));
         validateRecipientEmail(recipient.getEmail());
 
-        OffsetDateTime now = OffsetDateTime.now();
         List<ExchangeCode> exchangeCodes = createExchangeCodes(request, event, now);
         exchangeCodeRepository.saveAllAndFlush(exchangeCodes);
 
@@ -67,6 +69,50 @@ public class ExchangeCodeIssuanceFinalizer {
         }
 
         transition(() -> request.issue());
+
+        return new ExchangeCodeIssuanceResult(
+            request.getId(),
+            request.getEventId(),
+            event.getName(),
+            request.getRequestedQuantity(),
+            exchangeCodes.size(),
+            recipient.getEmail(),
+            exchangeCodes.stream().map(ExchangeCode::getCode).toList(),
+            event.getEndAt(),
+            request.getStatus(),
+            request.getEmailedAt()
+        );
+    }
+
+    @Transactional
+    public ExchangeCodeIssuanceResult prepareEmailResend(Long requestId) {
+        ExchangeCodeRequest request = exchangeCodeRequestRepository.findByIdForUpdate(requestId)
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.EXCHANGE_CODE_REQUEST_NOT_FOUND));
+
+        validateResendable(request);
+
+        Event event = eventRepository.findById(request.getEventId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.EVENT_NOT_FOUND));
+        Member recipient = memberRepository.findById(request.getRequestedBy())
+            .orElseThrow(() -> new BusinessException(
+                GlobalErrorCode.EXCHANGE_CODE_REQUEST_RECIPIENT_NOT_FOUND
+            ));
+        validateRecipientEmail(recipient.getEmail());
+
+        long existingCount = exchangeCodeRepository.countByExchangeCodeRequestId(requestId);
+        if (existingCount != request.getRequestedQuantity()) {
+            throw new BusinessException(
+                GlobalErrorCode.EXCHANGE_CODE_REQUEST_ISSUANCE_INCONSISTENT
+            );
+        }
+
+        List<ExchangeCode> exchangeCodes =
+            exchangeCodeRepository.findAllByExchangeCodeRequestIdOrderByIdAsc(requestId);
+        if (exchangeCodes.size() != request.getRequestedQuantity()) {
+            throw new BusinessException(
+                GlobalErrorCode.EXCHANGE_CODE_REQUEST_ISSUANCE_INCONSISTENT
+            );
+        }
 
         return new ExchangeCodeIssuanceResult(
             request.getId(),
@@ -98,6 +144,21 @@ public class ExchangeCodeIssuanceFinalizer {
             throw new BusinessException(
                 GlobalErrorCode.EXCHANGE_CODE_REQUEST_ISSUANCE_INCONSISTENT
             );
+        }
+    }
+
+    private void validateResendable(ExchangeCodeRequest request) {
+        if (!request.isIssued()) {
+            throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_REQUEST_INVALID_STATE);
+        }
+        if (request.getEmailedAt() != null) {
+            throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EMAIL_ALREADY_SENT);
+        }
+    }
+
+    private void validateEventNotEnded(Event event, OffsetDateTime now) {
+        if (!event.getEndAt().isAfter(now)) {
+            throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EVENT_ENDED);
         }
     }
 

@@ -94,4 +94,11 @@ public class ExchangeCodeRequestController {
             @AuthenticationPrincipal AuthenticatedMemberDto actor) {
         return ApiResponse.success(exchangeCodeIssuanceService.issue(requestId, actor));
     }
+
+    @PostMapping("/admin/exchange-code-requests/{requestId}/email-resend")
+    public ApiResponse<ExchangeCodeRequestDtos.EmailResendResponse> resendIssueEmail(
+            @PathVariable Long requestId,
+            @AuthenticationPrincipal AuthenticatedMemberDto actor) {
+        return ApiResponse.success(exchangeCodeIssuanceService.resendEmail(requestId, actor));
+    }
 }

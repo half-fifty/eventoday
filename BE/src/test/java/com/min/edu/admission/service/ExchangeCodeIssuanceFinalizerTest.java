@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.min.edu.admission.domain.ExchangeCode;
 import com.min.edu.admission.domain.ExchangeCodeRequest;
@@ -207,6 +209,147 @@ class ExchangeCodeIssuanceFinalizerTest {
             .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_ISSUANCE_INCONSISTENT);
     }
 
+    @Test
+    void issue_failsWhenEventHasEndedBeforeGeneratingCodes() {
+        ExchangeCodeRequest request = request(ExchangeCodeRequestStatus.APPROVED, 1);
+        Event event = event(OffsetDateTime.now().minusSeconds(1));
+        given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
+        given(exchangeCodeRepository.countByExchangeCodeRequestId(7L)).willReturn(0L);
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event));
+
+        assertThatThrownBy(() -> finalizer.issue(7L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EVENT_ENDED);
+
+        assertThat(request.getStatus()).isEqualTo(ExchangeCodeRequestStatus.APPROVED);
+        verifyNoInteractions(memberRepository);
+        verifyNoInteractions(exchangeCodeGenerator);
+        verify(exchangeCodeRepository, never()).saveAllAndFlush(any());
+    }
+
+    @Test
+    void prepareEmailResend_returnsExistingCodesOnly() {
+        ExchangeCodeRequest request = issuedRequest(null, 2);
+        Event event = event();
+        ExchangeCode first = ExchangeCode.createForExchangeCodeRequest(
+            1L,
+            7L,
+            "AAAAAA-AAAAAA-AAAAAA",
+            event.getEndAt(),
+            OffsetDateTime.now()
+        );
+        ExchangeCode second = ExchangeCode.createForExchangeCodeRequest(
+            1L,
+            7L,
+            "BBBBBB-BBBBBB-BBBBBB",
+            event.getEndAt(),
+            OffsetDateTime.now()
+        );
+        given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event));
+        given(memberRepository.findById(10L)).willReturn(Optional.of(member("requester@example.com")));
+        given(exchangeCodeRepository.countByExchangeCodeRequestId(7L)).willReturn(2L);
+        given(exchangeCodeRepository.findAllByExchangeCodeRequestIdOrderByIdAsc(7L))
+            .willReturn(List.of(first, second));
+
+        ExchangeCodeIssuanceResult result = finalizer.prepareEmailResend(7L);
+
+        assertThat(result.codes()).containsExactly(
+            "AAAAAA-AAAAAA-AAAAAA",
+            "BBBBBB-BBBBBB-BBBBBB"
+        );
+        assertThat(result.generatedQuantity()).isEqualTo(2);
+        verifyNoInteractions(exchangeCodeGenerator);
+        verify(exchangeCodeRepository, never()).saveAllAndFlush(any());
+    }
+
+    @Test
+    void prepareEmailResend_failsWhenEmailAlreadySent() {
+        ExchangeCodeRequest request = issuedRequest(OffsetDateTime.now(), 1);
+        given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> finalizer.prepareEmailResend(7L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EMAIL_ALREADY_SENT);
+
+        verifyNoInteractions(exchangeCodeGenerator);
+    }
+
+    @Test
+    void prepareEmailResend_failsWhenRequestIsNotIssued() {
+        ExchangeCodeRequest request = request(ExchangeCodeRequestStatus.APPROVED, 1);
+        given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> finalizer.prepareEmailResend(7L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_INVALID_STATE);
+
+        verifyNoInteractions(exchangeCodeGenerator);
+    }
+
+    @Test
+    void prepareEmailResend_failsWhenRequestIsRequested() {
+        ExchangeCodeRequest request = request(ExchangeCodeRequestStatus.REQUESTED, 1);
+        given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> finalizer.prepareEmailResend(7L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_INVALID_STATE);
+
+        verifyNoInteractions(exchangeCodeGenerator);
+    }
+
+    @Test
+    void prepareEmailResend_failsWhenRequestIsRejected() {
+        ExchangeCodeRequest request = request(ExchangeCodeRequestStatus.REJECTED, 1);
+        given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> finalizer.prepareEmailResend(7L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_INVALID_STATE);
+
+        verifyNoInteractions(exchangeCodeGenerator);
+    }
+
+    @Test
+    void prepareEmailResend_failsWhenCodeCountIsLessThanRequestedQuantity() {
+        ExchangeCodeRequest request = issuedRequest(null, 2);
+        given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event()));
+        given(memberRepository.findById(10L)).willReturn(Optional.of(member("requester@example.com")));
+        given(exchangeCodeRepository.countByExchangeCodeRequestId(7L)).willReturn(1L);
+
+        assertThatThrownBy(() -> finalizer.prepareEmailResend(7L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_ISSUANCE_INCONSISTENT);
+
+        verify(exchangeCodeRepository, never()).findAllByExchangeCodeRequestIdOrderByIdAsc(any());
+        verifyNoInteractions(exchangeCodeGenerator);
+    }
+
+    @Test
+    void prepareEmailResend_failsWhenCodeCountIsMoreThanRequestedQuantity() {
+        ExchangeCodeRequest request = issuedRequest(null, 2);
+        given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event()));
+        given(memberRepository.findById(10L)).willReturn(Optional.of(member("requester@example.com")));
+        given(exchangeCodeRepository.countByExchangeCodeRequestId(7L)).willReturn(3L);
+
+        assertThatThrownBy(() -> finalizer.prepareEmailResend(7L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_ISSUANCE_INCONSISTENT);
+
+        verify(exchangeCodeRepository, never()).findAllByExchangeCodeRequestIdOrderByIdAsc(any());
+        verifyNoInteractions(exchangeCodeGenerator);
+    }
+
     private ExchangeCodeRequest request(ExchangeCodeRequestStatus status, int quantity) {
         return ExchangeCodeRequest.builder()
             .id(7L)
@@ -221,6 +364,11 @@ class ExchangeCodeIssuanceFinalizerTest {
 
     private Event event() {
         OffsetDateTime now = OffsetDateTime.now();
+        return event(now.plusDays(2));
+    }
+
+    private Event event(OffsetDateTime endAt) {
+        OffsetDateTime now = OffsetDateTime.now();
         return Event.builder()
             .id(1L)
             .organizerOrganizationId(100L)
@@ -230,7 +378,7 @@ class ExchangeCodeIssuanceFinalizerTest {
             .venueName("venue")
             .address("address")
             .startAt(now.plusDays(1))
-            .endAt(now.plusDays(2))
+            .endAt(endAt)
             .ticketPrice(BigDecimal.ZERO)
             .ticketTotalQuantity(100)
             .ticketSoldQuantity(0)
@@ -242,6 +390,19 @@ class ExchangeCodeIssuanceFinalizerTest {
             .noShowGraceMinutes(10)
             .createdAt(now)
             .updatedAt(now)
+            .build();
+    }
+
+    private ExchangeCodeRequest issuedRequest(OffsetDateTime emailedAt, int quantity) {
+        return ExchangeCodeRequest.builder()
+            .id(7L)
+            .eventId(1L)
+            .requestedBy(10L)
+            .requestedQuantity(quantity)
+            .purpose("purpose")
+            .status(ExchangeCodeRequestStatus.ISSUED)
+            .emailedAt(emailedAt)
+            .createdAt(OffsetDateTime.now())
             .build();
     }
 

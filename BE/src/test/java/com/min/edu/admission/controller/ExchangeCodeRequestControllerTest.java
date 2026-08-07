@@ -336,6 +336,64 @@ class ExchangeCodeRequestControllerTest {
                 .value(GlobalErrorCode.EXCHANGE_CODE_REQUEST_ALREADY_ISSUED.getCode()));
     }
 
+    @Test
+    void resendIssueEmail_delegatesToServiceWithoutBody() throws Exception {
+        given(issuanceService.resendEmail(eq(7L), any(AuthenticatedMemberDto.class)))
+            .willReturn(new ExchangeCodeRequestDtos.EmailResendResponse(
+                7L,
+                1L,
+                ExchangeCodeRequestStatus.ISSUED,
+                3,
+                3,
+                OffsetDateTime.parse("2026-08-06T10:00:00+09:00")
+            ));
+
+        mockMvc.perform(post("/admin/exchange-code-requests/7/email-resend"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value("200"))
+            .andExpect(jsonPath("$.data.requestId").value(7))
+            .andExpect(jsonPath("$.data.status").value("ISSUED"))
+            .andExpect(jsonPath("$.data.codeCount").value(3))
+            .andExpect(jsonPath("$.data.codes").doesNotExist())
+            .andExpect(jsonPath("$.data.recipientEmail").doesNotExist());
+
+        verify(issuanceService).resendEmail(eq(7L), any(AuthenticatedMemberDto.class));
+    }
+
+    @Test
+    void resendIssueEmail_returnsUnauthorized() throws Exception {
+        willThrow(new BusinessException(GlobalErrorCode.UNAUTHORIZED))
+            .given(issuanceService)
+            .resendEmail(eq(7L), any(AuthenticatedMemberDto.class));
+
+        mockMvc.perform(post("/admin/exchange-code-requests/7/email-resend"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value(GlobalErrorCode.UNAUTHORIZED.getCode()));
+    }
+
+    @Test
+    void resendIssueEmail_returnsForbidden() throws Exception {
+        willThrow(new BusinessException(GlobalErrorCode.FORBIDDEN))
+            .given(issuanceService)
+            .resendEmail(eq(7L), any(AuthenticatedMemberDto.class));
+
+        mockMvc.perform(post("/admin/exchange-code-requests/7/email-resend"))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value(GlobalErrorCode.FORBIDDEN.getCode()));
+    }
+
+    @Test
+    void resendIssueEmail_returnsConflictWhenAlreadySent() throws Exception {
+        willThrow(new BusinessException(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EMAIL_ALREADY_SENT))
+            .given(issuanceService)
+            .resendEmail(eq(7L), any(AuthenticatedMemberDto.class));
+
+        mockMvc.perform(post("/admin/exchange-code-requests/7/email-resend"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code")
+                .value(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EMAIL_ALREADY_SENT.getCode()));
+    }
+
     private ExchangeCodeRequestDtos.Response response(
             Long requestId,
             ExchangeCodeRequestStatus status) {

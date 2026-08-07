@@ -26,6 +26,14 @@ public final class ExchangeCodeRequestDtos {
             Integer generatedQuantity,
             OffsetDateTime emailedAt) {}
 
+    public record EmailResendResponse(
+            Long requestId,
+            Long eventId,
+            ExchangeCodeRequestStatus status,
+            Integer requestedQuantity,
+            Integer codeCount,
+            OffsetDateTime emailedAt) {}
+
     public record CreateResponse(
             Long requestId,
             Long eventId,

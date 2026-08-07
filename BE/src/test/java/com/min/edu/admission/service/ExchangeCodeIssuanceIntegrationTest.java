@@ -148,6 +148,106 @@ class ExchangeCodeIssuanceIntegrationTest {
         assertThat(emailSender.sentCount()).isEqualTo(1);
     }
 
+    @Test
+    void issue_failsWhenEventHasEndedAndKeepsRequestApproved() {
+        Long adminId = insertMember("ended-admin", "PLATFORM_ADMIN", "admin-ended@example.com");
+        Long requesterId = insertMember("ended-requester", "USER", "requester-ended@example.com");
+        Long eventId = insertEvent("ended-event", OffsetDateTime.now().minusSeconds(1));
+        Long requestId = insertApprovedRequest(eventId, requesterId, 2);
+
+        assertThatThrownBy(() -> service.issue(requestId, admin(adminId)))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EVENT_ENDED);
+
+        assertThat(countCodes(requestId)).isZero();
+        assertThat(status(requestId)).isEqualTo("APPROVED");
+        assertThat(emailedAt(requestId)).isNull();
+        assertThat(emailSender.sentCount()).isZero();
+    }
+
+    @Test
+    void resendEmail_sendsExistingCodesAndOnlyMarksEmailed() {
+        Long adminId = insertMember("resend-admin", "PLATFORM_ADMIN", "admin-resend@example.com");
+        Long requesterId = insertMember("resend-requester", "USER", "requester-resend@example.com");
+        Long eventId = insertEvent("resend-event");
+        Long requestId = insertIssuedRequest(eventId, requesterId, 2, null);
+        Long firstCodeId = insertExchangeCodeForRequest(
+            eventId,
+            requestId,
+            "RESEND-AAAAAA-AAAAAA"
+        );
+        Long secondCodeId = insertExchangeCodeForRequest(
+            eventId,
+            requestId,
+            "RESEND-BBBBBB-BBBBBB"
+        );
+
+        service.resendEmail(requestId, admin(adminId));
+
+        assertThat(codeIds(requestId)).containsExactly(firstCodeId, secondCodeId);
+        assertThat(codes(requestId)).containsExactly(
+            "RESEND-AAAAAA-AAAAAA",
+            "RESEND-BBBBBB-BBBBBB"
+        );
+        assertThat(countCodes(requestId)).isEqualTo(2);
+        assertThat(status(requestId)).isEqualTo("ISSUED");
+        assertThat(emailedAt(requestId)).isNotNull();
+        assertThat(emailSender.sentCount()).isEqualTo(1);
+        assertThat(emailSender.lastMessage().content()).contains("RESEND-AAAAAA-AAAAAA");
+    }
+
+    @Test
+    void resendEmail_failsWhenEmailAlreadySent() {
+        Long adminId = insertMember("resent-admin", "PLATFORM_ADMIN", "admin-resent@example.com");
+        Long requesterId = insertMember("resent-requester", "USER", "requester-resent@example.com");
+        Long eventId = insertEvent("resent-event");
+        Long requestId = insertIssuedRequest(eventId, requesterId, 1, OffsetDateTime.now());
+        insertExchangeCodeForRequest(eventId, requestId, "RESENT-AAAAAA-AAAAAA");
+
+        assertThatThrownBy(() -> service.resendEmail(requestId, admin(adminId)))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EMAIL_ALREADY_SENT);
+
+        assertThat(emailSender.sentCount()).isZero();
+    }
+
+    @Test
+    void resendEmail_failsWhenCodeCountDoesNotMatch() {
+        Long adminId = insertMember("resend-count-admin", "PLATFORM_ADMIN", "admin-resend-count@example.com");
+        Long requesterId = insertMember("resend-count-requester", "USER", "requester-resend-count@example.com");
+        Long eventId = insertEvent("resend-count-event");
+        Long requestId = insertIssuedRequest(eventId, requesterId, 2, null);
+        insertExchangeCodeForRequest(eventId, requestId, "COUNT-AAAAAA-AAAAAA");
+
+        assertThatThrownBy(() -> service.resendEmail(requestId, admin(adminId)))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_ISSUANCE_INCONSISTENT);
+
+        assertThat(emailSender.sentCount()).isZero();
+    }
+
+    @Test
+    void resendEmail_keepsIssuedCodesWhenEmailSendingFails() {
+        Long adminId = insertMember("resend-fail-admin", "PLATFORM_ADMIN", "admin-resend-fail@example.com");
+        Long requesterId = insertMember("resend-fail-requester", "USER", "requester-resend-fail@example.com");
+        Long eventId = insertEvent("resend-fail-event");
+        Long requestId = insertIssuedRequest(eventId, requesterId, 1, null);
+        insertExchangeCodeForRequest(eventId, requestId, "FAIL-AAAAAA-AAAAAA");
+        emailSender.failNext();
+
+        assertThatThrownBy(() -> service.resendEmail(requestId, admin(adminId)))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EMAIL_SEND_FAILED);
+
+        assertThat(countCodes(requestId)).isEqualTo(1);
+        assertThat(status(requestId)).isEqualTo("ISSUED");
+        assertThat(emailedAt(requestId)).isNull();
+    }
+
     private Boolean runIssuance(IssuanceAction action) throws Exception {
         try {
             action.run();
@@ -178,6 +278,11 @@ class ExchangeCodeIssuanceIntegrationTest {
     }
 
     private Long insertEvent(String name) {
+        OffsetDateTime now = OffsetDateTime.now();
+        return insertEvent(name, now.plusDays(2));
+    }
+
+    private Long insertEvent(String name, OffsetDateTime endAt) {
         OffsetDateTime now = OffsetDateTime.now();
         Long organizationId = jdbcTemplate.queryForObject("""
             INSERT INTO organizations (
@@ -213,7 +318,7 @@ class ExchangeCodeIssuanceIntegrationTest {
             organizationId,
             name,
             now.plusDays(1),
-            now.plusDays(2),
+            endAt,
             now,
             now
         );
@@ -239,6 +344,51 @@ class ExchangeCodeIssuanceIntegrationTest {
         );
     }
 
+    private Long insertIssuedRequest(
+            Long eventId,
+            Long memberId,
+            int quantity,
+            OffsetDateTime emailedAt) {
+        OffsetDateTime now = OffsetDateTime.now();
+        return jdbcTemplate.queryForObject("""
+            INSERT INTO exchange_code_requests (
+                event_id, requested_by, requested_quantity, purpose,
+                status, reviewed_by, reviewed_at, emailed_at, created_at
+            )
+            VALUES (?, ?, ?, 'purpose', 'ISSUED', ?, ?, ?, ?)
+            RETURNING id
+            """,
+            Long.class,
+            eventId,
+            memberId,
+            quantity,
+            memberId,
+            now,
+            emailedAt,
+            now
+        );
+    }
+
+    private Long insertExchangeCodeForRequest(Long eventId, Long requestId, String code) {
+        OffsetDateTime now = OffsetDateTime.now();
+        return jdbcTemplate.queryForObject("""
+            INSERT INTO exchange_codes (
+                event_id, exchange_code_request_id, code, status,
+                expires_at, created_at, updated_at
+            )
+            VALUES (?, ?, ?, 'ISSUED', ?, ?, ?)
+            RETURNING id
+            """,
+            Long.class,
+            eventId,
+            requestId,
+            code,
+            now.plusDays(1),
+            now,
+            now
+        );
+    }
+
     private long countCodes(Long requestId) {
         return jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM exchange_codes WHERE exchange_code_request_id = ?",
@@ -259,6 +409,22 @@ class ExchangeCodeIssuanceIntegrationTest {
         return jdbcTemplate.queryForObject(
             "SELECT emailed_at FROM exchange_code_requests WHERE id = ?",
             OffsetDateTime.class,
+            requestId
+        );
+    }
+
+    private List<Long> codeIds(Long requestId) {
+        return jdbcTemplate.queryForList(
+            "SELECT id FROM exchange_codes WHERE exchange_code_request_id = ? ORDER BY id ASC",
+            Long.class,
+            requestId
+        );
+    }
+
+    private List<String> codes(Long requestId) {
+        return jdbcTemplate.queryForList(
+            "SELECT code FROM exchange_codes WHERE exchange_code_request_id = ? ORDER BY id ASC",
+            String.class,
             requestId
         );
     }

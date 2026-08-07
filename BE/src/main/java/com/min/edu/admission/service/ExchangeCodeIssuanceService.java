@@ -53,6 +53,29 @@ public class ExchangeCodeIssuanceService {
         );
     }
 
+    public ExchangeCodeRequestDtos.EmailResendResponse resendEmail(
+            Long requestId,
+            AuthenticatedMemberDto actor) {
+        requireAdmin(actor);
+
+        ExchangeCodeIssuanceResult result = issuanceFinalizer.prepareEmailResend(requestId);
+        emailSender.send(new EmailMessage(
+            result.recipientEmail(),
+            ISSUANCE_EMAIL_SUBJECT,
+            buildEmailContent(result)
+        ));
+        OffsetDateTime emailedAt = emailRecorder.markEmailed(result.requestId());
+
+        return new ExchangeCodeRequestDtos.EmailResendResponse(
+            result.requestId(),
+            result.eventId(),
+            result.status(),
+            result.requestedQuantity(),
+            result.generatedQuantity(),
+            emailedAt
+        );
+    }
+
     private void requireAdmin(AuthenticatedMemberDto actor) {
         if (actor == null) {
             throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);

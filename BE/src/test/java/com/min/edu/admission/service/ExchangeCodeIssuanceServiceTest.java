@@ -136,6 +136,107 @@ class ExchangeCodeIssuanceServiceTest {
         verify(emailSender).send(any(EmailMessage.class));
     }
 
+    @Test
+    void resendEmail_sendsExistingCodesAndReturnsResponseWithoutCodes() {
+        ExchangeCodeIssuanceResult result = result(
+            "행사 <테스트> & \"EVENT\"",
+            "ABCDEF-123456-7890AB"
+        );
+        OffsetDateTime emailedAt = OffsetDateTime.now();
+        given(issuanceFinalizer.prepareEmailResend(7L)).willReturn(result);
+        given(emailRecorder.markEmailed(7L)).willReturn(emailedAt);
+
+        ExchangeCodeRequestDtos.EmailResendResponse response = service.resendEmail(
+            7L,
+            admin()
+        );
+
+        assertThat(response.requestId()).isEqualTo(7L);
+        assertThat(response.eventId()).isEqualTo(1L);
+        assertThat(response.status()).isEqualTo(ExchangeCodeRequestStatus.ISSUED);
+        assertThat(response.requestedQuantity()).isEqualTo(1);
+        assertThat(response.codeCount()).isEqualTo(1);
+        assertThat(response.emailedAt()).isEqualTo(emailedAt);
+
+        ArgumentCaptor<EmailMessage> captor = ArgumentCaptor.forClass(EmailMessage.class);
+        verify(emailSender).send(captor.capture());
+        assertThat(captor.getValue().to()).isEqualTo("requester@example.com");
+        assertThat(captor.getValue().content()).contains("ABCDEF-123456-7890AB");
+        assertThat(captor.getValue().content())
+            .contains("행사 &lt;테스트&gt; &amp; &quot;EVENT&quot;");
+        verify(emailRecorder).markEmailed(7L);
+    }
+
+    @Test
+    void resendEmail_failsWhenUnauthenticatedBeforeLookup() {
+        assertThatThrownBy(() -> service.resendEmail(999L, null))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.UNAUTHORIZED);
+
+        verify(issuanceFinalizer, never()).prepareEmailResend(any());
+    }
+
+    @Test
+    void resendEmail_failsWhenActorIsNotAdmin() {
+        assertThatThrownBy(() -> service.resendEmail(
+            7L,
+            new AuthenticatedMemberDto(10L, PlatformRole.USER)
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.FORBIDDEN);
+
+        verify(issuanceFinalizer, never()).prepareEmailResend(any());
+    }
+
+    @Test
+    void resendEmail_doesNotMarkEmailedWhenEmailSendingFails() {
+        ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
+        given(issuanceFinalizer.prepareEmailResend(7L)).willReturn(result);
+        org.mockito.BDDMockito.willThrow(new BusinessException(GlobalErrorCode.EMAIL_SEND_FAILED))
+            .given(emailSender)
+            .send(any(EmailMessage.class));
+
+        assertThatThrownBy(() -> service.resendEmail(7L, admin()))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EMAIL_SEND_FAILED);
+
+        verify(emailRecorder, never()).markEmailed(any());
+    }
+
+    @Test
+    void resendEmail_propagatesAlreadySentConflictBeforeSendingEmail() {
+        given(issuanceFinalizer.prepareEmailResend(7L))
+            .willThrow(new BusinessException(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EMAIL_ALREADY_SENT));
+
+        assertThatThrownBy(() -> service.resendEmail(7L, admin()))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EMAIL_ALREADY_SENT);
+
+        verify(emailSender, never()).send(any());
+        verify(emailRecorder, never()).markEmailed(any());
+    }
+
+    @Test
+    void resendEmail_propagatesRecorderFailureAfterEmailSent() {
+        ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
+        given(issuanceFinalizer.prepareEmailResend(7L)).willReturn(result);
+        org.mockito.BDDMockito.willThrow(new BusinessException(
+                GlobalErrorCode.EXCHANGE_CODE_REQUEST_INVALID_STATE))
+            .given(emailRecorder)
+            .markEmailed(7L);
+
+        assertThatThrownBy(() -> service.resendEmail(7L, admin()))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_INVALID_STATE);
+
+        verify(emailSender).send(any(EmailMessage.class));
+    }
+
     private ExchangeCodeIssuanceResult result(String eventName, String code) {
         return new ExchangeCodeIssuanceResult(
             7L,

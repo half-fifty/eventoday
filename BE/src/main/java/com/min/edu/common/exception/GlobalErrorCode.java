@@ -12,6 +12,8 @@ public enum GlobalErrorCode implements ErrorCode {
     EXCHANGE_CODE_REQUEST_ISSUANCE_INCONSISTENT(HttpStatus.CONFLICT, "ADMISSION_409_006", "교환 코드 발급 데이터가 일치하지 않습니다."),
     EXCHANGE_CODE_REQUEST_RECIPIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "ADMISSION_404_002", "교환 코드 발급 메일 수신자를 찾을 수 없습니다."),
     EXCHANGE_CODE_REQUEST_RECIPIENT_EMAIL_MISSING(HttpStatus.CONFLICT, "ADMISSION_409_007", "교환 코드 발급 메일 수신자 이메일이 없습니다."),
+    EXCHANGE_CODE_REQUEST_EVENT_ENDED(HttpStatus.CONFLICT, "ADMISSION_409_008", "종료된 행사에는 교환 코드를 발급할 수 없습니다."),
+    EXCHANGE_CODE_REQUEST_EMAIL_ALREADY_SENT(HttpStatus.CONFLICT, "ADMISSION_409_009", "이미 교환 코드 발급 메일을 발송했습니다."),
 
 
 
