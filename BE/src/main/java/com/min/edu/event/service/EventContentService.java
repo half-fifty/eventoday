@@ -77,6 +77,33 @@ public class EventContentService {
     }
 
     /**
+     * 공지·자료 상세 조회
+     *
+     * 권한별 audience 접근 제어:
+     * - PLATFORM_ADMIN / 해당 행사 EVENT_MANAGER → audience 제한 없음
+     * - 그 외 → ALL audience 콘텐츠만 접근 가능 (EXHIBITOR·VISITOR는 403)
+     *
+     * @param contentId 콘텐츠 ID
+     * @param member    인증 회원 (비로그인이면 null)
+     */
+    public EventContentDtos.Summary getContent(Long contentId, AuthenticatedMemberDto member) {
+
+        // 콘텐츠 조회
+        EventContent content = eventContentRepository.findById(contentId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // 접근 가능한 audience 목록 결정 후 권한 검증
+        List<EventContentAudience> allowedAudiences =
+                resolveAllowedAudiences(content.getEventId(), member);
+
+        if (!allowedAudiences.contains(content.getAudience())) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+
+        return EventContentDtos.Summary.from(content);
+    }
+
+    /**
      * 권한에 따른 조회 가능 audience 목록 결정
      * - PLATFORM_ADMIN / 해당 행사 EVENT_MANAGER: 전체 audience (ALL, EXHIBITOR, VISITOR)
      * - 그 외: ALL만

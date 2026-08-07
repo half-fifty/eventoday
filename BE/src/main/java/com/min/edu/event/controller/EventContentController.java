@@ -29,4 +29,14 @@ public class EventContentController {
                 eventContentService.listContents(eventId, contentType, member)
         );
     }
+
+    // CONTENT-API-002: 공지·자료 상세
+    @GetMapping("/event-contents/{contentId}")
+    public ApiResponse<EventContentDtos.Summary> getContent(
+            @PathVariable Long contentId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        return ApiResponse.success(
+                eventContentService.getContent(contentId, member)
+        );
+    }
 }
