@@ -6,7 +6,6 @@ import Icon from "../components/Icon.jsx";
 import { ApiError } from "../api/apiClient.js";
 import { getPublicRecruitment } from "../api/recruitmentApi.js";
 import { listPublicBooths } from "../api/boothApi.js";
-import { eventApi } from "../api/eventApi.js";
 import { listPublicVenueMaps } from "../api/venueMapApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
 
@@ -41,7 +40,6 @@ export default function RecruitmentDetail() {
   const [boothHasMore, setBoothHasMore] = useState(false);
   const [loadingMoreBooths, setLoadingMoreBooths] = useState(false);
   const [selectedBooth, setSelectedBooth] = useState(null);
-  const [eventLinkAvailable, setEventLinkAvailable] = useState(false);
   const [venueMaps, setVenueMaps] = useState([]);
   const [venueMapError, setVenueMapError] = useState("");
   const [highlightedBoothId, setHighlightedBoothId] = useState(null);
@@ -149,25 +147,6 @@ export default function RecruitmentDetail() {
     };
   }, [recruitment?.eventId]);
 
-  useEffect(() => {
-    if (!recruitment?.eventId) return;
-    let cancelled = false;
-
-    setEventLinkAvailable(false);
-    // 공개 행사 상세는 PUBLISHED 상태에서만 조회 가능하므로, 조회 성공할 때만 링크를 노출한다.
-    eventApi.detail(recruitment.eventId)
-      .then(() => {
-        if (!cancelled) setEventLinkAvailable(true);
-      })
-      .catch(() => {
-        if (!cancelled) setEventLinkAvailable(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [recruitment?.eventId]);
-
   const badge = recruitment ? STATUS_BADGE[recruitment.status] ?? { label: recruitment.status, cls: "bg-surface-container" } : null;
 
   // 평면도 핀은 게시된 위치 목록 기준이라, 아직 로드되지 않은(더 보기 이전) 부스일 수도 있다.
@@ -214,28 +193,55 @@ export default function RecruitmentDetail() {
                 <Icon name="campaign" className="text-[56px] opacity-90" />
               </div>
 
-              <div className="flex items-start justify-between gap-sm flex-wrap mb-sm">
-                <span className={`inline-block text-[12px] font-bold px-md py-1 rounded-full ${badge.cls}`}>
-                  {badge.label}
-                </span>
-                {eventLinkAvailable && (
-                  <Link
-                    to={`/events/${recruitment.eventId}`}
-                    className="inline-flex items-center gap-1 text-caption text-primary font-body-strong border border-hairline rounded-full px-md py-1 hover:bg-surface-container transition-colors"
-                  >
-                    행사 상세 보기 <Icon name="arrow_forward" className="text-[14px]" />
-                  </Link>
-                )}
-              </div>
+              <span className={`inline-block text-[12px] font-bold px-md py-1 rounded-full mb-sm ${badge.cls}`}>
+                {badge.label}
+              </span>
               <h1 className="font-display-lg text-[26px] mb-sm">{recruitment.title}</h1>
               <p className="text-caption text-ink-muted mb-lg">
                 모집 기간 {formatDateTime(recruitment.recruitmentStartAt)} – {formatDateTime(recruitment.recruitmentEndAt)}
               </p>
 
+              {(recruitment.eventName || recruitment.eventVenueName) && (
+                <div className="bg-surface-pearl border border-hairline rounded-2xl p-lg mb-lg space-y-1">
+                  <h4 className="font-body-strong text-body mb-sm">행사 정보</h4>
+                  {recruitment.eventType && (
+                    <span className="inline-block text-[11px] font-bold px-sm py-0.5 rounded-full bg-primary-container/10 text-primary-focus mb-1">
+                      {recruitment.eventType}
+                    </span>
+                  )}
+                  {recruitment.eventName && <p className="font-body-strong text-body-strong">{recruitment.eventName}</p>}
+                  {recruitment.eventShortDescription && (
+                    <p className="text-caption text-secondary">{recruitment.eventShortDescription}</p>
+                  )}
+                  <p className="text-caption text-ink-muted">
+                    {[recruitment.eventVenueName, recruitment.eventAddress].filter(Boolean).join(" · ")}
+                  </p>
+                  {(recruitment.eventStartAt || recruitment.eventEndAt) && (
+                    <p className="text-caption text-ink-muted">
+                      행사 기간 {formatDateTime(recruitment.eventStartAt)} – {formatDateTime(recruitment.eventEndAt)}
+                    </p>
+                  )}
+                  {recruitment.eventDescription && (
+                    <p className="text-caption text-secondary whitespace-pre-line mt-sm">{recruitment.eventDescription}</p>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-lg">
                 <div className="md:col-span-2 space-y-lg">
                   <div className="border-t border-hairline pt-md">
-                    <h4 className="font-body-strong text-body mb-sm">참가 대상</h4>
+                    <div className="flex items-center justify-between gap-sm mb-sm">
+                      <h4 className="font-body-strong text-body">참가 대상</h4>
+                      <span
+                        className={`inline-flex items-center gap-1 text-[11px] font-bold px-sm py-1 rounded-full ${
+                          recruitment.businessNumberRequired
+                            ? "bg-primary-container/10 text-primary-focus"
+                            : "bg-surface-container-highest text-secondary"
+                        }`}
+                      >
+                        사업자등록번호 {recruitment.businessNumberRequired ? "필수 O" : "필수 X"}
+                      </span>
+                    </div>
                     <p className="font-body text-caption text-secondary">{recruitment.participantTarget}</p>
                   </div>
                   {recruitment.qualification && (

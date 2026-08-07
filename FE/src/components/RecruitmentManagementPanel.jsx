@@ -34,6 +34,7 @@ const EMPTY_FORM = {
   contactEmail: "",
   contactPhone: "",
   notice: "",
+  businessNumberRequired: true,
 };
 
 export default function RecruitmentManagementPanel({ eventId }) {
@@ -59,6 +60,7 @@ export default function RecruitmentManagementPanel({ eventId }) {
       contactEmail: data.contactEmail ?? "",
       contactPhone: data.contactPhone ?? "",
       notice: data.notice ?? "",
+      businessNumberRequired: data.businessNumberRequired ?? true,
     });
   };
 
@@ -270,6 +272,18 @@ export default function RecruitmentManagementPanel({ eventId }) {
                     disabled={otherFieldsDisabled}
                     className="border border-hairline rounded-lg px-md py-sm md:col-span-2 disabled:opacity-50 disabled:bg-surface-muted"
                   />
+                  <div>
+                    <label className="text-caption text-ink-muted block mb-1">사업자등록번호 필수 여부</label>
+                    <select
+                      value={form.businessNumberRequired ? "O" : "X"}
+                      onChange={(e) => setForm({ ...form, businessNumberRequired: e.target.value === "O" })}
+                      disabled={otherFieldsDisabled}
+                      className="border border-hairline rounded-lg px-md py-sm w-full bg-white disabled:opacity-50 disabled:bg-surface-muted"
+                    >
+                      <option value="O">O (필수)</option>
+                      <option value="X">X (필수 아님)</option>
+                    </select>
+                  </div>
                   <input
                     placeholder="자격 요건 (선택)"
                     value={form.qualification}

@@ -58,4 +58,13 @@ public interface BoothRepository extends JpaRepository<Booth, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT b FROM Booth b WHERE b.id = :id")
     Optional<Booth> findByIdWithLock(@Param("id") Long id);
+
+    // boothCode LIKE 검색으로 해당 행사의 부스 ID 목록 조회 (APP-API-005 boothCode 필터용)
+    @Query("SELECT b.id FROM Booth b "
+            + "WHERE b.eventId = :eventId "
+            + "AND LOWER(b.boothCode) LIKE :boothCode ESCAPE '!'")
+    List<Long> findIdsByBoothCodeLike(
+            @Param("eventId") Long eventId,
+            @Param("boothCode") String boothCode
+    );
 }
