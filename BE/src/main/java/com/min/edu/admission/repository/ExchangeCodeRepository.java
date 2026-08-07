@@ -13,5 +13,9 @@ public interface ExchangeCodeRepository extends JpaRepository<ExchangeCode, Long
 
     List<ExchangeCode> findAllByTicketOrderIdOrderByIdAsc(Long ticketOrderId);
 
+    List<ExchangeCode> findAllByExchangeCodeRequestIdOrderByIdAsc(Long exchangeCodeRequestId);
+
+    long countByExchangeCodeRequestId(Long exchangeCodeRequestId);
+
     boolean existsByTicketOrderIdAndStatus(Long ticketOrderId, ExchangeCodeStatus status);
 }

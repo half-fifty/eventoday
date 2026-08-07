@@ -18,6 +18,14 @@ public final class ExchangeCodeRequestDtos {
 
     public record RejectionRequest(@NotBlank @Size(max = 2000) String reason) {}
 
+    public record IssuanceResponse(
+            Long requestId,
+            Long eventId,
+            ExchangeCodeRequestStatus status,
+            Integer requestedQuantity,
+            Integer generatedQuantity,
+            OffsetDateTime emailedAt) {}
+
     public record CreateResponse(
             Long requestId,
             Long eventId,

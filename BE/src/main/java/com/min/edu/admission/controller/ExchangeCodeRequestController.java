@@ -2,6 +2,7 @@ package com.min.edu.admission.controller;
 
 import com.min.edu.admission.domain.ExchangeCodeRequestStatus;
 import com.min.edu.admission.dto.ExchangeCodeRequestDtos;
+import com.min.edu.admission.service.ExchangeCodeIssuanceService;
 import com.min.edu.admission.service.ExchangeCodeRequestService;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.response.ApiResponse;
@@ -21,9 +22,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class ExchangeCodeRequestController {
 
     private final ExchangeCodeRequestService exchangeCodeRequestService;
+    private final ExchangeCodeIssuanceService exchangeCodeIssuanceService;
 
-    public ExchangeCodeRequestController(ExchangeCodeRequestService exchangeCodeRequestService) {
+    public ExchangeCodeRequestController(
+            ExchangeCodeRequestService exchangeCodeRequestService,
+            ExchangeCodeIssuanceService exchangeCodeIssuanceService) {
         this.exchangeCodeRequestService = exchangeCodeRequestService;
+        this.exchangeCodeIssuanceService = exchangeCodeIssuanceService;
     }
 
     @PostMapping("/events/{eventId}/exchange-code-requests")
@@ -81,5 +86,12 @@ public class ExchangeCodeRequestController {
             @AuthenticationPrincipal AuthenticatedMemberDto actor) {
         exchangeCodeRequestService.rejectRequest(requestId, request.reason(), actor);
         return ApiResponse.success();
+    }
+
+    @PostMapping("/admin/exchange-code-requests/{requestId}/issuance")
+    public ApiResponse<ExchangeCodeRequestDtos.IssuanceResponse> issueRequest(
+            @PathVariable Long requestId,
+            @AuthenticationPrincipal AuthenticatedMemberDto actor) {
+        return ApiResponse.success(exchangeCodeIssuanceService.issue(requestId, actor));
     }
 }

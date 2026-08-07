@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.min.edu.TestcontainersConfiguration;
 import com.min.edu.admission.domain.ExchangeCodeRequestStatus;
 import com.min.edu.admission.dto.ExchangeCodeRequestView;
+import com.min.edu.admission.repository.ExchangeCodeRepository;
 import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,9 @@ class ExchangeCodeRequestRepositoryTest {
 
     @Autowired
     private ExchangeCodeRequestRepository repository;
+
+    @Autowired
+    private ExchangeCodeRepository exchangeCodeRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -111,6 +115,88 @@ class ExchangeCodeRequestRepositoryTest {
             .isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    @Test
+    void exchangeCodesForRequest_passXorCheckAndCanBeCountedAndListed() {
+        Long memberId = insertMember("external-code");
+        Long eventId = insertEvent("external-code-event");
+        Long requestId = insertRequest(eventId, memberId, "ISSUED", OffsetDateTime.now());
+        Long firstId = insertExchangeCodeForRequest(
+            eventId,
+            requestId,
+            "AAAAAA-AAAAAA-AAAAAA",
+            OffsetDateTime.now().plusDays(1)
+        );
+        Long secondId = insertExchangeCodeForRequest(
+            eventId,
+            requestId,
+            "BBBBBB-BBBBBB-BBBBBB",
+            OffsetDateTime.now().plusDays(1)
+        );
+
+        assertThat(exchangeCodeRepository.countByExchangeCodeRequestId(requestId)).isEqualTo(2);
+        assertThat(exchangeCodeRepository.findAllByExchangeCodeRequestIdOrderByIdAsc(requestId))
+            .extracting(com.min.edu.admission.domain.ExchangeCode::getId)
+            .containsExactly(firstId, secondId);
+    }
+
+    @Test
+    void exchangeCodesXorCheck_failsWhenBothSourcesAreNull() {
+        Long eventId = insertEvent("xor-null");
+
+        assertThatThrownBy(() -> jdbcTemplate.update("""
+            INSERT INTO exchange_codes (
+                event_id, code, status, created_at, updated_at
+            )
+            VALUES (?, 'CCCCCC-CCCCCC-CCCCCC', 'ISSUED', ?, ?)
+            """,
+            eventId,
+            OffsetDateTime.now(),
+            OffsetDateTime.now()
+        )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void exchangeCodesXorCheck_failsWhenBothSourcesArePresent() {
+        Long memberId = insertMember("xor-both");
+        Long eventId = insertEvent("xor-both-event");
+        Long requestId = insertRequest(eventId, memberId, "ISSUED", OffsetDateTime.now());
+        Long ticketOrderId = insertTicketOrder(eventId);
+
+        assertThatThrownBy(() -> jdbcTemplate.update("""
+            INSERT INTO exchange_codes (
+                event_id, exchange_code_request_id, ticket_order_id,
+                code, status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, 'DDDDDD-DDDDDD-DDDDDD', 'ISSUED', ?, ?)
+            """,
+            eventId,
+            requestId,
+            ticketOrderId,
+            OffsetDateTime.now(),
+            OffsetDateTime.now()
+        )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void exchangeCodesCodeUniqueConstraint_rejectsDuplicateCode() {
+        Long memberId = insertMember("code-unique");
+        Long eventId = insertEvent("code-unique-event");
+        Long requestId = insertRequest(eventId, memberId, "ISSUED", OffsetDateTime.now());
+        insertExchangeCodeForRequest(
+            eventId,
+            requestId,
+            "EEEEEE-EEEEEE-EEEEEE",
+            OffsetDateTime.now().plusDays(1)
+        );
+
+        assertThatThrownBy(() -> insertExchangeCodeForRequest(
+            eventId,
+            requestId,
+            "EEEEEE-EEEEEE-EEEEEE",
+            OffsetDateTime.now().plusDays(1)
+        )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
     private Long insertMember(String suffix) {
         OffsetDateTime now = OffsetDateTime.now();
         return jdbcTemplate.queryForObject("""
@@ -190,6 +276,62 @@ class ExchangeCodeRequestRepositoryTest {
             memberId,
             status,
             createdAt
+        );
+    }
+
+    private Long insertExchangeCodeForRequest(
+            Long eventId,
+            Long requestId,
+            String code,
+            OffsetDateTime expiresAt) {
+        OffsetDateTime now = OffsetDateTime.now();
+        return jdbcTemplate.queryForObject("""
+            INSERT INTO exchange_codes (
+                event_id, exchange_code_request_id, code, status,
+                expires_at, created_at, updated_at
+            )
+            VALUES (?, ?, ?, 'ISSUED', ?, ?, ?)
+            RETURNING id
+            """,
+            Long.class,
+            eventId,
+            requestId,
+            code,
+            expiresAt,
+            now,
+            now
+        );
+    }
+
+    private Long insertTicketOrder(Long eventId) {
+        OffsetDateTime now = OffsetDateTime.now();
+        Long paymentOrderId = jdbcTemplate.queryForObject("""
+            INSERT INTO payment_orders (
+                order_no, order_type, total_amount, status, created_at, updated_at
+            )
+            VALUES (?, 'EVENT_TICKET', 0, 'PAID', ?, ?)
+            RETURNING id
+            """,
+            Long.class,
+            "order-" + eventId + "-" + System.nanoTime(),
+            now,
+            now
+        );
+
+        return jdbcTemplate.queryForObject("""
+            INSERT INTO ticket_orders (
+                payment_order_id, event_id, unit_price, total_quantity,
+                status, confirmed_at, created_at, updated_at
+            )
+            VALUES (?, ?, 0, 1, 'CONFIRMED', ?, ?, ?)
+            RETURNING id
+            """,
+            Long.class,
+            paymentOrderId,
+            eventId,
+            now,
+            now,
+            now
         );
     }
 }
