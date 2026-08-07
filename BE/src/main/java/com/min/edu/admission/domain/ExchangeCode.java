@@ -79,6 +79,23 @@ public class ExchangeCode {
             .build();
     }
 
+    public static ExchangeCode createForExchangeCodeRequest(
+            Long eventId,
+            Long exchangeCodeRequestId,
+            String code,
+            OffsetDateTime expiresAt,
+            OffsetDateTime now) {
+        return ExchangeCode.builder()
+            .eventId(eventId)
+            .exchangeCodeRequestId(exchangeCodeRequestId)
+            .code(code)
+            .status(ExchangeCodeStatus.ISSUED)
+            .expiresAt(expiresAt)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+    }
+
     public boolean isRedeemed() {
         return status == ExchangeCodeStatus.REDEEMED;
     }

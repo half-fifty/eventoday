@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -13,8 +14,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.min.edu.admission.domain.ExchangeCodeRequestStatus;
 import com.min.edu.admission.dto.ExchangeCodeRequestDtos;
+import com.min.edu.admission.service.ExchangeCodeIssuanceService;
 import com.min.edu.admission.service.ExchangeCodeRequestService;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
+import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.common.exception.GlobalExceptionHandler;
 import com.min.edu.member.domain.PlatformRole;
@@ -37,13 +40,15 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 class ExchangeCodeRequestControllerTest {
 
     private ExchangeCodeRequestService service;
+    private ExchangeCodeIssuanceService issuanceService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         service = org.mockito.Mockito.mock(ExchangeCodeRequestService.class);
+        issuanceService = org.mockito.Mockito.mock(ExchangeCodeIssuanceService.class);
         mockMvc = MockMvcBuilders
-            .standaloneSetup(new ExchangeCodeRequestController(service))
+            .standaloneSetup(new ExchangeCodeRequestController(service, issuanceService))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setCustomArgumentResolvers(
                 authenticationPrincipalResolver(),
@@ -293,6 +298,100 @@ class ExchangeCodeRequestControllerTest {
             eq("not enough detail"),
             any(AuthenticatedMemberDto.class)
         );
+    }
+
+    @Test
+    void issueRequest_delegatesToServiceWithoutBody() throws Exception {
+        given(issuanceService.issue(eq(7L), any(AuthenticatedMemberDto.class)))
+            .willReturn(new ExchangeCodeRequestDtos.IssuanceResponse(
+                7L,
+                1L,
+                ExchangeCodeRequestStatus.ISSUED,
+                3,
+                3,
+                OffsetDateTime.parse("2026-08-06T10:00:00+09:00")
+            ));
+
+        mockMvc.perform(post("/admin/exchange-code-requests/7/issuance"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value("200"))
+            .andExpect(jsonPath("$.data.requestId").value(7))
+            .andExpect(jsonPath("$.data.status").value("ISSUED"))
+            .andExpect(jsonPath("$.data.generatedQuantity").value(3))
+            .andExpect(jsonPath("$.data.codes").doesNotExist())
+            .andExpect(jsonPath("$.data.recipientEmail").doesNotExist());
+
+        verify(issuanceService).issue(eq(7L), any(AuthenticatedMemberDto.class));
+    }
+
+    @Test
+    void issueRequest_returnsConflictWhenAlreadyIssued() throws Exception {
+        willThrow(new BusinessException(GlobalErrorCode.EXCHANGE_CODE_REQUEST_ALREADY_ISSUED))
+            .given(issuanceService)
+            .issue(eq(7L), any(AuthenticatedMemberDto.class));
+
+        mockMvc.perform(post("/admin/exchange-code-requests/7/issuance"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code")
+                .value(GlobalErrorCode.EXCHANGE_CODE_REQUEST_ALREADY_ISSUED.getCode()));
+    }
+
+    @Test
+    void resendIssueEmail_delegatesToServiceWithoutBody() throws Exception {
+        given(issuanceService.resendEmail(eq(7L), any(AuthenticatedMemberDto.class)))
+            .willReturn(new ExchangeCodeRequestDtos.EmailResendResponse(
+                7L,
+                1L,
+                ExchangeCodeRequestStatus.ISSUED,
+                3,
+                3,
+                OffsetDateTime.parse("2026-08-06T10:00:00+09:00")
+            ));
+
+        mockMvc.perform(post("/admin/exchange-code-requests/7/email-resend"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value("200"))
+            .andExpect(jsonPath("$.data.requestId").value(7))
+            .andExpect(jsonPath("$.data.status").value("ISSUED"))
+            .andExpect(jsonPath("$.data.codeCount").value(3))
+            .andExpect(jsonPath("$.data.codes").doesNotExist())
+            .andExpect(jsonPath("$.data.recipientEmail").doesNotExist());
+
+        verify(issuanceService).resendEmail(eq(7L), any(AuthenticatedMemberDto.class));
+    }
+
+    @Test
+    void resendIssueEmail_returnsUnauthorized() throws Exception {
+        willThrow(new BusinessException(GlobalErrorCode.UNAUTHORIZED))
+            .given(issuanceService)
+            .resendEmail(eq(7L), any(AuthenticatedMemberDto.class));
+
+        mockMvc.perform(post("/admin/exchange-code-requests/7/email-resend"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value(GlobalErrorCode.UNAUTHORIZED.getCode()));
+    }
+
+    @Test
+    void resendIssueEmail_returnsForbidden() throws Exception {
+        willThrow(new BusinessException(GlobalErrorCode.FORBIDDEN))
+            .given(issuanceService)
+            .resendEmail(eq(7L), any(AuthenticatedMemberDto.class));
+
+        mockMvc.perform(post("/admin/exchange-code-requests/7/email-resend"))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value(GlobalErrorCode.FORBIDDEN.getCode()));
+    }
+
+    @Test
+    void resendIssueEmail_returnsConflictWhenAlreadySent() throws Exception {
+        willThrow(new BusinessException(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EMAIL_ALREADY_SENT))
+            .given(issuanceService)
+            .resendEmail(eq(7L), any(AuthenticatedMemberDto.class));
+
+        mockMvc.perform(post("/admin/exchange-code-requests/7/email-resend"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code")
+                .value(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EMAIL_ALREADY_SENT.getCode()));
     }
 
     private ExchangeCodeRequestDtos.Response response(
