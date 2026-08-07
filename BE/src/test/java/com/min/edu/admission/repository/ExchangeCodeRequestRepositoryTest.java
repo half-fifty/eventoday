@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.min.edu.TestcontainersConfiguration;
+import com.min.edu.admission.domain.ExchangeCodeStatus;
 import com.min.edu.admission.domain.ExchangeCodeRequestStatus;
 import com.min.edu.admission.dto.ExchangeCodeRequestView;
+import com.min.edu.admission.dto.ExchangeCodeView;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
 import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
@@ -197,6 +199,204 @@ class ExchangeCodeRequestRepositoryTest {
         )).isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    @Test
+    void findEventExchangeCodes_returnsBothSourcesWithHolderNullableAndSorted() {
+        Long holderId = insertMember("event-code-holder");
+        Long requesterId = insertMember("event-code-requester");
+        Long eventId = insertEvent("event-code-list");
+        Long otherEventId = insertEvent("event-code-list-other");
+        Long ticketOrderId = insertTicketOrder(eventId);
+        Long otherTicketOrderId = insertTicketOrder(otherEventId);
+        Long requestId = insertRequest(eventId, requesterId, "ISSUED", OffsetDateTime.now());
+        OffsetDateTime old = OffsetDateTime.now().plusHours(1);
+        OffsetDateTime latest = old.plusMinutes(1);
+        Long oldTicketCodeId = insertExchangeCodeForTicketOrder(
+            eventId,
+            ticketOrderId,
+            holderId,
+            "900001-900001-900001",
+            "ISSUED",
+            old
+        );
+        Long latestLowId = insertExchangeCodeForRequest(
+            eventId,
+            requestId,
+            "900002-900002-900002",
+            "REDEEMED",
+            latest,
+            null
+        );
+        Long latestHighId = insertExchangeCodeForTicketOrder(
+            eventId,
+            ticketOrderId,
+            holderId,
+            "900003-900003-900003",
+            "ISSUED",
+            latest
+        );
+        Long otherEventMyCodeId = insertExchangeCodeForTicketOrder(
+            otherEventId,
+            otherTicketOrderId,
+            holderId,
+            "900012-900012-900012",
+            "ISSUED",
+            latest.plusMinutes(1)
+        );
+
+        Page<ExchangeCodeView> page = exchangeCodeRepository.findEventExchangeCodes(
+            eventId,
+            null,
+            PageRequest.of(0, 10)
+        );
+
+        assertThat(page.getTotalElements()).isEqualTo(3);
+        assertThat(page.getContent())
+            .extracting(ExchangeCodeView::getExchangeCodeId)
+            .containsExactly(latestHighId, latestLowId, oldTicketCodeId);
+        assertThat(page.getContent().get(0).getEventName()).isEqualTo("event-code-list");
+        assertThat(page.getContent().get(0).getHolderNickname()).isEqualTo("nick-event-code-holder");
+        assertThat(page.getContent().get(1).getHolderNickname()).isNull();
+        assertThat(page.getContent().get(1).getExchangeCodeRequestId()).isEqualTo(requestId);
+    }
+
+    @Test
+    void findEventExchangeCodes_filtersByStatusAndCountMatchesContent() {
+        Long holderId = insertMember("event-code-filter-holder");
+        Long requesterId = insertMember("event-code-filter-requester");
+        Long eventId = insertEvent("event-code-filter");
+        Long ticketOrderId = insertTicketOrder(eventId);
+        Long requestId = insertRequest(eventId, requesterId, "ISSUED", OffsetDateTime.now());
+        insertExchangeCodeForTicketOrder(
+            eventId,
+            ticketOrderId,
+            holderId,
+            "900004-900004-900004",
+            "ISSUED",
+            OffsetDateTime.now()
+        );
+        insertExchangeCodeForRequest(
+            eventId,
+            requestId,
+            "900005-900005-900005",
+            "REDEEMED",
+            OffsetDateTime.now().plusMinutes(1),
+            null
+        );
+
+        Page<ExchangeCodeView> page = exchangeCodeRepository.findEventExchangeCodes(
+            eventId,
+            ExchangeCodeStatus.REDEEMED,
+            PageRequest.of(0, 1)
+        );
+
+        assertThat(page.getTotalElements()).isEqualTo(1);
+        assertThat(page.getContent()).hasSize(1);
+        assertThat(page.getContent().get(0).getStatus()).isEqualTo(ExchangeCodeStatus.REDEEMED);
+    }
+
+    @Test
+    void findMyExchangeCodes_returnsOnlyCurrentHolderAndExcludesNullHolder() {
+        Long holderId = insertMember("my-code-holder");
+        Long otherHolderId = insertMember("my-code-other");
+        Long requesterId = insertMember("my-code-requester");
+        Long eventId = insertEvent("my-code-event");
+        Long otherEventId = insertEvent("my-code-other-event");
+        Long ticketOrderId = insertTicketOrder(eventId);
+        Long otherTicketOrderId = insertTicketOrder(otherEventId);
+        Long requestId = insertRequest(eventId, requesterId, "ISSUED", OffsetDateTime.now());
+        Long myTicketCodeId = insertExchangeCodeForTicketOrder(
+            eventId,
+            ticketOrderId,
+            holderId,
+            "900006-900006-900006",
+            "ISSUED",
+            OffsetDateTime.now().plusMinutes(1)
+        );
+        Long myExternalCodeId = insertExchangeCodeForRequest(
+            eventId,
+            requestId,
+            "900007-900007-900007",
+            "CANCELLED",
+            OffsetDateTime.now().plusMinutes(2),
+            holderId
+        );
+        insertExchangeCodeForTicketOrder(
+            eventId,
+            ticketOrderId,
+            otherHolderId,
+            "900008-900008-900008",
+            "ISSUED",
+            OffsetDateTime.now().plusMinutes(3)
+        );
+        insertExchangeCodeForRequest(
+            eventId,
+            requestId,
+            "900009-900009-900009",
+            "ISSUED",
+            OffsetDateTime.now().plusMinutes(4),
+            null
+        );
+        Long otherEventMyCodeId = insertExchangeCodeForTicketOrder(
+            otherEventId,
+            otherTicketOrderId,
+            holderId,
+            "900013-900013-900013",
+            "REDEEMED",
+            OffsetDateTime.now().plusMinutes(5)
+        );
+
+        Page<ExchangeCodeView> page = exchangeCodeRepository.findMyExchangeCodes(
+            holderId,
+            null,
+            PageRequest.of(0, 10)
+        );
+
+        assertThat(page.getTotalElements()).isEqualTo(3);
+        assertThat(page.getContent())
+            .extracting(ExchangeCodeView::getExchangeCodeId)
+            .containsExactly(otherEventMyCodeId, myExternalCodeId, myTicketCodeId);
+        assertThat(page.getContent())
+            .extracting(ExchangeCodeView::getCode)
+            .containsExactly(
+                "900013-900013-900013",
+                "900007-900007-900007",
+                "900006-900006-900006"
+            );
+    }
+
+    @Test
+    void findMyExchangeCodes_filtersByStatusAndPaginates() {
+        Long holderId = insertMember("my-code-filter-holder");
+        Long eventId = insertEvent("my-code-filter");
+        Long ticketOrderId = insertTicketOrder(eventId);
+        insertExchangeCodeForTicketOrder(
+            eventId,
+            ticketOrderId,
+            holderId,
+            "900010-900010-900010",
+            "ISSUED",
+            OffsetDateTime.now()
+        );
+        insertExchangeCodeForTicketOrder(
+            eventId,
+            ticketOrderId,
+            holderId,
+            "900011-900011-900011",
+            "EXPIRED",
+            OffsetDateTime.now().plusMinutes(1)
+        );
+
+        Page<ExchangeCodeView> page = exchangeCodeRepository.findMyExchangeCodes(
+            holderId,
+            ExchangeCodeStatus.EXPIRED,
+            PageRequest.of(0, 1)
+        );
+
+        assertThat(page.getTotalElements()).isEqualTo(1);
+        assertThat(page.getContent()).hasSize(1);
+        assertThat(page.getContent().get(0).getStatus()).isEqualTo(ExchangeCodeStatus.EXPIRED);
+    }
+
     private Long insertMember(String suffix) {
         OffsetDateTime now = OffsetDateTime.now();
         return jdbcTemplate.queryForObject("""
@@ -284,21 +484,60 @@ class ExchangeCodeRequestRepositoryTest {
             Long requestId,
             String code,
             OffsetDateTime expiresAt) {
+        return insertExchangeCodeForRequest(eventId, requestId, code, "ISSUED", expiresAt, null);
+    }
+
+    private Long insertExchangeCodeForRequest(
+            Long eventId,
+            Long requestId,
+            String code,
+            String status,
+            OffsetDateTime createdAt,
+            Long holderMemberId) {
         OffsetDateTime now = OffsetDateTime.now();
         return jdbcTemplate.queryForObject("""
             INSERT INTO exchange_codes (
-                event_id, exchange_code_request_id, code, status,
+                event_id, exchange_code_request_id, holder_member_id, code, status,
                 expires_at, created_at, updated_at
             )
-            VALUES (?, ?, ?, 'ISSUED', ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id
             """,
             Long.class,
             eventId,
             requestId,
+            holderMemberId,
             code,
-            expiresAt,
-            now,
+            status,
+            createdAt.plusDays(1),
+            createdAt,
+            now
+        );
+    }
+
+    private Long insertExchangeCodeForTicketOrder(
+            Long eventId,
+            Long ticketOrderId,
+            Long holderMemberId,
+            String code,
+            String status,
+            OffsetDateTime createdAt) {
+        OffsetDateTime now = OffsetDateTime.now();
+        return jdbcTemplate.queryForObject("""
+            INSERT INTO exchange_codes (
+                event_id, ticket_order_id, holder_member_id, code, status,
+                created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            Long.class,
+            eventId,
+            ticketOrderId,
+            holderMemberId,
+            code,
+            status,
+            createdAt,
             now
         );
     }
