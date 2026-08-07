@@ -79,6 +79,14 @@ public class ExchangeCodeRequest {
         return status == ExchangeCodeRequestStatus.REQUESTED;
     }
 
+    public boolean isApproved() {
+        return status == ExchangeCodeRequestStatus.APPROVED;
+    }
+
+    public boolean isIssued() {
+        return status == ExchangeCodeRequestStatus.ISSUED;
+    }
+
     public void approve(Long reviewerId, OffsetDateTime now) {
         if (!isRequested()) {
             throw new IllegalStateException("Exchange code request is not reviewable.");
@@ -99,5 +107,21 @@ public class ExchangeCodeRequest {
         this.reviewedBy = reviewerId;
         this.reviewedAt = now;
         this.rejectionReason = reason;
+    }
+
+    public void issue() {
+        if (!isApproved()) {
+            throw new IllegalStateException("Exchange code request is not issuable.");
+        }
+
+        this.status = ExchangeCodeRequestStatus.ISSUED;
+    }
+
+    public void markEmailed(OffsetDateTime emailedAt) {
+        if (!isIssued()) {
+            throw new IllegalStateException("Exchange code request is not issued.");
+        }
+
+        this.emailedAt = emailedAt;
     }
 }
