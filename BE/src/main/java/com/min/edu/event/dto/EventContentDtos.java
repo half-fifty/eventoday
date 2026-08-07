@@ -48,22 +48,22 @@ public final class EventContentDtos {
     /** 공지·자료 등록 요청 DTO */
     public record CreateRequest(
             @NotNull EventContentType contentType,
-            String resourceType,
+            @Size(max = 30) String resourceType,
             @NotNull EventContentAudience audience,
             @NotBlank @Size(max = 200) String title,
             String content,
-            String version,
+            @Size(max = 20) String version,
             boolean pinned
     ) {}
 
     /** 공지·자료 수정 요청 DTO */
     public record UpdateRequest(
             @NotNull EventContentType contentType,
-            String resourceType,
+            @Size(max = 30) String resourceType,
             @NotNull EventContentAudience audience,
             @NotBlank @Size(max = 200) String title,
             String content,
-            String version,
+            @Size(max = 20) String version,
             boolean pinned
     ) {}
 }
