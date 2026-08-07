@@ -193,6 +193,14 @@ public class FileService {
         findAndCheckAccess(fileId, memberId);
     }
 
+    @Transactional(readOnly = true)
+    public void assertPublicAccessible(Long fileId, Long memberId) {
+        FileAsset fileAsset = findAndCheckAccess(fileId, memberId);
+        if (fileAsset.getAccessLevel() != FileAccessLevel.PUBLIC) {
+            throw new BusinessException(GlobalErrorCode.FILE_ACCESS_DENIED);
+        }
+    }
+
     /**
      * 대표 이미지로 쓰기 위해 파일이 PUBLIC 상태인지 검증한다.
      */

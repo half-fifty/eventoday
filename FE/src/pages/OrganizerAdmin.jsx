@@ -607,7 +607,7 @@ export default function OrganizerAdmin() {
                         <Icon name="qr_code_scanner" className="text-[16px]" /> 현장 입장 관리
                       </Link>
                       <Link to={`/organizer-admin/events/${selectedEventId}/edit?organizationId=${organizationId}`} className="inline-flex items-center gap-xs rounded-full border border-hairline px-md py-xs text-caption hover:bg-surface-container">
-                        <Icon name="edit" className="text-[16px]" /> 행사 정보 수정
+                        <Icon name="edit" className="text-[16px]" /> {['PREPARING', 'REJECTED'].includes(selectedEvent?.status) ? '행사 수정' : '포스터 변경'}
                       </Link>
                     </div>
                     <div className="grid gap-md text-caption sm:grid-cols-2 xl:grid-cols-4">

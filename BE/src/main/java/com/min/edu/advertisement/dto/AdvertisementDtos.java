@@ -13,11 +13,11 @@ public final class AdvertisementDtos {
 
     public record SaveRequest(
             @NotNull Long applicantOrganizationId,
-            Long bannerFileId,
+            @NotNull Long bannerFileId,
             @Size(max = 300) String adText,
             @NotNull OffsetDateTime startAt,
             @NotNull OffsetDateTime endAt) {}
-    public record UpdateRequest(Long bannerFileId, @Size(max = 300) String adText,
+    public record UpdateRequest(@NotNull Long bannerFileId, @Size(max = 300) String adText,
             @NotNull OffsetDateTime startAt, @NotNull OffsetDateTime endAt) {}
     public record CreativeUpdateRequest(@NotNull Long bannerFileId,
             @Size(max = 300) String adText) {}

@@ -15,6 +15,7 @@ import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventRepository;
+import com.min.edu.file.service.FileService;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.member.domain.Member;
 import com.min.edu.member.repository.MemberRepository;
@@ -55,6 +56,7 @@ public class AdvertisementService {
     private final BigDecimal eventAdPrice;
     private final Duration paymentExpiry;
     private final PlatformAuditService platformAuditService;
+    private final FileService fileService;
 
     public AdvertisementService(AdvertisementRepository advertisementRepository,
             AdvertisementBoothRepository boothRepository, EventRepository eventRepository,
@@ -62,6 +64,7 @@ public class AdvertisementService {
             EventMemberRepository eventMemberRepository, PaymentOrderRepository paymentOrderRepository,
             OrderNoGenerator orderNoGenerator, MemberRepository memberRepository,
             PlatformAuditService platformAuditService,
+            FileService fileService,
             @Value("${advertisement.event-ad-price:100000}") BigDecimal eventAdPrice,
             @Value("${advertisement.payment-expiry:PT30M}") Duration paymentExpiry) {
         this.advertisementRepository = advertisementRepository;
@@ -73,6 +76,7 @@ public class AdvertisementService {
         this.orderNoGenerator = orderNoGenerator;
         this.memberRepository = memberRepository;
         this.platformAuditService = platformAuditService;
+        this.fileService = fileService;
         this.eventAdPrice = eventAdPrice;
         this.paymentExpiry = paymentExpiry;
     }
@@ -108,6 +112,7 @@ public class AdvertisementService {
         if (!event.getOrganizerOrganizationId().equals(request.applicantOrganizationId()))
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         requireOrganizationManager(request.applicantOrganizationId(), actor);
+        fileService.assertPublicAccessible(request.bannerFileId(), actor.getMemberId());
         validatePeriod(request.startAt(), request.endAt());
         OffsetDateTime now = OffsetDateTime.now();
         Advertisement ad = build(eventId, null, request, AdvertisementStatus.PAYMENT_PENDING, now);
@@ -130,6 +135,7 @@ public class AdvertisementService {
         if (!request.applicantOrganizationId().equals(booth.getAssignedOrganizationId()))
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         requireOrganizationManager(request.applicantOrganizationId(), actor);
+        fileService.assertPublicAccessible(request.bannerFileId(), actor.getMemberId());
         validatePeriod(request.startAt(), request.endAt());
         return save(null, boothId, request, AdvertisementStatus.REVIEW_PENDING);
     }
@@ -151,6 +157,7 @@ public class AdvertisementService {
     public AdvertisementDtos.Response update(Long id, AdvertisementDtos.UpdateRequest request,
             AuthenticatedMemberDto actor) {
         Advertisement ad = getAd(id); requireOrganizationManager(ad.getApplicantOrganizationId(), actor);
+        fileService.assertPublicAccessible(request.bannerFileId(), actor.getMemberId());
         validatePeriod(request.startAt(), request.endAt());
         transition(() -> ad.update(request.bannerFileId(), request.adText(), request.startAt(),
                 request.endAt(), OffsetDateTime.now()));
@@ -162,6 +169,7 @@ public class AdvertisementService {
             AdvertisementDtos.CreativeUpdateRequest request, AuthenticatedMemberDto actor) {
         Advertisement ad = getAd(id);
         requireOrganizationManager(ad.getApplicantOrganizationId(), actor);
+        fileService.assertPublicAccessible(request.bannerFileId(), actor.getMemberId());
         transition(() -> ad.updateCreative(request.bannerFileId(), request.adText(),
                 OffsetDateTime.now()));
         return response(ad);
