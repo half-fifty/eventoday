@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import TopNav from "../components/TopNav.jsx";
 import Footer from "../components/Footer.jsx";
@@ -137,21 +137,12 @@ function MapStage({filtered,selected,onSelect}) {
 
 export default function VenueGuide(){
   const [selectedId,setSelectedId]=useState("coex"),[keyword,setKeyword]=useState(""),[region,setRegion]=useState("전체");
-  useEffect(() => {
-    const preloaders = Object.values(venueImages).map(({ src }) => {
-      const image = new Image();
-      image.decoding = "async";
-      image.src = src;
-      return image;
-    });
-    return () => preloaders.forEach((image) => { image.onload = null; image.onerror = null; });
-  }, []);
   const regions=["전체",...new Set(venues.map(v=>v.region))];
   const filtered=useMemo(()=>venues.filter(v=>{const q=keyword.trim().toLowerCase();return(region==="전체"||v.region===region)&&(!q||`${v.name} ${v.short} ${v.address}`.toLowerCase().includes(q));}),[keyword,region]);
-  const selected=venues.find(v=>v.id===selectedId)||venues[0];
+  const selected=filtered.find(v=>v.id===selectedId)||filtered[0]||null;
   return <div className="min-h-screen bg-[#f7f9fc] text-slate-900"><TopNav active="venues"/><main className="pt-[44px]">
     <section className="venue-hero"><div className="mx-auto max-w-[1280px] px-lg py-12 md:py-16"><div className="flex flex-col gap-7 lg:flex-row lg:items-end lg:justify-between"><div><p className="mb-3 text-[11px] font-black uppercase tracking-[.28em] text-primary">Exhibition venues in Korea</p><h1 className="text-[34px] font-black tracking-[-.04em] text-slate-950 md:text-[52px]">대한민국 전시장을<br className="hidden sm:block"/> 한눈에 만나보세요.</h1><p className="mt-4 max-w-xl text-sm leading-6 text-slate-500">전국 주요 전시장의 위치와 시설 정보를 살펴보고, 지금 열리는 행사까지 바로 확인하세요.</p></div><div className="venue-search-box"><Icon name="search" className="text-[20px] text-slate-400"/><input value={keyword} onChange={e=>setKeyword(e.target.value)} placeholder="전시장명 또는 지역 검색" aria-label="전시장 검색"/>{keyword&&<button type="button" onClick={()=>setKeyword("")}><Icon name="close" className="text-[17px]"/></button>}</div></div><div className="mt-8 flex gap-2 overflow-x-auto pb-2 hide-scrollbar">{regions.map(r=><button key={r} type="button" onClick={()=>setRegion(r)} className={`venue-filter-chip ${region===r?"is-active":""}`}>{r}</button>)}</div></div></section>
     <section className="mx-auto max-w-[1440px] px-4 py-8 md:px-8 md:py-12"><div className="mb-5 flex items-center justify-between px-1"><p className="text-sm font-bold text-slate-700"><span className="text-primary">{filtered.length}</span>개의 전시장</p><p className="hidden text-[12px] text-slate-400 md:block">카드나 지도 위 마커를 선택해 보세요</p></div>
-    {!filtered.length?<div className="rounded-[28px] border bg-white py-24 text-center"><Icon name="search_off" className="text-[40px] text-slate-300"/><p className="mt-3 font-bold">검색 결과가 없습니다.</p><button type="button" onClick={()=>{setKeyword("");setRegion("전체")}} className="mt-4 text-sm font-bold text-primary">전체 전시장 보기</button></div>:<div className="venue-infographic"><aside className="venue-side-list">{filtered.filter(v=>v.side==="left").map(v=><VenueCard key={v.id} venue={v} selected={selectedId===v.id} onSelect={setSelectedId}/>)}</aside><MapStage filtered={filtered} selected={selected} onSelect={setSelectedId}/><aside className="venue-side-list">{filtered.filter(v=>v.side==="right").map(v=><VenueCard key={v.id} venue={v} selected={selectedId===v.id} onSelect={setSelectedId}/>)}</aside></div>}</section>
+    {!filtered.length?<div className="rounded-[28px] border bg-white py-24 text-center"><Icon name="search_off" className="text-[40px] text-slate-300"/><p className="mt-3 font-bold">검색 결과가 없습니다.</p><button type="button" onClick={()=>{setKeyword("");setRegion("전체")}} className="mt-4 text-sm font-bold text-primary">전체 전시장 보기</button></div>:<div className="venue-infographic"><aside className="venue-side-list">{filtered.filter(v=>v.side==="left").map(v=><VenueCard key={v.id} venue={v} selected={selected?.id===v.id} onSelect={setSelectedId}/>)}</aside><MapStage filtered={filtered} selected={selected} onSelect={setSelectedId}/><aside className="venue-side-list">{filtered.filter(v=>v.side==="right").map(v=><VenueCard key={v.id} venue={v} selected={selected?.id===v.id} onSelect={setSelectedId}/>)}</aside></div>}</section>
   </main><Footer/></div>;
 }

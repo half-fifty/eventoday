@@ -20,6 +20,7 @@ import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
 import com.min.edu.advertisement.domain.Advertisement;
+import com.min.edu.advertisement.domain.AdvertisementStatus;
 import com.min.edu.advertisement.repository.AdvertisementRepository;
 
 import jakarta.persistence.EntityManager;
@@ -162,6 +163,7 @@ public class PaymentFinalizer {
 
         if (!paymentOrder.isPending()
                 || (ticketOrder != null && !ticketOrder.isPendingPayment())
+                || (advertisement != null && advertisement.getStatus() != AdvertisementStatus.PAYMENT_PENDING)
                 || (advertisement == null && ticketOrder == null)) {
             throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
         }

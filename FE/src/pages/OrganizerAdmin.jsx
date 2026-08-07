@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
 import RecruitmentManagementPanel from "../components/RecruitmentManagementPanel.jsx";
@@ -34,11 +34,13 @@ export default function OrganizerAdmin() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [applications, setApplications] = useState(initialApplications);
   const [assignBooths, setAssignBooths] = useState(initialAssignBooths);
-  const query = new URLSearchParams(window.location.search);
-  const [organizationId, setOrganizationId] = useState(query.get("organizationId") || localStorage.getItem("organizationId") || "");
+  const [query] = useSearchParams();
+  const requestedOrganizationId = query.get("organizationId") || "";
+  const requestedEventId = query.get("eventId") || "";
+  const [organizationId, setOrganizationId] = useState(requestedOrganizationId || localStorage.getItem("organizationId") || "");
   const [managedOrganizations, setManagedOrganizations] = useState([]);
   const [managedEvents, setManagedEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState(query.get("eventId") || "");
+  const [selectedEventId, setSelectedEventId] = useState(requestedEventId);
   const [eventLoadError, setEventLoadError] = useState("");
   const [submittingEvent, setSubmittingEvent] = useState(false);
   const [publishingEvent, setPublishingEvent] = useState(false);
@@ -66,6 +68,14 @@ export default function OrganizerAdmin() {
       .catch((error) => setEventLoadError(error.message || "소속 조직 정보를 불러오지 못했습니다."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (requestedOrganizationId
+        && managedOrganizations.some((org) => String(org.id) === requestedOrganizationId)) {
+      setOrganizationId(requestedOrganizationId);
+    }
+    if (requestedEventId) setSelectedEventId(requestedEventId);
+  }, [requestedOrganizationId, requestedEventId, managedOrganizations]);
 
   useEffect(() => {
     if (organizationId) localStorage.setItem("organizationId", organizationId);
@@ -226,7 +236,7 @@ export default function OrganizerAdmin() {
             <h1 className="mt-1 font-display-md text-[20px]">개최자센터</h1>
             <p className="mt-1 text-[11px] text-ink-muted">행사 운영을 한곳에서 관리하세요</p>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden"><Icon name="close" /></button>
+          <button type="button" aria-label="개최자센터 메뉴 닫기" onClick={() => setSidebarOpen(false)} className="md:hidden"><Icon name="close" /></button>
         </div>
         <div className="px-md pt-md">
           <Link to={`/organizer-admin/events/new?organizationId=${organizationId || ""}`} className="flex w-full items-center justify-center gap-xs rounded-xl bg-primary px-md py-sm text-caption font-body-strong text-white shadow-sm transition hover:brightness-95">
@@ -257,7 +267,7 @@ export default function OrganizerAdmin() {
 
       {/* Main */}
       <main className="min-h-[calc(100vh-44px)] md:ml-[280px]">
-        <header className="sticky top-0 z-30 bg-white/70 backdrop-blur-xl border-b border-hairline px-lg h-[64px] flex items-center justify-between">
+        <header className="sticky top-[44px] z-30 bg-white/70 backdrop-blur-xl border-b border-hairline px-lg h-[64px] flex items-center justify-between">
           <div className="flex items-center gap-sm">
             <button onClick={() => setSidebarOpen(true)} className="md:hidden"><Icon name="menu" /></button>
             <h2 className="font-display-md text-[20px] text-on-surface">{navItems.find((n) => n.key === page).label}</h2>

@@ -14,7 +14,13 @@ const statusLabel = {
   SCHEDULED: "노출 예정", ACTIVE: "노출 중", REJECTED: "반려", CANCELLED: "취소", ENDED: "종료",
 };
 const toOffset = (value) => value ? new Date(value).toISOString() : null;
-const toInput = (value) => value ? new Date(value).toISOString().slice(0, 16) : "";
+const toInput = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+};
 
 export default function OrganizerAdvertisements() {
   const query = new URLSearchParams(window.location.search);

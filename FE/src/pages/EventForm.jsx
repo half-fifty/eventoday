@@ -147,6 +147,7 @@ export default function EventForm() {
   const submit = async (e) => {
     e.preventDefault();
     if (!organizationId) { setError("행사를 등록할 운영 조직을 선택해 주세요."); return; }
+    if (!form.representativeFileId) { setError("행사 포스터를 등록해 주세요."); return; }
     if (!form.exhibitCategoryCodes.length) { setError("전시품목을 하나 이상 선택해 주세요."); return; }
     if (new Date(form.startAt) >= new Date(form.endAt)) { setError("행사 종료는 시작 이후여야 합니다."); return; }
     setSaving(true); setError("");

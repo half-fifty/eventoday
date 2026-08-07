@@ -32,7 +32,8 @@ public class EventReviewNotificationListener {
                 : String.format("'%s' 행사가 반려되었습니다. 사유: %s", decision.eventName(), decision.reason());
         NotificationType type = decision.approved() ? NotificationType.EVENT_APPROVED : NotificationType.EVENT_REJECTED;
         memberRepository.findAllByOrganizationIdAndStatusAndOrganizationRoleIn(decision.organizationId(), OrganizationMemberStatus.ACTIVE, RECIPIENT_ROLES)
-                .forEach(member -> sendSiteNotification(member.getMemberId(), type, decision.eventId(), title, content));
+                .forEach(member -> sendSiteNotification(member.getMemberId(), type, decision.eventId(),
+                        decision.organizationId(), title, content));
         organizationRepository.findById(decision.organizationId()).ifPresent(organization -> {
             try { emailSender.send(new EmailMessage(organization.getContactEmail(), "[EVENTODAY] " + title,
                     "<h2>" + escapeHtml(title) + "</h2><p>" + escapeHtml(content) + "</p>")); }
@@ -40,8 +41,10 @@ public class EventReviewNotificationListener {
         });
     }
 
-    private void sendSiteNotification(Long memberId, NotificationType type, Long eventId, String title, String content) {
-        try { notificationProducer.send(NotificationEventDto.create(memberId, type, "EVENT_REVIEW", eventId, title, content)); }
+    private void sendSiteNotification(Long memberId, NotificationType type, Long eventId, Long organizationId,
+            String title, String content) {
+        try { notificationProducer.send(NotificationEventDto.create(memberId, type,
+                "EVR:" + organizationId, eventId, title, content)); }
         catch (RuntimeException exception) { log.error("행사 심사 결과 사이트 알림 발송 실패 eventId={}, memberId={}", eventId, memberId, exception); }
     }
 

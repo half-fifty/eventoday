@@ -24,9 +24,13 @@ import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -79,10 +83,8 @@ public class EventService {
     }
 
     public Page<EventDtos.Summary> findPublicEvents(String keyword, String eventType, RegionCode regionCode,
-            List<String> exhibitCategoryCodes,
+            List<String> exhibitCategoryCodes, String venueName,
             OffsetDateTime startFrom, OffsetDateTime startTo, Pageable pageable) {
-        List<Long> categoryEventIds = exhibitCategoryCodes == null || exhibitCategoryCodes.isEmpty()
-                ? null : eventExhibitCategoryRepository.findEventIdsByCategoryCodes(exhibitCategoryCodes);
         Specification<Event> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("status"), EventStatus.PUBLISHED));
@@ -93,12 +95,25 @@ public class EventService {
                 predicates.add(cb.equal(root.get("eventType"), eventType));
             }
             if (regionCode != null) predicates.add(cb.equal(root.get("regionCode"), regionCode));
-            if (categoryEventIds != null) predicates.add(root.get("id").in(categoryEventIds.isEmpty() ? List.of(-1L) : categoryEventIds));
+            if (venueName != null && !venueName.isBlank()) {
+                predicates.add(cb.equal(root.get("venueName"), venueName.trim()));
+            }
+            if (exhibitCategoryCodes != null && !exhibitCategoryCodes.isEmpty()) {
+                Subquery<Long> categoryQuery = query.subquery(Long.class);
+                Root<EventExhibitCategory> relation = categoryQuery.from(EventExhibitCategory.class);
+                Root<ExhibitCategory> category = categoryQuery.from(ExhibitCategory.class);
+                categoryQuery.select(relation.get("id").get("eventId"))
+                        .where(cb.equal(relation.get("id").get("eventId"), root.get("id")),
+                                cb.equal(relation.get("id").get("categoryId"), category.get("id")),
+                                category.get("code").in(exhibitCategoryCodes),
+                                cb.isTrue(category.get("active")));
+                predicates.add(cb.exists(categoryQuery));
+            }
             if (startFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("startAt"), startFrom));
             if (startTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("startAt"), startTo));
             return cb.and(predicates.toArray(Predicate[]::new));
         };
-        return eventRepository.findAll(spec, pageable).map(this::toSummary);
+        return summaries(eventRepository.findAll(spec, pageable));
     }
 
     public List<EventDtos.ExhibitCategoryResponse> findExhibitCategories() {
@@ -117,7 +132,7 @@ public class EventService {
         requireOrganizationMember(organizationId, actor);
         Specification<Event> spec = (root, query, cb) ->
                 cb.equal(root.get("organizerOrganizationId"), organizationId);
-        return eventRepository.findAll(spec, pageable).map(this::toSummary);
+        return summaries(eventRepository.findAll(spec, pageable));
     }
 
     public EventDtos.Detail getManagedEvent(Long organizationId, Long eventId,
@@ -212,7 +227,7 @@ public class EventService {
         requireAdmin(actor);
         Specification<Event> spec = status == null ? null :
                 (root, query, cb) -> cb.equal(root.get("status"), status);
-        return eventRepository.findAll(spec, pageable).map(this::toSummary);
+        return summaries(eventRepository.findAll(spec, pageable));
     }
 
     public EventDtos.Detail getAdminEvent(Long eventId, AuthenticatedMemberDto actor) {
@@ -299,8 +314,21 @@ public class EventService {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
     }
 
-    private EventDtos.Summary toSummary(Event event) {
-        return EventDtos.Summary.from(event, categoryCodes(event.getId()));
+    private Page<EventDtos.Summary> summaries(Page<Event> events) {
+        Map<Long, List<String>> codesByEventId = categoryCodesByEventIds(
+                events.getContent().stream().map(Event::getId).toList());
+        return events.map(event -> EventDtos.Summary.from(
+                event, codesByEventId.getOrDefault(event.getId(), List.of())));
+    }
+
+    private Map<Long, List<String>> categoryCodesByEventIds(List<Long> eventIds) {
+        if (eventIds.isEmpty()) return Map.of();
+        Map<Long, List<String>> result = new LinkedHashMap<>();
+        for (EventExhibitCategoryRepository.EventCategoryCodeRow row
+                : eventExhibitCategoryRepository.findCodesByEventIds(eventIds)) {
+            result.computeIfAbsent(row.getEventId(), ignored -> new ArrayList<>()).add(row.getCode());
+        }
+        return result;
     }
 
     private List<String> categoryCodes(Long eventId) {
@@ -311,6 +339,7 @@ public class EventService {
         List<ExhibitCategory> categories = exhibitCategoryRepository.findAllByCodeInAndActiveTrue(requestedCodes);
         if (categories.size() != requestedCodes.size()) throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         eventExhibitCategoryRepository.deleteAllByIdEventId(eventId);
+        eventExhibitCategoryRepository.flush();
         eventExhibitCategoryRepository.saveAll(categories.stream()
                 .map(category -> new EventExhibitCategory(new EventExhibitCategoryId(eventId, category.getId())))
                 .toList());

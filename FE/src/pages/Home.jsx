@@ -9,41 +9,12 @@ import { fileDownloadUrl } from "../api/fileApi.js";
 import { listPublicRecruitments } from "../api/recruitmentApi.js";
 import { EXHIBIT_CATEGORIES, EXHIBIT_CATEGORY_LABELS, REGION_OPTIONS } from "../constants/eventOptions.js";
 
-const upcoming = [
-  {
-    to: "/event-ongoing",
-    bg: "linear-gradient(135deg,#ff9966,#ff5e62)",
-    badge: { text: "진행중", cls: "bg-status-assigned text-white" },
-    icon: "restaurant",
-    category: "푸드테크",
-    title: "2026 서울 푸드테크 박람회",
-    place: "코엑스 · 08.12–08.14",
-    price: "15,000원",
-    priceCls: "",
-  },
-  {
-    to: "/recruitments",
-    bg: "linear-gradient(135deg,#2b5876,#4e4376)",
-    badge: { text: "부스 모집중", cls: "bg-primary-container text-white" },
-    icon: "precision_manufacturing",
-    category: "산업기술",
-    title: "스마트팩토리 자동화 전시회",
-    place: "대구 엑스코 · 08.20–08.22",
-    price: "20,000원",
-    priceCls: "",
-  },
-  {
-    to: "#",
-    bg: "linear-gradient(135deg,#11998e,#38ef7d)",
-    badge: { text: "예정", cls: "bg-surface-container-highest text-secondary" },
-    icon: "eco",
-    category: "세미나",
-    title: "친환경 에너지 컨퍼런스",
-    place: "송도 컨벤시아 · 09.02",
-    price: "무료",
-    priceCls: "text-primary",
-  },
-];
+const eventPhase = (event) => {
+  const now = Date.now();
+  if (now < new Date(event.startAt).getTime()) return "upcoming";
+  if (now <= new Date(event.endAt).getTime()) return "ongoing";
+  return "ended";
+};
 
 const popular = [
   { rank: 1, bg: "linear-gradient(135deg,#ff9966,#ff5e62)", name: "서울 푸드테크 박람회", rating: "4.8" },
@@ -60,6 +31,7 @@ const notices = [
 
 export default function Home() {
   const eventRailRef = useRef(null);
+  const eventRequestSequence = useRef(0);
   const [heroIdx, setHeroIdx] = useState(0);
   const [events, setEvents] = useState([]);
   const [activeAds, setActiveAds] = useState(null);
@@ -74,7 +46,7 @@ export default function Home() {
   const [loadingRecruitments, setLoadingRecruitments] = useState(true);
   const [recruitmentError, setRecruitmentError] = useState("");
   const eventFallbackSlides = events.slice(0, 3).map((event) => ({
-    tag: new Date(event.startAt) <= new Date() ? "NOW · 진행 중" : "UPCOMING · 추천 행사",
+    tag: eventPhase(event) === "ongoing" ? "NOW · 진행 중" : eventPhase(event) === "ended" ? "ENDED · 종료" : "UPCOMING · 추천 행사",
     title: event.name,
     desc: `${event.venueName} · ${new Date(event.startAt).toLocaleDateString("ko-KR")}`,
     cta: "행사 자세히 보기",
@@ -105,7 +77,11 @@ export default function Home() {
   const displayedEvents = events.map((event) => ({
     to: `/events/${event.id}`,
     bg: "linear-gradient(135deg,#11998e,#38ef7d)",
-    badge: { text: new Date(event.startAt) <= new Date() ? "진행중" : "예정", cls: "bg-status-assigned text-white" },
+    badge: eventPhase(event) === "ongoing"
+      ? { text: "진행중", cls: "bg-status-assigned text-white" }
+      : eventPhase(event) === "ended"
+        ? { text: "종료", cls: "bg-surface-container-highest text-ink-muted" }
+        : { text: "예정", cls: "bg-primary-container text-white" },
     icon: "event",
     category: event.exhibitCategoryCodes?.map((code) => EXHIBIT_CATEGORY_LABELS[code] || code).join(" · ") || event.eventType,
     title: event.name,
@@ -126,6 +102,7 @@ export default function Home() {
   });
 
   const loadEvents = async (filters = {}) => {
+    const sequence = ++eventRequestSequence.current;
     setLoadingEvents(true);
     setEventError("");
     try {
@@ -133,13 +110,15 @@ export default function Home() {
         eventApi.list({ size: 6, sort: "startAt,asc", ...filters }),
         advertisementApi.active(),
       ]);
+      if (sequence !== eventRequestSequence.current) return;
       setEvents(eventResult.status === "fulfilled" ? eventResult.value?.data?.content || [] : []);
       setActiveAds(adResult.status === "fulfilled" ? adResult.value?.data || [] : []);
       if (eventResult.status === "rejected") throw eventResult.reason;
     } catch (error) {
+      if (sequence !== eventRequestSequence.current) return;
       setEventError(error.message || "행사 정보를 불러오지 못했습니다.");
     } finally {
-      setLoadingEvents(false);
+      if (sequence === eventRequestSequence.current) setLoadingEvents(false);
     }
   };
 
@@ -321,7 +300,7 @@ export default function Home() {
             {loadingEvents && <p className="col-span-full text-caption text-ink-muted">행사를 불러오는 중입니다.</p>}
             {eventError && <p className="col-span-full text-caption text-error">{eventError}</p>}
             {!loadingEvents && !eventError && displayedEvents.length === 0 && <p className="col-span-full text-caption text-ink-muted">조건에 맞는 공개 행사가 없습니다.</p>}
-            {(displayedEvents.length > 0 ? displayedEvents : (!loadingEvents && eventError ? upcoming : [])).map((e, i) => {
+            {displayedEvents.map((e, i) => {
               const inner = (
                 <>
                   <div className="relative aspect-[3/4] overflow-hidden rounded-[3px] bg-surface-container flex items-center justify-center text-white" style={{ background: e.bg }}>

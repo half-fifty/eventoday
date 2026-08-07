@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -35,6 +36,8 @@ import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
 import com.min.edu.advertisement.repository.AdvertisementRepository;
+import com.min.edu.advertisement.domain.Advertisement;
+import com.min.edu.advertisement.domain.AdvertisementStatus;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -220,6 +223,43 @@ class PaymentFinalizerTest {
             .isEqualTo(GlobalErrorCode.PAYMENT_KEY_ALREADY_USED);
     }
 
+    @Test
+    void finalizePayment_marksEventAdvertisementPaid() {
+        PaymentOrder paymentOrder = eventAdPaymentOrder();
+        Advertisement advertisement = advertisement(AdvertisementStatus.PAYMENT_PENDING);
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(false);
+        given(advertisementRepository.findByPaymentOrderId(1L)).willReturn(Optional.of(advertisement));
+        given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
+        given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(payment());
+
+        paymentFinalizer.finalizePayment(request(), tossResponse());
+
+        assertThat(paymentOrder.getStatus()).isEqualTo(PaymentOrderStatus.PAID.name());
+        assertThat(advertisement.getStatus()).isEqualTo(AdvertisementStatus.PAID);
+    }
+
+    @Test
+    void finalizePayment_rejectsEventAdvertisementThatIsNotPaymentPendingBeforeSavingPayment() {
+        PaymentOrder paymentOrder = eventAdPaymentOrder();
+        Advertisement advertisement = advertisement(AdvertisementStatus.REVIEW_PENDING);
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(false);
+        given(advertisementRepository.findByPaymentOrderId(1L)).willReturn(Optional.of(advertisement));
+
+        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(request(), tossResponse()))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.PAYMENT_INVALID_STATE);
+        verify(paymentRepository, never()).saveAndFlush(any(Payment.class));
+    }
+
     private ConfirmPaymentRequest request() {
         return new ConfirmPaymentRequest(
             "payment-key",
@@ -286,6 +326,36 @@ class PaymentFinalizerTest {
             .totalAmount(BigDecimal.valueOf(10000))
             .status(status.name())
             .expiresAt(OffsetDateTime.now().plusMinutes(10))
+            .createdAt(OffsetDateTime.now())
+            .updatedAt(OffsetDateTime.now())
+            .build();
+    }
+
+    private PaymentOrder eventAdPaymentOrder() {
+        return PaymentOrder.builder()
+            .id(1L)
+            .orderNo("ORDER-1")
+            .buyerMemberId(10L)
+            .orderType(PaymentOrderType.EVENT_AD)
+            .totalAmount(BigDecimal.valueOf(10000))
+            .status(PaymentOrderStatus.PENDING.name())
+            .expiresAt(OffsetDateTime.now().plusMinutes(10))
+            .createdAt(OffsetDateTime.now())
+            .updatedAt(OffsetDateTime.now())
+            .build();
+    }
+
+    private Advertisement advertisement(AdvertisementStatus status) {
+        return Advertisement.builder()
+            .id(7L)
+            .eventId(3L)
+            .applicantOrganizationId(4L)
+            .paymentOrderId(1L)
+            .bannerFileId(8L)
+            .adText("행사 광고")
+            .startAt(OffsetDateTime.now().plusDays(1))
+            .endAt(OffsetDateTime.now().plusDays(10))
+            .status(status)
             .createdAt(OffsetDateTime.now())
             .updatedAt(OffsetDateTime.now())
             .build();

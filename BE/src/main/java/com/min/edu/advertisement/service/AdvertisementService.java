@@ -135,7 +135,7 @@ public class AdvertisementService {
         requireOrganizationMember(organizationId, actor);
         Specification<Advertisement> spec = (root, query, cb) ->
                 cb.equal(root.get("applicantOrganizationId"), organizationId);
-        return advertisementRepository.findAll(spec, pageable).map(this::response);
+        return responses(advertisementRepository.findAll(spec, pageable));
     }
 
     public AdvertisementDtos.Response get(Long id, AuthenticatedMemberDto actor) {
@@ -174,7 +174,7 @@ public class AdvertisementService {
         requireAdmin(actor);
         Specification<Advertisement> spec = status == null ? null :
                 (root, query, cb) -> cb.equal(root.get("status"), status);
-        return advertisementRepository.findAll(spec, pageable).map(this::response);
+        return responses(advertisementRepository.findAll(spec, pageable));
     }
 
     @Transactional
@@ -226,6 +226,20 @@ public class AdvertisementService {
                 .map(order -> AdvertisementDtos.Response.from(ad,
                         new AdvertisementDtos.PaymentOrderSummary(order.getOrderNo(), order.getTotalAmount())))
                 .orElseGet(() -> AdvertisementDtos.Response.from(ad));
+    }
+    private Page<AdvertisementDtos.Response> responses(Page<Advertisement> advertisements) {
+        Set<Long> paymentOrderIds = advertisements.getContent().stream()
+                .map(Advertisement::getPaymentOrderId).filter(id -> id != null)
+                .collect(Collectors.toSet());
+        Map<Long, PaymentOrder> ordersById = paymentOrderRepository.findAllById(paymentOrderIds).stream()
+                .collect(Collectors.toMap(PaymentOrder::getId, Function.identity()));
+        return advertisements.map(ad -> {
+            PaymentOrder order = ordersById.get(ad.getPaymentOrderId());
+            return order == null ? AdvertisementDtos.Response.from(ad)
+                    : AdvertisementDtos.Response.from(ad,
+                            new AdvertisementDtos.PaymentOrderSummary(
+                                    order.getOrderNo(), order.getTotalAmount()));
+        });
     }
     private Event getEvent(Long id) { return eventRepository.findById(id)
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND)); }

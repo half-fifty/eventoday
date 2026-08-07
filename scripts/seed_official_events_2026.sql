@@ -1,17 +1,7 @@
 BEGIN;
 
--- 기존 공개 테스트 데이터는 결제/티켓 참조 보존을 위해 삭제하지 않고 노출만 중단한다.
-UPDATE events
-SET status = 'SUSPENDED', updated_at = NOW()
-WHERE status = 'PUBLISHED'
-  AND name NOT IN (
-    '2026 코리아빌드위크',
-    '2026 한가위 명절선물전&소금박람회',
-    '2026 대한민국 국제 병원 및 헬스테크 박람회',
-    '제84회 프랜차이즈 창업박람회 2026',
-    '2026 한국국제가구 및 인테리어산업대전 코펀',
-    '2026 대한민국 안전산업박람회'
-  );
+-- 이 스크립트가 관리하는 공식 행사만 이름 기준으로 upsert한다.
+-- 공유·운영 DB의 기존 공개 행사는 변경하거나 중단하지 않는다.
 
 INSERT INTO file_assets (uploaded_by, storage_key, original_name, mime_type, file_size, access_level, created_at)
 VALUES

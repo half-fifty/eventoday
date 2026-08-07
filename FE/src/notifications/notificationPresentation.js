@@ -81,7 +81,13 @@ const getNotificationTarget = (notification) => {
     return null;
   }
 
-  switch (notification.referenceType.toUpperCase()) {
+  const referenceType = notification.referenceType.toUpperCase();
+  if (referenceType.startsWith("EVR:")) {
+    const organizationId = referenceType.slice("EVR:".length);
+    return `/organizer-admin?organizationId=${encodeURIComponent(organizationId)}&eventId=${notification.referenceId}`;
+  }
+
+  switch (referenceType) {
     case "EVENT":
       return `/events/${notification.referenceId}`;
     case "EVENT_REVIEW":

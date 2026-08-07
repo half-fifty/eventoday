@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import TopNav from "../components/TopNav.jsx";
 import Footer from "../components/Footer.jsx";
 import Icon from "../components/Icon.jsx";
@@ -19,6 +19,9 @@ const formatDate = (value) => new Date(value).toLocaleDateString("ko-KR", {
 });
 
 export default function EventList() {
+  const [searchParams] = useSearchParams();
+  const venueName = searchParams.get("venue") || "";
+  const requestSequence = useRef(0);
   const [events, setEvents] = useState([]);
   const [keyword, setKeyword] = useState("");
   const [eventType, setEventType] = useState("");
@@ -30,6 +33,7 @@ export default function EventList() {
   const [error, setError] = useState("");
 
   const load = async (targetPage = 0) => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     setError("");
     try {
@@ -41,18 +45,21 @@ export default function EventList() {
         ...(eventType ? { eventType } : {}),
         ...(regionCode ? { regionCode } : {}),
         ...(categoryCode ? { exhibitCategoryCodes: categoryCode } : {}),
+        ...(venueName ? { venueName } : {}),
       });
+      if (sequence !== requestSequence.current) return;
       setEvents(result?.data?.content || []);
       setPage(result?.data?.number || 0);
       setTotalPages(result?.data?.totalPages || 0);
     } catch (requestError) {
+      if (sequence !== requestSequence.current) return;
       setError(requestError.message || "행사 목록을 불러오지 못했습니다.");
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   };
 
-  useEffect(() => { load(0); }, []);
+  useEffect(() => { load(0); }, [venueName]);
 
   return <div className="min-h-screen bg-surface text-on-surface">
     <TopNav active="events" />

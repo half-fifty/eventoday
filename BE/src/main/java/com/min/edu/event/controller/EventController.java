@@ -44,10 +44,12 @@ public class EventController {
             @RequestParam(required = false) String eventType,
             @RequestParam(required = false) RegionCode regionCode,
             @RequestParam(required = false) List<String> exhibitCategoryCodes,
+            @RequestParam(required = false) String venueName,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime startFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime startTo,
             Pageable pageable) {
-        return ApiResponse.success(eventService.findPublicEvents(keyword, eventType, regionCode, exhibitCategoryCodes, startFrom, startTo, pageable));
+        return ApiResponse.success(eventService.findPublicEvents(keyword, eventType, regionCode,
+                exhibitCategoryCodes, venueName, startFrom, startTo, pageable));
     }
 
     @GetMapping("/exhibit-categories")
