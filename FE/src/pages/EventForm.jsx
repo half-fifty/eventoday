@@ -4,15 +4,19 @@ import { eventApi } from "../api/eventApi.js";
 import { locationApi } from "../api/locationApi.js";
 import KakaoMapPreview from "../components/KakaoMapPreview.jsx";
 import Icon from "../components/Icon.jsx";
+import FileUploadField from "../components/FileUploadField.jsx";
+import { EXHIBIT_CATEGORIES } from "../constants/eventOptions.js";
+import TopNav from "../components/TopNav.jsx";
 
 const emptyForm = {
   name: "", eventType: "EXPO", shortDescription: "", description: "",
-  venueName: "", address: "", postalCode: "", addressDetail: "",
+  venueName: "", address: "", contactEmail: "", contactPhone: "", postalCode: "", addressDetail: "",
   latitude: null, longitude: null, kakaoPlaceId: null,
   startAt: "", endAt: "", ticketSalesStartAt: "", ticketSalesEndAt: "",
   ticketPrice: 0, ticketTotalQuantity: 100, ticketPurchaseLimit: 1,
   representativeFileId: null, boothRecruitmentEnabled: false,
   venueMapEnabled: false, boothReservationEnabled: false, noShowGraceMinutes: 10,
+  exhibitCategoryCodes: [],
 };
 
 const toInputDateTime = (value) => {
@@ -96,6 +100,7 @@ export default function EventForm() {
   }, [eventId, organizationId, organizationLoading]);
 
   const change = (key, value) => setForm((previous) => ({ ...previous, [key]: value }));
+  const toggleCategory = (code) => setForm((previous) => ({ ...previous, exhibitCategoryCodes: previous.exhibitCategoryCodes.includes(code) ? previous.exhibitCategoryCodes.filter((item) => item !== code) : [...previous.exhibitCategoryCodes, code] }));
   const searchPlaces = async (e) => {
     e.preventDefault();
     if (placeQuery.trim().length < 2) {
@@ -142,6 +147,7 @@ export default function EventForm() {
   const submit = async (e) => {
     e.preventDefault();
     if (!organizationId) { setError("행사를 등록할 운영 조직을 선택해 주세요."); return; }
+    if (!form.exhibitCategoryCodes.length) { setError("전시품목을 하나 이상 선택해 주세요."); return; }
     if (new Date(form.startAt) >= new Date(form.endAt)) { setError("행사 종료는 시작 이후여야 합니다."); return; }
     setSaving(true); setError("");
     const payload = { ...form, ticketPrice: Number(form.ticketPrice),
@@ -160,7 +166,7 @@ export default function EventForm() {
   const field = "w-full h-11 border border-hairline rounded-lg px-md bg-white outline-none focus:border-primary";
   const section = "bg-white border border-hairline rounded-2xl p-lg md:p-xl space-y-lg";
   if (loading) return <div className="min-h-screen grid place-items-center">행사를 불러오는 중입니다.</div>;
-  return <main className="min-h-screen bg-surface-container-low px-lg py-xl">
+  return <><TopNav active="organizer" /><main className="min-h-screen bg-surface-container-low px-lg pb-xl pt-[76px]">
     <form onSubmit={submit} className="max-w-[1040px] mx-auto space-y-lg">
       <header className="flex justify-between items-end gap-md"><div><p className="text-caption text-primary">ORGANIZER CENTER</p><h1 className="font-display-lg text-[32px]">{eventId ? "행사 수정" : "새 행사 등록"}</h1><p className="text-ink-muted mt-xs">행사 공개 전까지 언제든 수정할 수 있습니다.</p></div><Link to={`/organizer-admin?organizationId=${organizationId || ""}`} className="text-caption">돌아가기</Link></header>
       {error && <p className="bg-error/10 border border-error/20 text-error p-md rounded-xl">{error}</p>}
@@ -209,10 +215,26 @@ export default function EventForm() {
       </section>
 
       <section className={section}>
-        <div><p className="text-caption text-primary mb-xs">04</p><h2 className="font-display-md text-[22px]">운영 기능</h2></div>
+        <div><p className="text-caption text-primary mb-xs">04</p><h2 className="font-display-md text-[22px]">문의처 및 포스터</h2><p className="text-caption text-ink-muted mt-xs">방문객에게 공개되는 공식 문의처입니다. 개인번호보다 행사 대표번호 사용을 권장합니다.</p></div>
+        <div className="grid md:grid-cols-2 gap-md">
+          <label>담당자 이메일 *<input required type="email" maxLength={255} className={field} value={form.contactEmail} onChange={(e)=>change("contactEmail",e.target.value)} placeholder="event@example.com"/></label>
+          <label>담당자 연락처 *<input required type="tel" maxLength={30} pattern="[0-9-]{9,14}" title="숫자와 하이픈을 사용해 입력해 주세요." className={field} value={form.contactPhone} onChange={(e)=>change("contactPhone",e.target.value.replace(/[^0-9-]/g, ""))} placeholder="02-1234-5678"/><span className="block text-caption text-ink-muted mt-xs">예: 02-1234-5678, 031-123-4567</span></label>
+        </div>
+        <FileUploadField label="행사 포스터" required value={form.representativeFileId}
+          onChange={(fileId) => change("representativeFileId", fileId)} />
+        <div className="rounded-xl bg-primary/5 border border-primary/10 p-md text-caption text-on-surface-variant"><strong className="block text-primary mb-xs">포스터 권장 사양</strong>세로형 3:4 비율, 최소 900×1200px 이미지를 권장합니다. 행사 목록과 상세 페이지에 동일한 이미지가 사용됩니다.</div>
+      </section>
+
+      <section className={section}>
+        <div><p className="text-caption text-primary mb-xs">02</p><h2 className="font-display-md text-[22px]">전시품목</h2><p className="text-caption text-ink-muted mt-xs">행사에서 다루는 품목을 최대 5개까지 선택해 주세요.</p></div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-sm">{EXHIBIT_CATEGORIES.map(([code,label]) => { const selected = form.exhibitCategoryCodes.includes(code); return <label key={code} className={`flex items-center gap-sm border rounded-xl p-md cursor-pointer ${selected ? "border-primary bg-primary/5 text-primary" : "border-hairline"}`}><input type="checkbox" checked={selected} disabled={!selected && form.exhibitCategoryCodes.length >= 5} onChange={() => toggleCategory(code)} /><span className="text-caption font-body-strong">{label}</span></label>; })}</div>
+      </section>
+
+      <section className={section}>
+        <div><p className="text-caption text-primary mb-xs">05</p><h2 className="font-display-md text-[22px]">운영 기능</h2></div>
         <div className="grid md:grid-cols-3 gap-md">{[["boothRecruitmentEnabled","부스 모집","참가 조직의 부스 신청을 받습니다."],["venueMapEnabled","평면도","행사장 평면도를 제공합니다."],["boothReservationEnabled","부스 예약","방문자가 부스 시간을 예약합니다."]].map(([key,label,help])=><label key={key} className={`border rounded-xl p-md cursor-pointer ${form[key] ? "border-primary bg-primary/5" : "border-hairline"}`}><span className="flex gap-sm items-center"><input type="checkbox" checked={form[key]} onChange={(e)=>change(key,e.target.checked)}/><strong>{label}</strong></span><span className="block text-caption text-ink-muted mt-sm">{help}</span></label>)}</div>
       </section>
       <div className="sticky bottom-md bg-white/90 backdrop-blur border border-hairline rounded-2xl p-md flex justify-between items-center shadow-lg"><p className="text-caption text-ink-muted hidden sm:block">필수 항목을 확인한 후 저장해 주세요.</p><button disabled={saving} className="w-full sm:w-auto px-xxl py-md bg-primary text-white rounded-full font-body-strong disabled:opacity-50">{saving ? "저장 중..." : "행사 저장"}</button></div>
     </form>
-  </main>;
+  </main></>;
 }

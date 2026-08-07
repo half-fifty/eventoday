@@ -34,6 +34,7 @@ import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
+import com.min.edu.advertisement.repository.AdvertisementRepository;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -59,6 +60,9 @@ class PaymentFinalizerTest {
     @Mock
     private TicketExchangeCodeIssuer ticketExchangeCodeIssuer;
 
+    @Mock
+    private AdvertisementRepository advertisementRepository;
+
     private PaymentFinalizer paymentFinalizer;
 
     @BeforeEach
@@ -72,7 +76,8 @@ class PaymentFinalizerTest {
             paymentOrderRepository,
             ticketOrderRepository,
             paymentRepository,
-            ticketExchangeCodeIssuer
+            ticketExchangeCodeIssuer,
+            advertisementRepository
         );
 
         given(entityManager.createNativeQuery(any(String.class))).willReturn(query);

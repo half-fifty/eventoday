@@ -1,6 +1,24 @@
 name: eventoday
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: eventoday_Postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-expo_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-expo_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
   redis:
     image: redis:7-alpine
     container_name: eventoday_Redis
@@ -81,5 +99,6 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
 
 volumes:
+  postgres_data:
   redis_data:
   minio_data:

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
+import TopNav from "../components/TopNav.jsx";
 import RecruitmentManagementPanel from "../components/RecruitmentManagementPanel.jsx";
 import BoothManagementPanel from "../components/BoothManagementPanel.jsx";
 import FloorplanManagementPanel from "../components/FloorplanManagementPanel.jsx";
@@ -190,8 +191,8 @@ export default function OrganizerAdmin() {
   };
 
   const navBtnCls = (active) =>
-    `w-full flex items-center gap-sm px-md py-sm rounded-lg font-body text-left transition-colors ${
-      active ? "bg-primary-container/10 text-primary-focus font-body-strong" : "text-on-surface-variant hover:bg-surface-container"
+    `group w-full flex items-center gap-sm border-l-[3px] px-md py-sm rounded-r-xl font-body text-left transition-all ${
+      active ? "border-primary bg-primary/10 text-primary font-body-strong shadow-sm" : "border-transparent text-on-surface-variant hover:border-primary/30 hover:bg-surface-container"
     }`;
 
   const AppRow = ({ a }) => (
@@ -215,19 +216,34 @@ export default function OrganizerAdmin() {
   );
 
   return (
-    <div className="bg-surface-container-lowest text-on-surface">
+    <div className="min-h-screen bg-surface-container-lowest pt-[44px] text-on-surface">
+      <TopNav active="organizer" />
       {/* Sidebar */}
-      <aside className={`fixed left-0 top-0 h-screen w-[260px] bg-white border-r border-hairline z-50 flex flex-col transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="px-lg py-xl flex items-center justify-between">
-          <span className="font-hero-display text-tagline text-primary tracking-tight">EXPO HUB</span>
+      <aside className={`fixed bottom-0 left-0 top-[44px] w-[280px] bg-white border-r border-hairline z-50 flex flex-col shadow-[12px_0_40px_rgba(15,23,42,0.04)] transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="border-b border-hairline bg-gradient-to-br from-primary/10 via-white to-primary-container/10 px-lg py-lg flex items-start justify-between">
+          <div>
+            <span className="text-[10px] font-bold tracking-[0.18em] text-primary">EVENTODAY</span>
+            <h1 className="mt-1 font-display-md text-[20px]">개최자센터</h1>
+            <p className="mt-1 text-[11px] text-ink-muted">행사 운영을 한곳에서 관리하세요</p>
+          </div>
           <button onClick={() => setSidebarOpen(false)} className="md:hidden"><Icon name="close" /></button>
         </div>
-        <nav className="flex-1 px-sm space-y-1">
+        <div className="px-md pt-md">
+          <Link to={`/organizer-admin/events/new?organizationId=${organizationId || ""}`} className="flex w-full items-center justify-center gap-xs rounded-xl bg-primary px-md py-sm text-caption font-body-strong text-white shadow-sm transition hover:brightness-95">
+            <Icon name="add_circle" className="text-[18px]" /> 새 행사 등록
+          </Link>
+        </div>
+        <nav className="flex-1 overflow-y-auto px-md py-md space-y-1" aria-label="개최자센터 메뉴">
+          <p className="px-sm pb-xs text-[10px] font-bold tracking-[0.14em] text-ink-muted">행사 운영</p>
           {navItems.map((n) => (
             <button key={n.key} onClick={() => gotoPage(n.key)} className={navBtnCls(page === n.key)}>
               <Icon name={n.icon} /><span>{n.label}</span>
             </button>
           ))}
+          <p className="px-sm pb-xs pt-md text-[10px] font-bold tracking-[0.14em] text-ink-muted">홍보</p>
+          <Link to={`/organizer-admin/advertisements?organizationId=${organizationId || ""}`} className={navBtnCls(false)}>
+            <Icon name="ads_click" /><span>광고 신청·관리</span>
+          </Link>
         </nav>
         <div className="p-lg border-t border-hairline space-y-4">
           <div className="flex items-center gap-sm">
@@ -240,7 +256,7 @@ export default function OrganizerAdmin() {
       {sidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/40 z-40 md:hidden" />}
 
       {/* Main */}
-      <main className="md:ml-[260px] min-h-screen">
+      <main className="min-h-[calc(100vh-44px)] md:ml-[280px]">
         <header className="sticky top-0 z-30 bg-white/70 backdrop-blur-xl border-b border-hairline px-lg h-[64px] flex items-center justify-between">
           <div className="flex items-center gap-sm">
             <button onClick={() => setSidebarOpen(true)} className="md:hidden"><Icon name="menu" /></button>

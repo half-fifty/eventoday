@@ -1,0 +1,31 @@
+import { useState } from "react";
+import { uploadFile } from "../api/fileApi.js";
+import Icon from "./Icon.jsx";
+
+export default function FileUploadField({ label, value, onChange, accept = "image/*", required = false }) {
+  const [uploading, setUploading] = useState(false);
+  const [fileName, setFileName] = useState("");
+  const [error, setError] = useState("");
+  const upload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(true); setError("");
+    try {
+      const result = await uploadFile(file, "PUBLIC");
+      onChange(result.fileId);
+      setFileName(result.originalName || file.name);
+    } catch (requestError) {
+      setError(requestError.message || "파일 업로드에 실패했습니다.");
+      event.target.value = "";
+    } finally { setUploading(false); }
+  };
+  return <div className="space-y-sm">
+    <label className="font-body-strong">{label}{required ? " *" : ""}</label>
+    <label className={`flex items-center gap-md border rounded-xl p-md cursor-pointer ${value ? "border-primary bg-primary/5" : "border-hairline"}`}>
+      <Icon name={value ? "check_circle" : "cloud_upload"} className={value ? "text-primary" : "text-ink-muted"} />
+      <span className="flex-1 text-sm">{uploading ? "업로드 중..." : fileName || (value ? `업로드 완료 (파일 #${value})` : "이미지 파일을 선택하세요")}</span>
+      <input type="file" accept={accept} className="hidden" disabled={uploading} onChange={upload} />
+    </label>
+    {error && <p className="text-caption text-error">{error}</p>}
+  </div>;
+}

@@ -50,6 +50,12 @@ public class Event {
     @Column(name = "address", nullable = false, length = 300)
     private String address;
 
+    @Column(name = "contact_email", length = 255)
+    private String contactEmail;
+
+    @Column(name = "contact_phone", length = 30)
+    private String contactPhone;
+
     @Column(name = "postal_code", length = 10)
     private String postalCode;
 
@@ -64,6 +70,10 @@ public class Event {
 
     @Column(name = "kakao_place_id", length = 50)
     private String kakaoPlaceId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "region_code", length = 30)
+    private RegionCode regionCode;
 
     @Column(name = "start_at", nullable = false)
     private OffsetDateTime startAt;
@@ -123,7 +133,8 @@ public class Event {
     public void update(
             String name, String eventType, String shortDescription, String description,
             String venueName, String address, String postalCode, String addressDetail,
-            BigDecimal latitude, BigDecimal longitude, String kakaoPlaceId,
+            String contactEmail, String contactPhone,
+            BigDecimal latitude, BigDecimal longitude, String kakaoPlaceId, RegionCode regionCode,
             OffsetDateTime startAt, OffsetDateTime endAt,
             OffsetDateTime ticketSalesStartAt, OffsetDateTime ticketSalesEndAt,
             BigDecimal ticketPrice, Integer ticketTotalQuantity, Integer ticketPurchaseLimit,
@@ -142,11 +153,14 @@ public class Event {
         this.description = description;
         this.venueName = venueName;
         this.address = address;
+        this.contactEmail = contactEmail;
+        this.contactPhone = contactPhone;
         this.postalCode = postalCode;
         this.addressDetail = addressDetail;
         this.latitude = latitude;
         this.longitude = longitude;
         this.kakaoPlaceId = kakaoPlaceId;
+        this.regionCode = regionCode;
         this.startAt = startAt;
         this.endAt = endAt;
         this.ticketSalesStartAt = ticketSalesStartAt;
@@ -160,6 +174,25 @@ public class Event {
         this.boothReservationEnabled = boothReservationEnabled;
         this.noShowGraceMinutes = noShowGraceMinutes;
         this.updatedAt = now;
+    }
+
+    public void update(
+            String name, String eventType, String shortDescription, String description,
+            String venueName, String address, String postalCode, String addressDetail,
+            String contactEmail, String contactPhone,
+            BigDecimal latitude, BigDecimal longitude, String kakaoPlaceId,
+            OffsetDateTime startAt, OffsetDateTime endAt,
+            OffsetDateTime ticketSalesStartAt, OffsetDateTime ticketSalesEndAt,
+            BigDecimal ticketPrice, Integer ticketTotalQuantity, Integer ticketPurchaseLimit,
+            Long representativeFileId, boolean boothRecruitmentEnabled,
+            boolean venueMapEnabled, boolean boothReservationEnabled,
+            Integer noShowGraceMinutes, OffsetDateTime now) {
+        update(name, eventType, shortDescription, description, venueName, address, postalCode,
+                addressDetail, contactEmail, contactPhone, latitude, longitude, kakaoPlaceId,
+                RegionCode.fromAddress(address), startAt, endAt, ticketSalesStartAt,
+                ticketSalesEndAt, ticketPrice, ticketTotalQuantity, ticketPurchaseLimit,
+                representativeFileId, boothRecruitmentEnabled, venueMapEnabled,
+                boothReservationEnabled, noShowGraceMinutes, now);
     }
 
     public void submit(OffsetDateTime now) {

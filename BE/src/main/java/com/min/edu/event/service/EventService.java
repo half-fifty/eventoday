@@ -8,12 +8,18 @@ import com.min.edu.event.domain.Event;
 import com.min.edu.event.domain.EventMember;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.domain.EventStatus;
+import com.min.edu.event.domain.EventExhibitCategory;
+import com.min.edu.event.domain.EventExhibitCategoryId;
+import com.min.edu.event.domain.ExhibitCategory;
+import com.min.edu.event.domain.RegionCode;
 import com.min.edu.event.dto.EventDtos;
 import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventBoothRecruitmentRepository;
 import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventOrganizationRepository;
 import com.min.edu.event.repository.EventRepository;
+import com.min.edu.event.repository.EventExhibitCategoryRepository;
+import com.min.edu.event.repository.ExhibitCategoryRepository;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
@@ -21,10 +27,12 @@ import jakarta.persistence.criteria.Predicate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -38,16 +46,25 @@ public class EventService {
     private final EventOrganizationMemberRepository organizationMemberRepository;
     private final EventOrganizationRepository organizationRepository;
     private final EventBoothRecruitmentRepository boothRecruitmentRepository;
+    private final ExhibitCategoryRepository exhibitCategoryRepository;
+    private final EventExhibitCategoryRepository eventExhibitCategoryRepository;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public EventService(EventRepository eventRepository, EventMemberRepository eventMemberRepository,
             EventOrganizationMemberRepository organizationMemberRepository,
             EventOrganizationRepository organizationRepository,
-            EventBoothRecruitmentRepository boothRecruitmentRepository) {
+            EventBoothRecruitmentRepository boothRecruitmentRepository,
+            ExhibitCategoryRepository exhibitCategoryRepository,
+            EventExhibitCategoryRepository eventExhibitCategoryRepository,
+            ApplicationEventPublisher applicationEventPublisher) {
         this.eventRepository = eventRepository;
         this.eventMemberRepository = eventMemberRepository;
         this.organizationMemberRepository = organizationMemberRepository;
         this.organizationRepository = organizationRepository;
         this.boothRecruitmentRepository = boothRecruitmentRepository;
+        this.exhibitCategoryRepository = exhibitCategoryRepository;
+        this.eventExhibitCategoryRepository = eventExhibitCategoryRepository;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     public List<EventDtos.ManagedOrganization> findManagedOrganizations(AuthenticatedMemberDto actor) {
@@ -61,8 +78,11 @@ public class EventService {
                 .map(EventDtos.ManagedOrganization::from).toList();
     }
 
-    public Page<EventDtos.Summary> findPublicEvents(String keyword, String eventType,
+    public Page<EventDtos.Summary> findPublicEvents(String keyword, String eventType, RegionCode regionCode,
+            List<String> exhibitCategoryCodes,
             OffsetDateTime startFrom, OffsetDateTime startTo, Pageable pageable) {
+        List<Long> categoryEventIds = exhibitCategoryCodes == null || exhibitCategoryCodes.isEmpty()
+                ? null : eventExhibitCategoryRepository.findEventIdsByCategoryCodes(exhibitCategoryCodes);
         Specification<Event> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("status"), EventStatus.PUBLISHED));
@@ -72,17 +92,24 @@ public class EventService {
             if (eventType != null && !eventType.isBlank()) {
                 predicates.add(cb.equal(root.get("eventType"), eventType));
             }
+            if (regionCode != null) predicates.add(cb.equal(root.get("regionCode"), regionCode));
+            if (categoryEventIds != null) predicates.add(root.get("id").in(categoryEventIds.isEmpty() ? List.of(-1L) : categoryEventIds));
             if (startFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("startAt"), startFrom));
             if (startTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("startAt"), startTo));
             return cb.and(predicates.toArray(Predicate[]::new));
         };
-        return eventRepository.findAll(spec, pageable).map(EventDtos.Summary::from);
+        return eventRepository.findAll(spec, pageable).map(this::toSummary);
+    }
+
+    public List<EventDtos.ExhibitCategoryResponse> findExhibitCategories() {
+        return exhibitCategoryRepository.findAllByActiveTrueOrderByDisplayOrderAsc().stream()
+                .map(category -> new EventDtos.ExhibitCategoryResponse(category.getCode(), category.getName())).toList();
     }
 
     public EventDtos.PublicDetail getPublicEvent(Long eventId) {
         Event event = getEvent(eventId);
         if (event.getStatus() != EventStatus.PUBLISHED) throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
-        return EventDtos.PublicDetail.from(event);
+        return EventDtos.PublicDetail.from(event, categoryCodes(event.getId()));
     }
 
     public Page<EventDtos.Summary> findOrganizationEvents(Long organizationId,
@@ -90,7 +117,7 @@ public class EventService {
         requireOrganizationMember(organizationId, actor);
         Specification<Event> spec = (root, query, cb) ->
                 cb.equal(root.get("organizerOrganizationId"), organizationId);
-        return eventRepository.findAll(spec, pageable).map(EventDtos.Summary::from);
+        return eventRepository.findAll(spec, pageable).map(this::toSummary);
     }
 
     public EventDtos.Detail getManagedEvent(Long organizationId, Long eventId,
@@ -98,7 +125,7 @@ public class EventService {
         requireOrganizationMember(organizationId, actor);
         Event event = getEvent(eventId);
         requireEventOrganization(event, organizationId);
-        return EventDtos.Detail.from(event);
+        return EventDtos.Detail.from(event, categoryCodes(event.getId()));
     }
 
     @Transactional
@@ -111,8 +138,10 @@ public class EventService {
                 .organizerOrganizationId(organizationId).name(request.name())
                 .eventType(request.eventType()).shortDescription(request.shortDescription())
                 .description(request.description()).venueName(request.venueName()).address(request.address())
+                .contactEmail(request.contactEmail()).contactPhone(request.contactPhone())
                 .postalCode(request.postalCode()).addressDetail(request.addressDetail())
                 .latitude(request.latitude()).longitude(request.longitude()).kakaoPlaceId(request.kakaoPlaceId())
+                .regionCode(RegionCode.fromAddress(request.address()))
                 .startAt(request.startAt()).endAt(request.endAt())
                 .ticketSalesStartAt(request.ticketSalesStartAt()).ticketSalesEndAt(request.ticketSalesEndAt())
                 .ticketPrice(request.ticketPrice()).ticketTotalQuantity(request.ticketTotalQuantity())
@@ -121,7 +150,9 @@ public class EventService {
                 .boothRecruitmentEnabled(request.boothRecruitmentEnabled())
                 .venueMapEnabled(request.venueMapEnabled()).boothReservationEnabled(request.boothReservationEnabled())
                 .noShowGraceMinutes(request.noShowGraceMinutes()).createdAt(now).updatedAt(now).build();
-        return EventDtos.Detail.from(eventRepository.save(event));
+        Event saved = eventRepository.save(event);
+        replaceCategories(saved.getId(), request.exhibitCategoryCodes());
+        return EventDtos.Detail.from(saved, categoryCodes(saved.getId()));
     }
 
     @Transactional
@@ -133,13 +164,15 @@ public class EventService {
         requireEventOrganization(event, organizationId);
         event.update(request.name(), request.eventType(), request.shortDescription(), request.description(),
                 request.venueName(), request.address(), request.postalCode(), request.addressDetail(),
-                request.latitude(), request.longitude(), request.kakaoPlaceId(),
+                request.contactEmail(), request.contactPhone(),
+                request.latitude(), request.longitude(), request.kakaoPlaceId(), RegionCode.fromAddress(request.address()),
                 request.startAt(), request.endAt(),
                 request.ticketSalesStartAt(), request.ticketSalesEndAt(), request.ticketPrice(),
                 request.ticketTotalQuantity(), request.ticketPurchaseLimit(), request.representativeFileId(),
                 request.boothRecruitmentEnabled(), request.venueMapEnabled(), request.boothReservationEnabled(),
                 request.noShowGraceMinutes(), OffsetDateTime.now());
-        return EventDtos.Detail.from(event);
+        replaceCategories(eventId, request.exhibitCategoryCodes());
+        return EventDtos.Detail.from(event, categoryCodes(eventId));
     }
 
     @Transactional public void submit(Long eventId, AuthenticatedMemberDto actor) {
@@ -162,10 +195,12 @@ public class EventService {
     @Transactional public void approve(Long eventId, AuthenticatedMemberDto actor) {
         requireAdmin(actor); Event event = getEvent(eventId);
         transition(() -> event.approve(OffsetDateTime.now()));
+        applicationEventPublisher.publishEvent(new EventReviewDecision(event.getId(), event.getOrganizerOrganizationId(), event.getName(), true, null));
     }
     @Transactional public void reject(Long eventId, String reason, AuthenticatedMemberDto actor) {
         requireAdmin(actor); Event event = getEvent(eventId);
         transition(() -> event.reject(reason, OffsetDateTime.now()));
+        applicationEventPublisher.publishEvent(new EventReviewDecision(event.getId(), event.getOrganizerOrganizationId(), event.getName(), false, reason));
     }
     @Transactional public void suspend(Long eventId, AuthenticatedMemberDto actor) {
         requireAdmin(actor); Event event = getEvent(eventId);
@@ -177,11 +212,11 @@ public class EventService {
         requireAdmin(actor);
         Specification<Event> spec = status == null ? null :
                 (root, query, cb) -> cb.equal(root.get("status"), status);
-        return eventRepository.findAll(spec, pageable).map(EventDtos.Summary::from);
+        return eventRepository.findAll(spec, pageable).map(this::toSummary);
     }
 
     public EventDtos.Detail getAdminEvent(Long eventId, AuthenticatedMemberDto actor) {
-        requireAdmin(actor); return EventDtos.Detail.from(getEvent(eventId));
+        requireAdmin(actor); Event event = getEvent(eventId); return EventDtos.Detail.from(event, categoryCodes(eventId));
     }
 
     public List<EventDtos.MemberResponse> getMembers(Long eventId, AuthenticatedMemberDto actor) {
@@ -262,6 +297,23 @@ public class EventService {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         if (request.ticketTotalQuantity() < request.ticketPurchaseLimit())
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+    }
+
+    private EventDtos.Summary toSummary(Event event) {
+        return EventDtos.Summary.from(event, categoryCodes(event.getId()));
+    }
+
+    private List<String> categoryCodes(Long eventId) {
+        return eventExhibitCategoryRepository.findCodesByEventId(eventId);
+    }
+
+    private void replaceCategories(Long eventId, Set<String> requestedCodes) {
+        List<ExhibitCategory> categories = exhibitCategoryRepository.findAllByCodeInAndActiveTrue(requestedCodes);
+        if (categories.size() != requestedCodes.size()) throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        eventExhibitCategoryRepository.deleteAllByIdEventId(eventId);
+        eventExhibitCategoryRepository.saveAll(categories.stream()
+                .map(category -> new EventExhibitCategory(new EventExhibitCategoryId(eventId, category.getId())))
+                .toList());
     }
 
     private void transition(Runnable action) {

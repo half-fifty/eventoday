@@ -119,7 +119,7 @@ export default function BusinessSignup() {
   return (
     <div className="min-h-screen bg-surface text-on-surface">
       <header className="h-[52px] border-b border-hairline bg-black px-lg flex items-center justify-between">
-        <Link to="/" className="font-hero-display text-tagline text-white">EXPO HUB</Link>
+        <Link to="/" className="font-hero-display text-tagline text-white">EvenToday</Link>
         <Link to="/login" className="text-caption text-white/70 hover:text-white">로그인</Link>
       </header>
 

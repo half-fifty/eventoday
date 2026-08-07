@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 
 import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.TicketOrder;
+import com.min.edu.advertisement.domain.Advertisement;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -32,6 +33,21 @@ public class ConfirmPaymentResponse {
             payment.getAmount(),
             payment.getStatus(),
             ticketOrder.getStatus(),
+            payment.getApprovedAt()
+        );
+    }
+
+    public static ConfirmPaymentResponse ofEventAd(
+            Payment payment,
+            String orderNo,
+            Advertisement advertisement) {
+        return new ConfirmPaymentResponse(
+            payment.getId(),
+            orderNo,
+            null,
+            payment.getAmount(),
+            payment.getStatus(),
+            advertisement.getStatus().name(),
             payment.getApprovedAt()
         );
     }

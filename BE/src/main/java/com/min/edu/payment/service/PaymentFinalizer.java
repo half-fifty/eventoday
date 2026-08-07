@@ -19,6 +19,8 @@ import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
+import com.min.edu.advertisement.domain.Advertisement;
+import com.min.edu.advertisement.repository.AdvertisementRepository;
 
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,7 @@ public class PaymentFinalizer {
     private final TicketOrderRepository ticketOrderRepository;
     private final PaymentRepository paymentRepository;
     private final TicketExchangeCodeIssuer ticketExchangeCodeIssuer;
+    private final AdvertisementRepository advertisementRepository;
 
     @Transactional
     public ConfirmPaymentResponse finalizePayment(
@@ -72,15 +75,23 @@ public class PaymentFinalizer {
             throw new BusinessException(GlobalErrorCode.PAYMENT_KEY_ALREADY_USED);
         }
 
-        TicketOrder ticketOrder = ticketOrderRepository
-            .findByPaymentOrderId(paymentOrder.getId())
-            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
-
-        if (paymentOrder.isPaid()) {
-            return completedResponse(paymentOrder, ticketOrder, request.getPaymentKey());
+        TicketOrder ticketOrder = paymentOrder.getOrderType() == PaymentOrderType.EVENT_TICKET
+            ? ticketOrderRepository.findByPaymentOrderId(paymentOrder.getId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT))
+            : null;
+        Advertisement advertisement = paymentOrder.getOrderType() == PaymentOrderType.EVENT_AD
+            ? advertisementRepository.findByPaymentOrderId(paymentOrder.getId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT))
+            : null;
+        if (ticketOrder == null && advertisement == null) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT);
         }
 
-        validateFinalizable(paymentOrder, ticketOrder, request);
+        if (paymentOrder.isPaid()) {
+            return completedResponse(paymentOrder, ticketOrder, advertisement, request.getPaymentKey());
+        }
+
+        validateFinalizable(paymentOrder, ticketOrder, advertisement, request);
 
         Payment existingPayment = paymentRepository
             .findByPaymentOrderId(paymentOrder.getId())
@@ -102,19 +113,19 @@ public class PaymentFinalizer {
         ));
 
         paymentOrder.markPaid(now);
-        ticketOrder.confirm(tossResponse.approvedAt(), now);
-        ticketExchangeCodeIssuer.issueIfAbsent(
-            ticketOrder,
-            paymentOrder.getBuyerMemberId(),
-            now
-        );
-
-        return ConfirmPaymentResponse.of(payment, paymentOrder.getOrderNo(), ticketOrder);
+        if (ticketOrder != null) {
+            ticketOrder.confirm(tossResponse.approvedAt(), now);
+            ticketExchangeCodeIssuer.issueIfAbsent(ticketOrder, paymentOrder.getBuyerMemberId(), now);
+            return ConfirmPaymentResponse.of(payment, paymentOrder.getOrderNo(), ticketOrder);
+        }
+        advertisement.markPaid(now);
+        return ConfirmPaymentResponse.ofEventAd(payment, paymentOrder.getOrderNo(), advertisement);
     }
 
     private ConfirmPaymentResponse completedResponse(
             PaymentOrder paymentOrder,
             TicketOrder ticketOrder,
+            Advertisement advertisement,
             String paymentKey) {
         Payment payment = paymentRepository
             .findByPaymentOrderId(paymentOrder.getId())
@@ -124,20 +135,20 @@ public class PaymentFinalizer {
             throw new BusinessException(GlobalErrorCode.PAYMENT_ALREADY_PROCESSED);
         }
 
-        ticketExchangeCodeIssuer.issueIfAbsent(
-            ticketOrder,
-            paymentOrder.getBuyerMemberId(),
-            OffsetDateTime.now()
-        );
-
-        return ConfirmPaymentResponse.of(payment, paymentOrder.getOrderNo(), ticketOrder);
+        if (ticketOrder != null) {
+            ticketExchangeCodeIssuer.issueIfAbsent(ticketOrder, paymentOrder.getBuyerMemberId(), OffsetDateTime.now());
+            return ConfirmPaymentResponse.of(payment, paymentOrder.getOrderNo(), ticketOrder);
+        }
+        return ConfirmPaymentResponse.ofEventAd(payment, paymentOrder.getOrderNo(), advertisement);
     }
 
     private void validateFinalizable(
             PaymentOrder paymentOrder,
             TicketOrder ticketOrder,
+            Advertisement advertisement,
             ConfirmPaymentRequest request) {
-        if (paymentOrder.getOrderType() != PaymentOrderType.EVENT_TICKET) {
+        if (paymentOrder.getOrderType() != PaymentOrderType.EVENT_TICKET
+                && paymentOrder.getOrderType() != PaymentOrderType.EVENT_AD) {
             throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
         }
 
@@ -149,7 +160,9 @@ public class PaymentFinalizer {
             throw new BusinessException(GlobalErrorCode.PAYMENT_NOT_REQUIRED);
         }
 
-        if (!paymentOrder.isPending() || !ticketOrder.isPendingPayment()) {
+        if (!paymentOrder.isPending()
+                || (ticketOrder != null && !ticketOrder.isPendingPayment())
+                || (advertisement == null && ticketOrder == null)) {
             throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
         }
     }
