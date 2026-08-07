@@ -4,6 +4,9 @@ import com.min.edu.event.domain.EventContent;
 import com.min.edu.event.domain.EventContentAudience;
 import com.min.edu.event.domain.EventContentType;
 import java.time.OffsetDateTime;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 public final class EventContentDtos {
     private EventContentDtos() {}
@@ -41,4 +44,15 @@ public final class EventContentDtos {
             );
         }
     }
+
+    /** 공지·자료 등록 요청 DTO */
+    public record CreateRequest(
+            @NotNull EventContentType contentType,
+            String resourceType,
+            @NotNull EventContentAudience audience,
+            @NotBlank @Size(max = 200) String title,
+            String content,
+            String version,
+            boolean pinned
+    ) {}
 }

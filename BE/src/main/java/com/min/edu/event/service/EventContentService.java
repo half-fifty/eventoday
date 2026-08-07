@@ -12,15 +12,19 @@ import com.min.edu.event.repository.EventContentRepository;
 import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.PlatformRole;
+import com.min.edu.file.domain.FileAccessLevel;
+import com.min.edu.file.service.FileService;
 import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.time.OffsetDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @Transactional(readOnly = true)
@@ -30,6 +34,7 @@ public class EventContentService {
     private final EventContentRepository eventContentRepository;
     private final EventRepository eventRepository;
     private final EventMemberRepository eventMemberRepository;
+    private final FileService fileService;
 
     /**
      * 공지·자료 목록 조회
@@ -101,6 +106,59 @@ public class EventContentService {
         }
 
         return EventContentDtos.Summary.from(content);
+    }
+
+    /**
+     * 공지·자료 등록 (CONTENT-API-003)
+     * EVENT_MANAGER 또는 PLATFORM_ADMIN만 등록 가능
+     * 파일이 있으면 업로드 후 fileId를 콘텐츠에 연결
+     *
+     * @param eventId 행사 ID
+     * @param request 등록 요청 DTO
+     * @param file    첨부파일 (선택)
+     * @param member  인증 회원
+     */
+    @Transactional
+    public EventContentDtos.Summary createContent(
+            Long eventId,
+            EventContentDtos.CreateRequest request,
+            MultipartFile file,
+            AuthenticatedMemberDto member) {
+
+        // 행사 존재 여부 확인
+        if (!eventRepository.existsById(eventId)) {
+            throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
+        }
+
+        // EVENT_MANAGER 또는 PLATFORM_ADMIN만 등록 가능
+        if (member.getPlatformRole() != PlatformRole.PLATFORM_ADMIN
+                && !eventMemberRepository.existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
+                eventId, member.getMemberId(), EventRole.EVENT_MANAGER)) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+
+        // 파일이 있으면 업로드 후 fileId 획득
+        Long fileId = null;
+        if (file != null && !file.isEmpty()) {
+            fileId = fileService.upload(file, FileAccessLevel.PRIVATE, member.getMemberId()).getFileId();
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        EventContent content = EventContent.create(
+                eventId,
+                member.getMemberId(),
+                request.contentType(),
+                request.resourceType(),
+                request.audience(),
+                request.title(),
+                request.content(),
+                fileId,
+                request.version(),
+                request.pinned(),
+                now
+        );
+
+        return EventContentDtos.Summary.from(eventContentRepository.save(content));
     }
 
     /**

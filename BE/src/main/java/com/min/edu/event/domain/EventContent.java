@@ -68,4 +68,34 @@ public class EventContent {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    /** 공지·자료 생성 팩토리 메서드 */
+    public static EventContent create(
+            Long eventId,
+            Long authorMemberId,
+            EventContentType contentType,
+            String resourceType,
+            EventContentAudience audience,
+            String title,
+            String content,
+            Long fileId,
+            String version,
+            boolean pinned,
+            OffsetDateTime now) {
+        return EventContent.builder()
+                .eventId(eventId)
+                .authorMemberId(authorMemberId)
+                .contentType(contentType)
+                .resourceType(resourceType)
+                .audience(audience)
+                .title(title)
+                .content(content)
+                .fileId(fileId)
+                .version(version)
+                .pinned(pinned)
+                .publishedAt(now)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+    }
 }

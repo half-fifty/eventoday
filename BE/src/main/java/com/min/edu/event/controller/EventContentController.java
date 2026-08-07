@@ -7,11 +7,16 @@ import com.min.edu.event.dto.EventContentDtos;
 import com.min.edu.event.service.EventContentService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequiredArgsConstructor
@@ -37,6 +42,18 @@ public class EventContentController {
             @AuthenticationPrincipal AuthenticatedMemberDto member) {
         return ApiResponse.success(
                 eventContentService.getContent(contentId, member)
+        );
+    }
+
+    // CONTENT-API-003: 공지·자료 등록
+    @PostMapping(value = "/events/{eventId}/contents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<EventContentDtos.Summary> createContent(
+            @PathVariable Long eventId,
+            @RequestPart("data") @Valid EventContentDtos.CreateRequest request,
+            @RequestPart(value = "file", required = false) MultipartFile file,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        return ApiResponse.success(
+                eventContentService.createContent(eventId, request, file, member)
         );
     }
 }
