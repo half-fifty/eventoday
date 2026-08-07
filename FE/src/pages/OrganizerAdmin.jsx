@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
@@ -37,6 +37,7 @@ export default function OrganizerAdmin() {
   const [query] = useSearchParams();
   const requestedOrganizationId = query.get("organizationId") || "";
   const requestedEventId = query.get("eventId") || "";
+  const previousRequestedEventId = useRef(requestedEventId);
   const [organizationId, setOrganizationId] = useState(requestedOrganizationId || localStorage.getItem("organizationId") || "");
   const [managedOrganizations, setManagedOrganizations] = useState([]);
   const [managedEvents, setManagedEvents] = useState([]);
@@ -107,11 +108,17 @@ export default function OrganizerAdmin() {
       setSelectedEventId("");
       return;
     }
+    const requestedEventChanged = previousRequestedEventId.current !== requestedEventId;
+    previousRequestedEventId.current = requestedEventId;
     const requestedEventExists = requestedEventId
       && managedEvents.some((event) => String(event.id) === requestedEventId);
-    setSelectedEventId(requestedEventExists
-      ? requestedEventId
-      : String(managedEvents[0].id));
+    setSelectedEventId((currentEventId) => {
+      if (requestedEventChanged && requestedEventExists) return requestedEventId;
+      const currentEventExists = currentEventId
+        && managedEvents.some((event) => String(event.id) === String(currentEventId));
+      if (currentEventExists) return currentEventId;
+      return requestedEventExists ? requestedEventId : String(managedEvents[0].id);
+    });
   }, [managedEvents, requestedEventId]);
 
   const selectedEvent = managedEvents.find((event) => String(event.id) === String(selectedEventId));
