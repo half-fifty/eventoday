@@ -98,4 +98,26 @@ public class EventContent {
                 .updatedAt(now)
                 .build();
     }
+
+    /** 공지·자료 수정 메서드 */
+    public void update(
+            EventContentType contentType,
+            String resourceType,
+            EventContentAudience audience,
+            String title,
+            String content,
+            Long fileId,
+            String version,
+            boolean pinned,
+            OffsetDateTime now) {
+        this.contentType = contentType;
+        this.resourceType = resourceType;
+        this.audience = audience;
+        this.title = title;
+        this.content = content;
+        this.fileId = fileId;
+        this.version = version;
+        this.pinned = pinned;
+        this.updatedAt = now;
+    }
 }

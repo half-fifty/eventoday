@@ -55,4 +55,15 @@ public final class EventContentDtos {
             String version,
             boolean pinned
     ) {}
+
+    /** 공지·자료 수정 요청 DTO */
+    public record UpdateRequest(
+            @NotNull EventContentType contentType,
+            String resourceType,
+            @NotNull EventContentAudience audience,
+            @NotBlank @Size(max = 200) String title,
+            String content,
+            String version,
+            boolean pinned
+    ) {}
 }

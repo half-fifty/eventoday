@@ -162,6 +162,55 @@ public class EventContentService {
     }
 
     /**
+     * 공지·자료 수정
+     * EVENT_MANAGER 또는 PLATFORM_ADMIN만 수정 가능
+     * 새 파일이 있으면 교체, 없으면 기존 fileId 유지
+     *
+     * @param contentId 콘텐츠 ID
+     * @param request   수정 요청 DTO
+     * @param file      새 첨부파일 (없으면 기존 유지)
+     * @param member    인증 회원
+     */
+    @Transactional
+    public EventContentDtos.Summary updateContent(
+            Long contentId,
+            EventContentDtos.UpdateRequest request,
+            MultipartFile file,
+            AuthenticatedMemberDto member) {
+
+        // 콘텐츠 조회
+        EventContent content = eventContentRepository.findById(contentId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // EVENT_MANAGER 또는 PLATFORM_ADMIN만 수정 가능
+        if (member.getPlatformRole() != PlatformRole.PLATFORM_ADMIN
+                && !eventMemberRepository.existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
+                content.getEventId(), member.getMemberId(), EventRole.EVENT_MANAGER)) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+
+        // 새 파일이 있으면 업로드 후 fileId 교체, 없으면 기존 fileId 유지
+        Long fileId = content.getFileId();
+        if (file != null && !file.isEmpty()) {
+            fileId = fileService.upload(file, FileAccessLevel.PRIVATE, member.getMemberId()).getFileId();
+        }
+
+        content.update(
+                request.contentType(),
+                request.resourceType(),
+                request.audience(),
+                request.title(),
+                request.content(),
+                fileId,
+                request.version(),
+                request.pinned(),
+                OffsetDateTime.now()
+        );
+
+        return EventContentDtos.Summary.from(content);
+    }
+
+    /**
      * 권한에 따른 조회 가능 audience 목록 결정
      * - PLATFORM_ADMIN / 해당 행사 EVENT_MANAGER: 전체 audience (ALL, EXHIBITOR, VISITOR)
      * - 그 외: ALL만

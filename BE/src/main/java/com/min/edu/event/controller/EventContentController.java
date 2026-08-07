@@ -14,9 +14,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.MediaType;
 
 @RestController
 @RequiredArgsConstructor
@@ -54,6 +55,18 @@ public class EventContentController {
             @AuthenticationPrincipal AuthenticatedMemberDto member) {
         return ApiResponse.success(
                 eventContentService.createContent(eventId, request, file, member)
+        );
+    }
+
+    // CONTENT-API-004: 공지·자료 수정
+    @PatchMapping(value = "/event-contents/{contentId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<EventContentDtos.Summary> updateContent(
+            @PathVariable Long contentId,
+            @RequestPart("data") @Valid EventContentDtos.UpdateRequest request,
+            @RequestPart(value = "file", required = false) MultipartFile file,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        return ApiResponse.success(
+                eventContentService.updateContent(contentId, request, file, member)
         );
     }
 }
