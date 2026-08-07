@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { eventApi } from "../api/eventApi.js";
+import TopNav from "../components/TopNav.jsx";
 
 export default function EventMembers() {
   const { eventId } = useParams();
@@ -96,7 +97,7 @@ export default function EventMembers() {
     finally { finishMemberRequest(requestKey); }
   };
 
-  return <main className="min-h-screen bg-surface-container-low p-lg md:p-xl">
+  return <><TopNav active="organizer" /><main className="min-h-screen bg-surface-container-low px-lg pb-xl pt-[76px] md:px-xl">
     <section className="max-w-[800px] mx-auto space-y-lg">
       <div className="flex justify-between items-center"><div><p className="text-caption text-primary">EVENT #{eventId}</p><h1 className="font-display-lg text-[28px]">행사 담당자 관리</h1></div><Link to={`/organizer-admin?organizationId=${organizationId || ""}&eventId=${eventId}`}>돌아가기</Link></div>
       <form onSubmit={add} className="bg-white border border-hairline rounded-xl p-lg flex flex-wrap gap-sm">
@@ -114,5 +115,5 @@ export default function EventMembers() {
         </div>)}
       </div>
     </section>
-  </main>;
+  </main></>;
 }

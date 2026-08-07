@@ -32,6 +32,10 @@ public class AdvertisementController {
             @RequestParam(required = false) Long eventId) {
         return ApiResponse.success(advertisementService.findActive(eventId));
     }
+    @GetMapping("/advertisements/pricing")
+    public ApiResponse<AdvertisementDtos.PricingResponse> getPricing() {
+        return ApiResponse.success(advertisementService.getPricing());
+    }
     @PostMapping("/events/{eventId}/advertisements")
     public ApiResponse<AdvertisementDtos.Response> createEventAd(@PathVariable Long eventId,
             @Valid @RequestBody AdvertisementDtos.SaveRequest request,
@@ -59,6 +63,13 @@ public class AdvertisementController {
             @Valid @RequestBody AdvertisementDtos.UpdateRequest request,
             @AuthenticationPrincipal AuthenticatedMemberDto actor) {
         return ApiResponse.success(advertisementService.update(advertisementId, request, actor));
+    }
+    @PatchMapping("/advertisements/{advertisementId}/creative")
+    public ApiResponse<AdvertisementDtos.Response> updateCreative(
+            @PathVariable Long advertisementId,
+            @Valid @RequestBody AdvertisementDtos.CreativeUpdateRequest request,
+            @AuthenticationPrincipal AuthenticatedMemberDto actor) {
+        return ApiResponse.success(advertisementService.updateCreative(advertisementId, request, actor));
     }
     @PostMapping("/advertisements/{advertisementId}/cancellation")
     public ApiResponse<Void> cancel(@PathVariable Long advertisementId,

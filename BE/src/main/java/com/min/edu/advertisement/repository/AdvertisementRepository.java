@@ -5,6 +5,7 @@ import com.min.edu.advertisement.domain.AdvertisementStatus;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
@@ -13,6 +14,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface AdvertisementRepository extends JpaRepository<Advertisement, Long>,
         JpaSpecificationExecutor<Advertisement> {
+    Optional<Advertisement> findByPaymentOrderId(Long paymentOrderId);
     List<Advertisement> findAllByStatusInAndStartAtLessThanEqualAndEndAtGreaterThan(
             Collection<AdvertisementStatus> statuses, OffsetDateTime startAt, OffsetDateTime endAt);
     List<Advertisement> findAllByEventIdAndStatusInAndStartAtLessThanEqualAndEndAtGreaterThan(

@@ -36,7 +36,7 @@ class EventTest {
         event.reject("정보 부족", now);
 
         event.update("수정 행사", "EXPO", "소개", "설명", "장소", "주소",
-                null, null, null, null, null,
+                null, null, null, null, null, null, null,
                 now.plusDays(10), now.plusDays(11), now, now.plusDays(9),
                 BigDecimal.ZERO, 100, 2, null, true, true, true, 10, now.plusMinutes(1));
         event.submit(now.plusMinutes(2));

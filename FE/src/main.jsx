@@ -17,9 +17,14 @@ import MyPage from "./pages/MyPage.jsx";
 import OrganizerAdmin from "./pages/OrganizerAdmin.jsx";
 import PlatformAdmin from "./pages/PlatformAdmin.jsx";
 import EventDetail from "./pages/EventDetail.jsx";
+import EventList from "./pages/EventList.jsx";
 import EventForm from "./pages/EventForm.jsx";
 import EventMembers from "./pages/EventMembers.jsx";
+import OrganizerAdvertisements from "./pages/OrganizerAdvertisements.jsx";
+import AdvertisementPaymentResult from "./pages/AdvertisementPaymentResult.jsx";
+import TicketPaymentResult from "./pages/TicketPaymentResult.jsx";
 import NotFound from "./pages/NotFound.jsx";
+import VenueGuide from "./pages/VenueGuide.jsx";
 import { AuthProvider } from "./auth/AuthProvider.jsx";
 import ProtectedRoute from "./auth/ProtectedRoute.jsx";
 import NotificationSseProvider from "./notifications/NotificationSseProvider.jsx";
@@ -34,6 +39,8 @@ const router = createBrowserRouter([
   { path: "/recruitments/:recruitmentId", element: <RecruitmentDetail /> },
   { path: "/recruitment-check", element: <RecruitmentCheck /> },
   { path: "/events/:eventId", element: <EventDetail /> },
+  { path: "/events", element: <EventList /> },
+  { path: "/venues", element: <VenueGuide /> },
   { path: "/booth-detail", element: <BoothDetail /> },
   { path: "/booth-apply", element: <BoothApply /> },
   {
@@ -48,6 +55,11 @@ const router = createBrowserRouter([
   { path: "/organizer-admin/events/new", element: <EventForm /> },
   { path: "/organizer-admin/events/:eventId/edit", element: <EventForm /> },
   { path: "/organizer-admin/events/:eventId/members", element: <EventMembers /> },
+  { path: "/organizer-admin/advertisements", element: <OrganizerAdvertisements /> },
+  { path: "/organizer-admin/advertisements/payment/success", element: <AdvertisementPaymentResult /> },
+  { path: "/organizer-admin/advertisements/payment/fail", element: <AdvertisementPaymentResult failed /> },
+  { path: "/tickets/payment/success", element: <TicketPaymentResult /> },
+  { path: "/tickets/payment/fail", element: <TicketPaymentResult failed /> },
   {
     path: "/platform-admin",
     element: (

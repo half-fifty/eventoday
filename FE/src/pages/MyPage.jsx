@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
-import NotificationBell from "../components/NotificationBell.jsx";
+import TopNav from "../components/TopNav.jsx";
 import useAuth from "../hooks/useAuth.js";
 import { useNotifications } from "../notifications/NotificationContext.jsx";
 
@@ -118,16 +118,7 @@ export default function MyPage() {
 
   return (
     <div className="bg-surface-container-low text-on-surface">
-      {/* Top Nav */}
-      <header className="fixed top-0 w-full h-[44px] z-[100] bg-black flex justify-between items-center px-lg">
-        <Link to="/" className="font-hero-display text-tagline text-white">EXPO HUB</Link>
-        <div className="flex items-center gap-sm">
-          <NotificationBell />
-          <Link to="/" className="text-white/80 hover:text-white text-nav-link font-nav-link flex items-center gap-1">
-            <Icon name="home" className="text-[18px]" /> 메인으로
-          </Link>
-        </div>
-      </header>
+      <TopNav active="mypage" />
 
       <main className="pt-[44px] pb-xxl">
         {/* Profile header */}

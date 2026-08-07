@@ -15,9 +15,17 @@ import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.PlatformRole;
+import com.min.edu.member.domain.Member;
+import com.min.edu.member.repository.MemberRepository;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
 import java.time.OffsetDateTime;
+import java.math.BigDecimal;
+import java.time.Duration;
+import com.min.edu.payment.domain.PaymentOrder;
+import com.min.edu.payment.repository.PaymentOrderRepository;
+import com.min.edu.payment.support.OrderNoGenerator;
+import org.springframework.beans.factory.annotation.Value;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -40,16 +48,29 @@ public class AdvertisementService {
     private final EventRepository eventRepository;
     private final EventOrganizationMemberRepository organizationMemberRepository;
     private final EventMemberRepository eventMemberRepository;
+    private final PaymentOrderRepository paymentOrderRepository;
+    private final OrderNoGenerator orderNoGenerator;
+    private final MemberRepository memberRepository;
+    private final BigDecimal eventAdPrice;
+    private final Duration paymentExpiry;
 
     public AdvertisementService(AdvertisementRepository advertisementRepository,
             AdvertisementBoothRepository boothRepository, EventRepository eventRepository,
             EventOrganizationMemberRepository organizationMemberRepository,
-            EventMemberRepository eventMemberRepository) {
+            EventMemberRepository eventMemberRepository, PaymentOrderRepository paymentOrderRepository,
+            OrderNoGenerator orderNoGenerator, MemberRepository memberRepository,
+            @Value("${advertisement.event-ad-price:100000}") BigDecimal eventAdPrice,
+            @Value("${advertisement.payment-expiry:PT30M}") Duration paymentExpiry) {
         this.advertisementRepository = advertisementRepository;
         this.boothRepository = boothRepository;
         this.eventRepository = eventRepository;
         this.organizationMemberRepository = organizationMemberRepository;
         this.eventMemberRepository = eventMemberRepository;
+        this.paymentOrderRepository = paymentOrderRepository;
+        this.orderNoGenerator = orderNoGenerator;
+        this.memberRepository = memberRepository;
+        this.eventAdPrice = eventAdPrice;
+        this.paymentExpiry = paymentExpiry;
     }
 
     public List<AdvertisementDtos.Response> findActive(Long eventId) {
@@ -71,6 +92,11 @@ public class AdvertisementService {
                 .map(AdvertisementDtos.Response::from).toList();
     }
 
+    public AdvertisementDtos.PricingResponse getPricing() {
+        return new AdvertisementDtos.PricingResponse(eventAdPrice, BigDecimal.ZERO,
+                paymentExpiry.toMinutes());
+    }
+
     @Transactional
     public AdvertisementDtos.Response createEventAd(Long eventId, AdvertisementDtos.SaveRequest request,
             AuthenticatedMemberDto actor) {
@@ -79,7 +105,17 @@ public class AdvertisementService {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         requireOrganizationManager(request.applicantOrganizationId(), actor);
         validatePeriod(request.startAt(), request.endAt());
-        return save(eventId, null, request, AdvertisementStatus.PAYMENT_PENDING);
+        OffsetDateTime now = OffsetDateTime.now();
+        Advertisement ad = build(eventId, null, request, AdvertisementStatus.PAYMENT_PENDING, now);
+        advertisementRepository.save(ad);
+        Member buyer = memberRepository.findById(actor.getMemberId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+        PaymentOrder order = paymentOrderRepository.save(PaymentOrder.createEventAdOrder(
+                orderNoGenerator.generate(), buyer.getId(), buyer.getNickname(), buyer.getEmail(),
+                eventAdPrice, now.plus(paymentExpiry), now));
+        ad.assignPaymentOrder(order.getId(), now);
+        return AdvertisementDtos.Response.from(ad,
+                new AdvertisementDtos.PaymentOrderSummary(order.getOrderNo(), order.getTotalAmount()));
     }
 
     @Transactional
@@ -99,12 +135,12 @@ public class AdvertisementService {
         requireOrganizationMember(organizationId, actor);
         Specification<Advertisement> spec = (root, query, cb) ->
                 cb.equal(root.get("applicantOrganizationId"), organizationId);
-        return advertisementRepository.findAll(spec, pageable).map(AdvertisementDtos.Response::from);
+        return responses(advertisementRepository.findAll(spec, pageable));
     }
 
     public AdvertisementDtos.Response get(Long id, AuthenticatedMemberDto actor) {
         Advertisement ad = getAd(id); requireOwnerOrAdmin(ad, actor);
-        return AdvertisementDtos.Response.from(ad);
+        return response(ad);
     }
 
     @Transactional
@@ -114,7 +150,17 @@ public class AdvertisementService {
         validatePeriod(request.startAt(), request.endAt());
         transition(() -> ad.update(request.bannerFileId(), request.adText(), request.startAt(),
                 request.endAt(), OffsetDateTime.now()));
-        return AdvertisementDtos.Response.from(ad);
+        return response(ad);
+    }
+
+    @Transactional
+    public AdvertisementDtos.Response updateCreative(Long id,
+            AdvertisementDtos.CreativeUpdateRequest request, AuthenticatedMemberDto actor) {
+        Advertisement ad = getAd(id);
+        requireOrganizationManager(ad.getApplicantOrganizationId(), actor);
+        transition(() -> ad.updateCreative(request.bannerFileId(), request.adText(),
+                OffsetDateTime.now()));
+        return response(ad);
     }
 
     @Transactional
@@ -128,7 +174,7 @@ public class AdvertisementService {
         requireAdmin(actor);
         Specification<Advertisement> spec = status == null ? null :
                 (root, query, cb) -> cb.equal(root.get("status"), status);
-        return advertisementRepository.findAll(spec, pageable).map(AdvertisementDtos.Response::from);
+        return responses(advertisementRepository.findAll(spec, pageable));
     }
 
     @Transactional
@@ -154,12 +200,17 @@ public class AdvertisementService {
     private AdvertisementDtos.Response save(Long eventId, Long boothId,
             AdvertisementDtos.SaveRequest request, AdvertisementStatus status) {
         OffsetDateTime now = OffsetDateTime.now();
-        Advertisement ad = Advertisement.builder().eventId(eventId).boothId(boothId)
+        Advertisement ad = build(eventId, boothId, request, status, now);
+        return AdvertisementDtos.Response.from(advertisementRepository.save(ad));
+    }
+
+    private Advertisement build(Long eventId, Long boothId,
+            AdvertisementDtos.SaveRequest request, AdvertisementStatus status, OffsetDateTime now) {
+        return Advertisement.builder().eventId(eventId).boothId(boothId)
                 .applicantOrganizationId(request.applicantOrganizationId())
                 .bannerFileId(request.bannerFileId()).adText(request.adText())
                 .startAt(request.startAt()).endAt(request.endAt()).status(status)
                 .createdAt(now).updatedAt(now).build();
-        return AdvertisementDtos.Response.from(advertisementRepository.save(ad));
     }
 
     private Comparator<Advertisement> activeComparator(Map<Long, Event> eventsById) {
@@ -168,6 +219,27 @@ public class AdvertisementService {
             Event event = eventsById.get(ad.getEventId());
             return event == null ? OffsetDateTime.MAX : event.getStartAt();
         }).thenComparing(Advertisement::getId);
+    }
+    private AdvertisementDtos.Response response(Advertisement ad) {
+        if (ad.getPaymentOrderId() == null) return AdvertisementDtos.Response.from(ad);
+        return paymentOrderRepository.findById(ad.getPaymentOrderId())
+                .map(order -> AdvertisementDtos.Response.from(ad,
+                        new AdvertisementDtos.PaymentOrderSummary(order.getOrderNo(), order.getTotalAmount())))
+                .orElseGet(() -> AdvertisementDtos.Response.from(ad));
+    }
+    private Page<AdvertisementDtos.Response> responses(Page<Advertisement> advertisements) {
+        Set<Long> paymentOrderIds = advertisements.getContent().stream()
+                .map(Advertisement::getPaymentOrderId).filter(id -> id != null)
+                .collect(Collectors.toSet());
+        Map<Long, PaymentOrder> ordersById = paymentOrderRepository.findAllById(paymentOrderIds).stream()
+                .collect(Collectors.toMap(PaymentOrder::getId, Function.identity()));
+        return advertisements.map(ad -> {
+            PaymentOrder order = ordersById.get(ad.getPaymentOrderId());
+            return order == null ? AdvertisementDtos.Response.from(ad)
+                    : AdvertisementDtos.Response.from(ad,
+                            new AdvertisementDtos.PaymentOrderSummary(
+                                    order.getOrderNo(), order.getTotalAmount()));
+        });
     }
     private Event getEvent(Long id) { return eventRepository.findById(id)
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND)); }

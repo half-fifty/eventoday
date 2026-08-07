@@ -8,6 +8,7 @@ const json = (method, body) => ({
 
 export const advertisementApi = {
   active: (params = {}) => apiRequest(`/v1/advertisements/active?${new URLSearchParams(params)}`),
+  pricing: () => apiRequest("/v1/advertisements/pricing"),
   createEvent: (eventId, payload) =>
     apiRequest(`/v1/events/${eventId}/advertisements`, json("POST", payload)),
   createBooth: (boothId, payload) =>
@@ -17,6 +18,8 @@ export const advertisementApi = {
   detail: (advertisementId) => apiRequest(`/v1/advertisements/${advertisementId}`),
   update: (advertisementId, payload) =>
     apiRequest(`/v1/advertisements/${advertisementId}`, json("PATCH", payload)),
+  updateCreative: (advertisementId, payload) =>
+    apiRequest(`/v1/advertisements/${advertisementId}/creative`, json("PATCH", payload)),
   cancel: (advertisementId) =>
     apiRequest(`/v1/advertisements/${advertisementId}/cancellation`, json("POST")),
   adminList: (params = {}) =>
