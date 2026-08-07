@@ -48,6 +48,8 @@ public final class EventDtos {
             boolean boothReservationEnabled,
             @NotNull @Min(0) Integer noShowGraceMinutes) {}
 
+    public record PosterUpdateRequest(@NotNull Long representativeFileId) {}
+
     public record Summary(
             Long id, String name, String eventType, String shortDescription,
             String venueName, String address, String addressDetail,

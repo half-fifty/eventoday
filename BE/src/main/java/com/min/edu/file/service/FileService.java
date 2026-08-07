@@ -146,6 +146,14 @@ public class FileService {
         findAndCheckAccess(fileId, memberId);
     }
 
+    @Transactional(readOnly = true)
+    public void assertPublicAccessible(Long fileId, Long memberId) {
+        FileAsset fileAsset = findAndCheckAccess(fileId, memberId);
+        if (fileAsset.getAccessLevel() != FileAccessLevel.PUBLIC) {
+            throw new BusinessException(GlobalErrorCode.FILE_ACCESS_DENIED);
+        }
+    }
+
     /**
      * 파일을 조회하고 접근 권한을 검증하는 공통 메서드.
      * PRIVATE 파일은 업로드한 본인만 접근 가능하다.

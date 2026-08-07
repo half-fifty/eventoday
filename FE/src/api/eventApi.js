@@ -21,6 +21,9 @@ export const eventApi = {
     apiRequest(`/v1/organizations/${organizationId}/events`, json("POST", payload)),
   update: (organizationId, eventId, payload) =>
     apiRequest(`/v1/organizations/${organizationId}/events/${eventId}`, json("PATCH", payload)),
+  updatePoster: (organizationId, eventId, representativeFileId) =>
+    apiRequest(`/v1/organizations/${organizationId}/events/${eventId}/poster`,
+      json("PATCH", { representativeFileId })),
   submit: (eventId) => apiRequest(`/v1/events/${eventId}/submission`, json("POST")),
   publish: (eventId) => apiRequest(`/v1/events/${eventId}/publication`, json("POST")),
   cancel: (eventId) => apiRequest(`/v1/events/${eventId}/cancellation`, json("POST")),

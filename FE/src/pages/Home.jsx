@@ -216,6 +216,7 @@ export default function Home() {
                   <img
                     src={s.imageUrl}
                     alt=""
+                    onError={(imageEvent) => { imageEvent.currentTarget.style.display = "none"; }}
                     className="absolute inset-0 h-full w-full object-cover"
                   />
                 )}

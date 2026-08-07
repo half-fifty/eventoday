@@ -123,7 +123,7 @@ function MapStage({filtered,selected,onSelect}) {
     </div>
     <div key={selected.id} className="venue-detail-card" style={{"--venue-color":selected.color}}>
       <div className={`venue-detail-visual ${venueImages[selected.id] ? "has-photo" : ""}`}>
-        {venueImages[selected.id] ? <img src={venueImages[selected.id].src} alt={`${selected.name} 전경`} className="venue-detail-photo"/> : <><span className="venue-detail-grid"/><Icon name="apartment" className="relative text-[54px] text-white/90"/></>}
+        {venueImages[selected.id] ? <img src={venueImages[selected.id].src} alt={`${selected.name} 전경`} onError={(imageEvent)=>{imageEvent.currentTarget.style.display="none";}} className="venue-detail-photo"/> : <><span className="venue-detail-grid"/><Icon name="apartment" className="relative text-[54px] text-white/90"/></>}
         <span className="venue-detail-shade"/>
         <span className="absolute bottom-3 left-4 text-[9px] font-black tracking-[.22em] text-white/90">EVENTODAY VENUE</span>
         {venueImages[selected.id] && <span className="venue-photo-credit">{venueImages[selected.id].credit}</span>}

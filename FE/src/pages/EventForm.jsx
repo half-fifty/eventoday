@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { eventApi } from "../api/eventApi.js";
 import { locationApi } from "../api/locationApi.js";
+import { fileDownloadUrl } from "../api/fileApi.js";
 import KakaoMapPreview from "../components/KakaoMapPreview.jsx";
 import Icon from "../components/Icon.jsx";
 import FileUploadField from "../components/FileUploadField.jsx";
@@ -46,6 +47,7 @@ export default function EventForm() {
   const [placeError, setPlaceError] = useState("");
   const placeSearchSequence = useRef(0);
   const postalCodeSequence = useRef(0);
+  const posterOnly = Boolean(eventId) && !["PREPARING", "REJECTED"].includes(form.status);
 
   useEffect(() => {
     eventApi.managedOrganizations()
@@ -148,6 +150,16 @@ export default function EventForm() {
     e.preventDefault();
     if (!organizationId) { setError("행사를 등록할 운영 조직을 선택해 주세요."); return; }
     if (!form.representativeFileId) { setError("행사 포스터를 등록해 주세요."); return; }
+    if (posterOnly) {
+      setSaving(true); setError("");
+      try {
+        await eventApi.updatePoster(organizationId, eventId, form.representativeFileId);
+        navigate(`/organizer-admin?organizationId=${organizationId}&eventId=${eventId}`);
+      } catch (requestError) {
+        setError(requestError.message || "포스터를 변경하지 못했습니다.");
+      } finally { setSaving(false); }
+      return;
+    }
     if (!form.exhibitCategoryCodes.length) { setError("전시품목을 하나 이상 선택해 주세요."); return; }
     if (new Date(form.startAt) >= new Date(form.endAt)) { setError("행사 종료는 시작 이후여야 합니다."); return; }
     setSaving(true); setError("");
@@ -167,6 +179,19 @@ export default function EventForm() {
   const field = "w-full h-11 border border-hairline rounded-lg px-md bg-white outline-none focus:border-primary";
   const section = "bg-white border border-hairline rounded-2xl p-lg md:p-xl space-y-lg";
   if (loading) return <div className="min-h-screen grid place-items-center">행사를 불러오는 중입니다.</div>;
+  if (posterOnly) return <><TopNav active="organizer" /><main className="min-h-screen bg-surface-container-low px-lg pb-xl pt-[76px]">
+    <form onSubmit={submit} className="max-w-[720px] mx-auto space-y-lg">
+      <header className="flex justify-between items-end gap-md"><div><p className="text-caption text-primary">ORGANIZER CENTER</p><h1 className="font-display-lg text-[32px]">행사 포스터 변경</h1><p className="text-ink-muted mt-xs">공개·심사 중인 행사는 일정과 가격을 유지하고 포스터만 변경할 수 있습니다.</p></div><Link to={`/organizer-admin?organizationId=${organizationId || ""}&eventId=${eventId}`} className="text-caption">돌아가기</Link></header>
+      {error && <p className="bg-error/10 border border-error/20 text-error p-md rounded-xl">{error}</p>}
+      <section className={section}>
+        <div><p className="text-caption text-primary mb-xs">{form.status}</p><h2 className="font-display-md text-[22px]">{form.name}</h2></div>
+        {form.representativeFileId && <img src={fileDownloadUrl(form.representativeFileId)} alt={`${form.name} 현재 포스터`} onError={(imageEvent) => { imageEvent.currentTarget.style.display = "none"; }} className="mx-auto max-h-[420px] rounded-xl object-contain" />}
+        <FileUploadField label="새 행사 포스터" required value={form.representativeFileId}
+          onChange={(fileId) => change("representativeFileId", fileId)} />
+        <button disabled={saving} className="w-full px-xxl py-md bg-primary text-white rounded-full font-body-strong disabled:opacity-50">{saving ? "변경 중..." : "포스터 변경"}</button>
+      </section>
+    </form>
+  </main></>;
   return <><TopNav active="organizer" /><main className="min-h-screen bg-surface-container-low px-lg pb-xl pt-[76px]">
     <form onSubmit={submit} className="max-w-[1040px] mx-auto space-y-lg">
       <header className="flex justify-between items-end gap-md"><div><p className="text-caption text-primary">ORGANIZER CENTER</p><h1 className="font-display-lg text-[32px]">{eventId ? "행사 수정" : "새 행사 등록"}</h1><p className="text-ink-muted mt-xs">행사 공개 전까지 언제든 수정할 수 있습니다.</p></div><Link to={`/organizer-admin?organizationId=${organizationId || ""}`} className="text-caption">돌아가기</Link></header>
@@ -219,7 +244,7 @@ export default function EventForm() {
         <div><p className="text-caption text-primary mb-xs">04</p><h2 className="font-display-md text-[22px]">문의처 및 포스터</h2><p className="text-caption text-ink-muted mt-xs">방문객에게 공개되는 공식 문의처입니다. 개인번호보다 행사 대표번호 사용을 권장합니다.</p></div>
         <div className="grid md:grid-cols-2 gap-md">
           <label>담당자 이메일 *<input required type="email" maxLength={255} className={field} value={form.contactEmail} onChange={(e)=>change("contactEmail",e.target.value)} placeholder="event@example.com"/></label>
-          <label>담당자 연락처 *<input required type="tel" maxLength={30} pattern="[0-9-]{9,14}" title="숫자와 하이픈을 사용해 입력해 주세요." className={field} value={form.contactPhone} onChange={(e)=>change("contactPhone",e.target.value.replace(/[^0-9-]/g, ""))} placeholder="02-1234-5678"/><span className="block text-caption text-ink-muted mt-xs">예: 02-1234-5678, 031-123-4567</span></label>
+          <label>담당자 연락처 *<input required type="tel" maxLength={30} pattern="[0-9\\-]{9,14}" title="숫자와 하이픈을 사용해 입력해 주세요." className={field} value={form.contactPhone} onChange={(e)=>change("contactPhone",e.target.value.replace(/[^0-9-]/g, ""))} placeholder="02-1234-5678"/><span className="block text-caption text-ink-muted mt-xs">예: 02-1234-5678, 031-123-4567</span></label>
         </div>
         <FileUploadField label="행사 포스터" required value={form.representativeFileId}
           onChange={(fileId) => change("representativeFileId", fileId)} />

@@ -195,6 +195,14 @@ public class Event {
                 boothReservationEnabled, noShowGraceMinutes, now);
     }
 
+    public void updateRepresentativeFile(Long representativeFileId, OffsetDateTime now) {
+        if (status == EventStatus.CANCELLED) {
+            throw new IllegalStateException("취소된 행사의 포스터는 수정할 수 없습니다.");
+        }
+        this.representativeFileId = representativeFileId;
+        this.updatedAt = now;
+    }
+
     public void submit(OffsetDateTime now) {
         requireStatus(EventStatus.PREPARING, EventStatus.REJECTED);
         this.status = EventStatus.SUBMITTED;

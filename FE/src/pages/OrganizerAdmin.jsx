@@ -410,7 +410,7 @@ export default function OrganizerAdmin() {
               <h1 className="font-display-lg text-[26px]">행사 등록 승인 요청</h1>
               {selectedEventId && (
                 <div className="bg-white border border-hairline rounded-xl p-lg flex gap-sm">
-                  <Link to={`/organizer-admin/events/${selectedEventId}/edit?organizationId=${organizationId || ""}`} className="text-caption px-md py-xs border border-hairline rounded-full">행사 수정</Link>
+                  <Link to={`/organizer-admin/events/${selectedEventId}/edit?organizationId=${organizationId || ""}`} className="text-caption px-md py-xs border border-hairline rounded-full">{["PREPARING", "REJECTED"].includes(selectedEvent?.status) ? "행사 수정" : "포스터 변경"}</Link>
                   <Link to={`/organizer-admin/events/${selectedEventId}/members?organizationId=${organizationId || ""}`} className="text-caption px-md py-xs border border-hairline rounded-full">담당자 관리</Link>
                 </div>
               )}

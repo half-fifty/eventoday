@@ -101,7 +101,7 @@ export default function EventDetail() {
         {error && <div className="bg-error/10 border border-error/20 text-error rounded-xl p-lg">{error}<Link to="/" className="underline ml-sm">행사 목록으로</Link></div>}
         {event && <>
           <section className="overflow-hidden rounded-2xl text-white bg-gradient-to-br from-primary-focus to-secondary mb-xl grid md:grid-cols-[280px_1fr]">
-            {event.representativeFileId && <div className="bg-black/15 p-md"><img src={fileDownloadUrl(event.representativeFileId)} alt={`${event.name} 포스터`} className="w-full aspect-[3/4] object-cover rounded-xl shadow-xl" /></div>}
+            {event.representativeFileId && <div className="bg-black/15 p-md"><img src={fileDownloadUrl(event.representativeFileId)} alt={`${event.name} 포스터`} onError={(imageEvent) => { imageEvent.currentTarget.style.display = "none"; }} className="w-full aspect-[3/4] object-cover rounded-xl shadow-xl" /></div>}
             <div className="p-xl md:p-xxl flex flex-col justify-center"><p className="text-caption text-white/70 mb-sm">{event.eventType}</p><h1 className="font-display-lg text-[32px] md:text-[42px] mb-sm">{event.name}</h1><p className="text-white/80">{event.shortDescription}</p></div>
           </section>
           <div className="grid md:grid-cols-[1fr_320px] gap-xl">
