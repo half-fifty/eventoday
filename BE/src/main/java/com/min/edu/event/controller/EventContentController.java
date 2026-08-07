@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.multipart.MultipartFile;
@@ -68,5 +69,14 @@ public class EventContentController {
         return ApiResponse.success(
                 eventContentService.updateContent(contentId, request, file, member)
         );
+    }
+
+    // CONTENT-API-005: 공지·자료 삭제
+    @DeleteMapping("/event-contents/{contentId}")
+    public ApiResponse<Void> deleteContent(
+            @PathVariable Long contentId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        eventContentService.deleteContent(contentId, member);
+        return ApiResponse.success();
     }
 }

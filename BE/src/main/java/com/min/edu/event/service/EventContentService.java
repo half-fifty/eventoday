@@ -211,6 +211,30 @@ public class EventContentService {
     }
 
     /**
+     * 공지·자료 삭제
+     * EVENT_MANAGER 또는 PLATFORM_ADMIN만 삭제 가능
+     *
+     * @param contentId 콘텐츠 ID
+     * @param member    인증 회원
+     */
+    @Transactional
+    public void deleteContent(Long contentId, AuthenticatedMemberDto member) {
+
+        // 콘텐츠 조회
+        EventContent content = eventContentRepository.findById(contentId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // EVENT_MANAGER 또는 PLATFORM_ADMIN만 삭제 가능
+        if (member.getPlatformRole() != PlatformRole.PLATFORM_ADMIN
+                && !eventMemberRepository.existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
+                        content.getEventId(), member.getMemberId(), EventRole.EVENT_MANAGER)) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+
+        eventContentRepository.delete(content);
+    }
+
+    /**
      * 권한에 따른 조회 가능 audience 목록 결정
      * - PLATFORM_ADMIN / 해당 행사 EVENT_MANAGER: 전체 audience (ALL, EXHIBITOR, VISITOR)
      * - 그 외: ALL만
