@@ -42,4 +42,16 @@ public class BoothStatisticsController {
         return ApiResponse.success(
                 boothStatisticsService.getPreviousDayStatistics(boothId, member));
     }
+
+    // STAT-API-003: 기간별 인기 부스 통계 조회
+    @GetMapping("/events/{eventId}/statistics/popular-booths")
+    public ApiResponse<BoothStatisticsDtos.PopularBoothsSummary> getPopularBooths(
+            @PathVariable Long eventId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+
+        return ApiResponse.success(
+                boothStatisticsService.getPopularBooths(eventId, from, to, member));
+    }
 }

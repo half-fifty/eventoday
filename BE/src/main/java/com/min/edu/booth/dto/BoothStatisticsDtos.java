@@ -41,4 +41,22 @@ public final class BoothStatisticsDtos {
             int totalQrScanCount,
             List<HourlyEntry> hourlyStats
     ) {}
+
+    // STAT-API-003 인기 부스 단일 항목
+    public record PopularBoothEntry(
+            int rank,
+            Long boothId,
+            String boothCode,
+            long totalReservationCount,
+            long totalNoShowCount,
+            long totalQrScanCount
+    ) {}
+
+    // STAT-API-003 응답
+    public record PopularBoothsSummary(
+            Long eventId,
+            LocalDate from,
+            LocalDate to,
+            List<PopularBoothEntry> booths
+    ) {}
 }

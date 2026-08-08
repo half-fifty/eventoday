@@ -7,15 +7,20 @@ import com.min.edu.booth.dto.BoothStatisticsDtos;
 import com.min.edu.booth.repository.BoothHourlyStatisticsRepository;
 import com.min.edu.booth.repository.BoothOrganizationMemberRepository;
 import com.min.edu.booth.repository.BoothRepository;
+import com.min.edu.booth.repository.BoothStatAggregation;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.repository.EventMemberRepository;
+import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +33,7 @@ public class BoothStatisticsService {
     private final BoothRepository boothRepository;
     private final BoothHourlyStatisticsRepository boothHourlyStatisticsRepository;
     private final EventMemberRepository eventMemberRepository;
+    private final EventRepository eventRepository;
     private final BoothOrganizationMemberRepository boothOrganizationMemberRepository;
 
     /**
@@ -113,6 +119,69 @@ public class BoothStatisticsService {
                 totalReservation, totalNoShow, totalQrScan,
                 hourlyEntries
         );
+    }
+
+    /**
+     * 기간별 인기 부스 통계 조회
+     *
+     * 기간 내 reservation_count 합계 기준 내림차순 순위 반환
+     * 접근 권한: PLATFORM_ADMIN 또는 EVENT_MANAGER
+     *
+     * @param eventId 행사 ID
+     * @param from    조회 시작일
+     * @param to      조회 종료일
+     * @param member  인증 회원
+     */
+    public BoothStatisticsDtos.PopularBoothsSummary getPopularBooths(
+            Long eventId, LocalDate from, LocalDate to, AuthenticatedMemberDto member) {
+
+        // 비로그인 401 처리
+        if (member == null) {
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+        }
+
+        // 행사 존재 여부 확인
+        if (!eventRepository.existsById(eventId)) {
+            throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
+        }
+
+        // EVENT_MANAGER 또는 PLATFORM_ADMIN만 접근 가능
+        if (member.getPlatformRole() != PlatformRole.PLATFORM_ADMIN
+                && !eventMemberRepository.existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
+                        eventId, member.getMemberId(), EventRole.EVENT_MANAGER)) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+
+        // 행사 내 전체 부스 조회 → boothId → boothCode 맵 생성
+        List<Booth> booths = boothRepository.findByEventId(eventId);
+        Map<Long, String> boothCodeMap = booths.stream()
+                .collect(Collectors.toMap(Booth::getId, Booth::getBoothCode));
+
+        // 부스가 없으면 빈 결과 반환
+        if (boothCodeMap.isEmpty()) {
+            return new BoothStatisticsDtos.PopularBoothsSummary(eventId, from, to, List.of());
+        }
+
+        // 기간별 부스별 통계 합산 (예약수 내림차순)
+        List<BoothStatAggregation> aggregations =
+                boothHourlyStatisticsRepository.aggregateByBoothIdsAndDateBetween(
+                        boothCodeMap.keySet(), from, to);
+
+        // 순위 부여 후 응답 DTO 변환
+        List<BoothStatisticsDtos.PopularBoothEntry> entries = new ArrayList<>();
+        for (int i = 0; i < aggregations.size(); i++) {
+            BoothStatAggregation agg = aggregations.get(i);
+            entries.add(new BoothStatisticsDtos.PopularBoothEntry(
+                    i + 1,
+                    agg.getBoothId(),
+                    boothCodeMap.getOrDefault(agg.getBoothId(), ""),
+                    agg.getTotalReservationCount(),
+                    agg.getTotalNoShowCount(),
+                    agg.getTotalQrScanCount()
+            ));
+        }
+
+        return new BoothStatisticsDtos.PopularBoothsSummary(eventId, from, to, entries);
     }
 
     /**
