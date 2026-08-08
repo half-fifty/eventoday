@@ -162,6 +162,19 @@ class AdmissionTicketQueryServiceTest {
     }
 
     @Test
+    void getMyAdmissionTicketQr_failsWhenIssuedTicketHasNoQrToken() {
+        AdmissionTicket ticket = ticket(13L, 10L, AdmissionTicketStatus.ISSUED, null);
+        given(admissionTicketRepository.findById(13L)).willReturn(Optional.of(ticket));
+
+        assertThatThrownBy(() -> service.getMyAdmissionTicketQr(13L, actor(10L)))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.ADMISSION_TICKET_QR_NOT_AVAILABLE);
+
+        verify(admissionQrImageGenerator, never()).generate(any());
+    }
+
+    @Test
     void getMyAdmissionTicketQr_failsWhenNotFoundOtherMemberOrUnavailableStatus() {
         given(admissionTicketRepository.findById(11L)).willReturn(Optional.empty());
 
@@ -276,11 +289,19 @@ class AdmissionTicketQueryServiceTest {
     }
 
     private AdmissionTicket ticket(Long id, Long memberId, AdmissionTicketStatus status) {
+        return ticket(id, memberId, status, "qr-token");
+    }
+
+    private AdmissionTicket ticket(
+            Long id,
+            Long memberId,
+            AdmissionTicketStatus status,
+            String qrToken) {
         return AdmissionTicket.builder()
             .id(id)
             .exchangeCodeId(7L)
             .memberId(memberId)
-            .qrToken("qr-token")
+            .qrToken(qrToken)
             .status(status)
             .issuedAt(OffsetDateTime.now())
             .build();

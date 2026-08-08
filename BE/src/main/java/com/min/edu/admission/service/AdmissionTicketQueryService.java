@@ -79,7 +79,7 @@ public class AdmissionTicketQueryService {
         AdmissionTicket ticket = admissionTicketRepository.findById(admissionTicketId)
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND));
         requireOwner(ticket, actor.getMemberId());
-        if (ticket.getStatus() != AdmissionTicketStatus.ISSUED) {
+        if (ticket.getStatus() != AdmissionTicketStatus.ISSUED || ticket.getQrToken() == null) {
             throw new BusinessException(GlobalErrorCode.ADMISSION_TICKET_QR_NOT_AVAILABLE);
         }
         return admissionQrImageGenerator.generate(ticket.getQrToken());
