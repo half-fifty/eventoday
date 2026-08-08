@@ -59,4 +59,24 @@ public final class BoothStatisticsDtos {
             LocalDate to,
             List<PopularBoothEntry> booths
     ) {}
+
+    // STAT-API-004 부스별 요약 항목
+    public record BoothStatSummary(
+            Long boothId,
+            String boothCode,
+            long totalReservationCount,
+            long totalNoShowCount,
+            long totalQrScanCount
+    ) {}
+
+    // STAT-API-004 응답 (행사 운영 통계 요약)
+    public record EventOverviewSummary(
+            Long eventId,
+            LocalDate from,
+            LocalDate to,
+            long totalReservationCount,
+            long totalNoShowCount,
+            long totalQrScanCount,
+            List<BoothStatSummary> boothSummaries
+    ) {}
 }

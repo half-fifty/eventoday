@@ -185,6 +185,78 @@ public class BoothStatisticsService {
     }
 
     /**
+     * 행사 운영 통계 요약 조회
+     *
+     * 기간 내 행사 전체 합산 통계 + 부스별 통계 목록 반환
+     * 접근 권한: PLATFORM_ADMIN 또는 EVENT_MANAGER
+     *
+     * @param eventId 행사 ID
+     * @param from    조회 시작일
+     * @param to      조회 종료일
+     * @param member  인증 회원
+     */
+    public BoothStatisticsDtos.EventOverviewSummary getEventOverview(
+            Long eventId, LocalDate from, LocalDate to, AuthenticatedMemberDto member) {
+
+        // 비로그인 401 처리
+        if (member == null) {
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+        }
+
+        // 행사 존재 여부 확인
+        if (!eventRepository.existsById(eventId)) {
+            throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
+        }
+
+        // EVENT_MANAGER 또는 PLATFORM_ADMIN만 접근 가능
+        if (member.getPlatformRole() != PlatformRole.PLATFORM_ADMIN
+                && !eventMemberRepository.existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
+                        eventId, member.getMemberId(), EventRole.EVENT_MANAGER)) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+
+        // 행사 내 전체 부스 조회 → boothId → boothCode 맵 생성
+        List<Booth> booths = boothRepository.findByEventId(eventId);
+        Map<Long, String> boothCodeMap = booths.stream()
+                .collect(Collectors.toMap(Booth::getId, Booth::getBoothCode));
+
+        // 부스가 없으면 빈 결과 반환
+        if (boothCodeMap.isEmpty()) {
+            return new BoothStatisticsDtos.EventOverviewSummary(eventId, from, to, 0, 0, 0, List.of());
+        }
+
+        // 기간별 부스별 통계 합산 (예약수 내림차순)
+        List<BoothStatAggregation> aggregations =
+                boothHourlyStatisticsRepository.aggregateByBoothIdsAndDateBetween(
+                        boothCodeMap.keySet(), from, to);
+
+        // 부스별 요약 DTO 변환
+        List<BoothStatisticsDtos.BoothStatSummary> boothSummaries = aggregations.stream()
+                .map(agg -> new BoothStatisticsDtos.BoothStatSummary(
+                        agg.getBoothId(),
+                        boothCodeMap.getOrDefault(agg.getBoothId(), ""),
+                        agg.getTotalReservationCount(),
+                        agg.getTotalNoShowCount(),
+                        agg.getTotalQrScanCount()
+                ))
+                .toList();
+
+        // 전체 합산
+        long totalReservation = aggregations.stream()
+                .mapToLong(BoothStatAggregation::getTotalReservationCount).sum();
+        long totalNoShow = aggregations.stream()
+                .mapToLong(BoothStatAggregation::getTotalNoShowCount).sum();
+        long totalQrScan = aggregations.stream()
+                .mapToLong(BoothStatAggregation::getTotalQrScanCount).sum();
+
+        return new BoothStatisticsDtos.EventOverviewSummary(
+                eventId, from, to,
+                totalReservation, totalNoShow, totalQrScan,
+                boothSummaries
+        );
+    }
+
+    /**
      * 통계 조회 권한 검증 헬퍼
      * - PLATFORM_ADMIN: 전체 허용
      * - EVENT_MANAGER: 해당 행사 관리자

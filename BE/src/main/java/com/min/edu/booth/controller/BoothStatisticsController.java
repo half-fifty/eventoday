@@ -54,4 +54,16 @@ public class BoothStatisticsController {
         return ApiResponse.success(
                 boothStatisticsService.getPopularBooths(eventId, from, to, member));
     }
+
+    // STAT-API-004: 행사 운영 통계 요약 조회
+    @GetMapping("/events/{eventId}/statistics/overview")
+    public ApiResponse<BoothStatisticsDtos.EventOverviewSummary> getEventOverview(
+            @PathVariable Long eventId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+
+        return ApiResponse.success(
+                boothStatisticsService.getEventOverview(eventId, from, to, member));
+    }
 }
