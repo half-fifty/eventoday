@@ -14,6 +14,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -103,26 +104,29 @@ class ExchangeCodeRedemptionIntegrationTest {
         AtomicInteger successCount = new AtomicInteger();
         AtomicInteger conflictCount = new AtomicInteger();
 
-        Future<?> first = executor.submit(() -> redeemConcurrently(
-            ready,
-            start,
-            successCount,
-            conflictCount,
-            memberId
-        ));
-        Future<?> second = executor.submit(() -> redeemConcurrently(
-            ready,
-            start,
-            successCount,
-            conflictCount,
-            memberId
-        ));
+        try {
+            Future<?> first = executor.submit(() -> redeemConcurrently(
+                ready,
+                start,
+                successCount,
+                conflictCount,
+                memberId
+            ));
+            Future<?> second = executor.submit(() -> redeemConcurrently(
+                ready,
+                start,
+                successCount,
+                conflictCount,
+                memberId
+            ));
 
-        ready.await();
-        start.countDown();
-        first.get();
-        second.get();
-        executor.shutdown();
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            first.get(5, TimeUnit.SECONDS);
+            second.get(5, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+        }
 
         assertThat(successCount.get()).isEqualTo(1);
         assertThat(conflictCount.get()).isEqualTo(1);

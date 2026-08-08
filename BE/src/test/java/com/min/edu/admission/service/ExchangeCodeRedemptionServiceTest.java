@@ -194,6 +194,18 @@ class ExchangeCodeRedemptionServiceTest {
     }
 
     @Test
+    void validate_failsWhenExchangeCodeHasNoSource() {
+        ExchangeCode exchangeCode = exchangeCode(7L, 1L, null, null, null, ExchangeCodeStatus.ISSUED, null);
+        given(exchangeCodeRepository.findByCode("CODE-1")).willReturn(Optional.of(exchangeCode));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event(EventStatus.PUBLISHED, 1)));
+
+        assertThatThrownBy(() -> service.validate(request("CODE-1"), actor(10L)))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_INVALID_STATE);
+    }
+
+    @Test
     void redeem_assignsHolderRedeemsCodeAndCreatesAdmissionTicket() {
         ExchangeCode exchangeCode = externalCode(ExchangeCodeStatus.ISSUED, null, null);
         AdmissionTicket savedTicket = AdmissionTicket.builder()

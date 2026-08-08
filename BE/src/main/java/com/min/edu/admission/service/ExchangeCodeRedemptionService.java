@@ -156,6 +156,10 @@ public class ExchangeCodeRedemptionService {
             return;
         }
 
+        if (!isExternalRequest(exchangeCode)) {
+            throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_INVALID_STATE);
+        }
+
         if (exchangeCode.getHolderMemberId() != null
                 && !exchangeCode.getHolderMemberId().equals(actorMemberId)) {
             throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_HOLDER_MISMATCH);
@@ -166,7 +170,10 @@ public class ExchangeCodeRedemptionService {
         if (isTicketOrder(exchangeCode)) {
             return ExchangeCodeDtos.Source.TICKET_ORDER;
         }
-        return ExchangeCodeDtos.Source.EXTERNAL_REQUEST;
+        if (isExternalRequest(exchangeCode)) {
+            return ExchangeCodeDtos.Source.EXTERNAL_REQUEST;
+        }
+        throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_INVALID_STATE);
     }
 
     private boolean isTicketOrder(ExchangeCode exchangeCode) {
