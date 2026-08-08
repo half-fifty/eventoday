@@ -79,6 +79,12 @@ public class SecurityConfig {
                         .requestMatchers("/admin/exchange-code-requests/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/events/*/exchange-codes").authenticated()
                         .requestMatchers(HttpMethod.GET, "/members/me/exchange-codes").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/exchange-codes/validation").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/exchange-codes/redemption").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/members/me/admission-tickets").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/members/me/admission-tickets/*").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/members/me/admission-tickets/*/qr").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/events/*/admission-tickets").authenticated()
                         .anyRequest().permitAll())
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo

@@ -19,6 +19,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -203,6 +204,55 @@ class ExchangeCodeRequestRepositoryTest {
             "EEEEEE-EEEEEE-EEEEEE",
             OffsetDateTime.now().plusDays(1)
         )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @Transactional
+    void findByCodeForUpdate_returnsExchangeCode() {
+        Long eventId = insertEvent("code-lock");
+        Long ticketOrderId = insertTicketOrder(eventId);
+        Long codeId = insertExchangeCodeForTicketOrder(
+            eventId,
+            ticketOrderId,
+            null,
+            "900020-900020-900020",
+            "ISSUED",
+            OffsetDateTime.now()
+        );
+
+        assertThat(exchangeCodeRepository.findByCodeForUpdate("900020-900020-900020"))
+            .isPresent()
+            .get()
+            .extracting(com.min.edu.admission.domain.ExchangeCode::getId)
+            .isEqualTo(codeId);
+    }
+
+    @Test
+    void admissionTicketsUniqueConstraints_rejectDuplicateExchangeCodeAndQrToken() {
+        Long eventId = insertEvent("admission-ticket-unique");
+        Long ticketOrderId = insertTicketOrder(eventId);
+        Long firstCodeId = insertExchangeCodeForTicketOrder(
+            eventId,
+            ticketOrderId,
+            null,
+            "900021-900021-900021",
+            "ISSUED",
+            OffsetDateTime.now()
+        );
+        Long secondCodeId = insertExchangeCodeForTicketOrder(
+            eventId,
+            ticketOrderId,
+            null,
+            "900022-900022-900022",
+            "ISSUED",
+            OffsetDateTime.now().plusMinutes(1)
+        );
+        insertAdmissionTicket(firstCodeId, "qr-token-unique");
+
+        assertThatThrownBy(() -> insertAdmissionTicket(firstCodeId, "qr-token-other"))
+            .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> insertAdmissionTicket(secondCodeId, "qr-token-unique"))
+            .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
@@ -603,6 +653,22 @@ class ExchangeCodeRequestRepositoryTest {
             eventId,
             now,
             now,
+            now
+        );
+    }
+
+    private Long insertAdmissionTicket(Long exchangeCodeId, String qrToken) {
+        OffsetDateTime now = OffsetDateTime.now();
+        return jdbcTemplate.queryForObject("""
+            INSERT INTO admission_tickets (
+                exchange_code_id, qr_token, status, issued_at
+            )
+            VALUES (?, ?, 'ISSUED', ?)
+            RETURNING id
+            """,
+            Long.class,
+            exchangeCodeId,
+            qrToken,
             now
         );
     }
