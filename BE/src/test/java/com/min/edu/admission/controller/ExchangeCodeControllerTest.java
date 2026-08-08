@@ -8,12 +8,16 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.min.edu.admission.domain.AdmissionTicketStatus;
 import com.min.edu.admission.domain.ExchangeCodeStatus;
 import com.min.edu.admission.dto.ExchangeCodeDtos;
+import com.min.edu.admission.dto.ExchangeCodeRedemptionDtos;
 import com.min.edu.admission.service.ExchangeCodeQueryService;
+import com.min.edu.admission.service.ExchangeCodeRedemptionService;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
@@ -32,6 +36,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.support.WebDataBinderFactory;
@@ -42,13 +47,15 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 class ExchangeCodeControllerTest {
 
     private ExchangeCodeQueryService service;
+    private ExchangeCodeRedemptionService redemptionService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         service = org.mockito.Mockito.mock(ExchangeCodeQueryService.class);
+        redemptionService = org.mockito.Mockito.mock(ExchangeCodeRedemptionService.class);
         mockMvc = MockMvcBuilders
-            .standaloneSetup(new ExchangeCodeController(service))
+            .standaloneSetup(new ExchangeCodeController(service, redemptionService))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setCustomArgumentResolvers(authenticationPrincipalResolver())
             .build();
@@ -275,6 +282,96 @@ class ExchangeCodeControllerTest {
             .andExpect(status().isNotFound());
 
         verifyNoInteractions(service);
+    }
+
+    @Test
+    void validateExchangeCode_returnsValidationResponse() throws Exception {
+        authenticate(10L);
+        given(redemptionService.validate(any(), any(AuthenticatedMemberDto.class)))
+            .willReturn(new ExchangeCodeRedemptionDtos.ValidationResponse(
+                true,
+                1L,
+                "event",
+                ExchangeCodeDtos.Source.EXTERNAL_REQUEST,
+                ExchangeCodeStatus.ISSUED,
+                OffsetDateTime.parse("2026-08-06T10:00:00+09:00")
+            ));
+
+        mockMvc.perform(post("/exchange-codes/validation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"code\":\"A13FC9-12AA81-093FCD\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.valid").value(true))
+            .andExpect(jsonPath("$.data.eventId").value(1))
+            .andExpect(jsonPath("$.data.source").value("EXTERNAL_REQUEST"))
+            .andExpect(jsonPath("$.data.status").value("ISSUED"))
+            .andExpect(jsonPath("$.data.code").doesNotExist());
+
+        verify(redemptionService).validate(any(), any(AuthenticatedMemberDto.class));
+    }
+
+    @Test
+    void redeemExchangeCode_returnsAdmissionTicketSummaryWithoutQrToken() throws Exception {
+        authenticate(10L);
+        given(redemptionService.redeem(any(), any(AuthenticatedMemberDto.class)))
+            .willReturn(new ExchangeCodeRedemptionDtos.RedemptionResponse(
+                7L,
+                ExchangeCodeStatus.REDEEMED,
+                11L,
+                1L,
+                "event",
+                AdmissionTicketStatus.ISSUED,
+                OffsetDateTime.parse("2026-08-06T10:00:00+09:00"),
+                true
+            ));
+
+        mockMvc.perform(post("/exchange-codes/redemption")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"code\":\"A13FC9-12AA81-093FCD\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.exchangeCodeId").value(7))
+            .andExpect(jsonPath("$.data.exchangeCodeStatus").value("REDEEMED"))
+            .andExpect(jsonPath("$.data.admissionTicketId").value(11))
+            .andExpect(jsonPath("$.data.admissionTicketStatus").value("ISSUED"))
+            .andExpect(jsonPath("$.data.qrAvailable").value(true))
+            .andExpect(jsonPath("$.data.qrToken").doesNotExist())
+            .andExpect(jsonPath("$.data.code").doesNotExist());
+
+        verify(redemptionService).redeem(any(), any(AuthenticatedMemberDto.class));
+    }
+
+    @Test
+    void exchangeCodeRedemptionApis_rejectBlankCode() throws Exception {
+        authenticate(10L);
+
+        mockMvc.perform(post("/exchange-codes/validation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"code\":\"\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value(GlobalErrorCode.INVALID_INPUT_VALUE.getCode()));
+
+        mockMvc.perform(post("/exchange-codes/redemption")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"code\":\"   \"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value(GlobalErrorCode.INVALID_INPUT_VALUE.getCode()));
+
+        verifyNoInteractions(redemptionService);
+    }
+
+    @Test
+    void exchangeCodeRedemptionApis_doNotExposeV1Path() throws Exception {
+        authenticate(10L);
+
+        mockMvc.perform(post("/v1/exchange-codes/validation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"code\":\"A13FC9-12AA81-093FCD\"}"))
+            .andExpect(status().isNotFound());
+
+        mockMvc.perform(post("/v1/exchange-codes/redemption")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"code\":\"A13FC9-12AA81-093FCD\"}"))
+            .andExpect(status().isNotFound());
     }
 
     private ExchangeCodeDtos.EventListResponse eventResponse() {

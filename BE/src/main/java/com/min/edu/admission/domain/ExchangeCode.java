@@ -104,6 +104,25 @@ public class ExchangeCode {
         return status == ExchangeCodeStatus.CANCELLED;
     }
 
+    public boolean isIssued() {
+        return status == ExchangeCodeStatus.ISSUED;
+    }
+
+    public void assignHolder(Long memberId, OffsetDateTime now) {
+        this.holderMemberId = memberId;
+        this.updatedAt = now;
+    }
+
+    public void redeem(OffsetDateTime now) {
+        if (!isIssued()) {
+            throw new IllegalStateException("Exchange code is not redeemable.");
+        }
+
+        this.status = ExchangeCodeStatus.REDEEMED;
+        this.redeemedAt = now;
+        this.updatedAt = now;
+    }
+
     public void cancel(OffsetDateTime now) {
         if (isRedeemed()) {
             throw new IllegalStateException("Redeemed exchange code cannot be cancelled.");
