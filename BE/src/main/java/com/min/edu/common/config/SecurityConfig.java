@@ -85,6 +85,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/members/me/admission-tickets/*").authenticated()
                         .requestMatchers(HttpMethod.GET, "/members/me/admission-tickets/*/qr").authenticated()
                         .requestMatchers(HttpMethod.GET, "/events/*/admission-tickets").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/events/*/admission-checkins").authenticated()
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/events/*/admission-tickets/*/check-in-cancellation")
+                            .authenticated()
+                        .requestMatchers(HttpMethod.GET, "/events/*/admission-logs").authenticated()
                         .anyRequest().permitAll())
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo

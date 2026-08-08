@@ -1,0 +1,87 @@
+package com.min.edu.booth.controller;
+
+import com.min.edu.auth.dto.AuthenticatedMemberDto;
+import com.min.edu.booth.dto.BoothStatisticsDtos;
+import com.min.edu.booth.service.BoothStatisticsService;
+import com.min.edu.common.exception.BusinessException;
+import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.common.response.ApiResponse;
+import java.time.LocalDate;
+import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequiredArgsConstructor
+public class BoothStatisticsController {
+
+    private final BoothStatisticsService boothStatisticsService;
+
+    // STAT-API-001: 시간대별 부스 통계 조회
+    @GetMapping("/booths/{boothId}/statistics/hourly")
+    public ApiResponse<BoothStatisticsDtos.HourlySummary> getHourlyStatistics(
+            @PathVariable Long boothId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+
+        // date 미입력 시 오늘 날짜 사용
+        LocalDate statDate = (date != null) ? date : LocalDate.now();
+
+        return ApiResponse.success(
+                boothStatisticsService.getHourlyStatistics(boothId, statDate, member));
+    }
+
+    // STAT-API-002: 전날 부스 통계 조회
+    @GetMapping("/booths/{boothId}/statistics/previous-day")
+    public ApiResponse<BoothStatisticsDtos.PreviousDaySummary> getPreviousDayStatistics(
+            @PathVariable Long boothId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+
+        return ApiResponse.success(
+                boothStatisticsService.getPreviousDayStatistics(boothId, member));
+    }
+
+    // STAT-API-003: 기간별 인기 부스 통계 조회
+    @GetMapping("/events/{eventId}/statistics/popular-booths")
+    public ApiResponse<BoothStatisticsDtos.PopularBoothsSummary> getPopularBooths(
+            @PathVariable Long eventId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+
+        // from이 to보다 늦으면 400
+        validateDateRange(from, to);
+
+        return ApiResponse.success(
+                boothStatisticsService.getPopularBooths(eventId, from, to, member));
+    }
+
+    // STAT-API-004: 행사 운영 통계 요약 조회
+    @GetMapping("/events/{eventId}/statistics/overview")
+    public ApiResponse<BoothStatisticsDtos.EventOverviewSummary> getEventOverview(
+            @PathVariable Long eventId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+
+        // from이 to보다 늦으면 400
+        validateDateRange(from, to);
+
+        return ApiResponse.success(
+                boothStatisticsService.getEventOverview(eventId, from, to, member));
+    }
+
+    /**
+     * 기간 역전 검증 공통 헬퍼
+     * from이 to보다 늦은 경우 400 Bad Request
+     */
+    private void validateDateRange(LocalDate from, LocalDate to) {
+        if (from.isAfter(to)) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+}

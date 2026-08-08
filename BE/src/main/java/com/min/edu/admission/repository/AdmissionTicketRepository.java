@@ -3,10 +3,12 @@ package com.min.edu.admission.repository;
 import com.min.edu.admission.domain.AdmissionTicketStatus;
 import com.min.edu.admission.domain.AdmissionTicket;
 import com.min.edu.admission.dto.AdmissionTicketView;
+import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -15,6 +17,14 @@ public interface AdmissionTicketRepository extends JpaRepository<AdmissionTicket
     boolean existsByQrToken(String qrToken);
 
     boolean existsByExchangeCodeId(Long exchangeCodeId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from AdmissionTicket t where t.qrToken = :qrToken")
+    Optional<AdmissionTicket> findByQrTokenForUpdate(@Param("qrToken") String qrToken);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from AdmissionTicket t where t.id = :id")
+    Optional<AdmissionTicket> findByIdForUpdate(@Param("id") Long id);
 
     @Query(
         value = """

@@ -75,4 +75,7 @@ public interface BoothRepository extends JpaRepository<Booth, Long> {
 
     // GUIDE-API-002: 부스 검색 (부스명 기반)
     List<Booth> findByEventIdAndDisplayNameContainingIgnoreCase(Long eventId, String displayName);
+
+    // 행사 내 전체 부스 조회 (통계 집계용)
+    List<Booth> findByEventId(Long eventId);
 }
