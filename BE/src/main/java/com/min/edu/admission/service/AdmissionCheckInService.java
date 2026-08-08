@@ -17,6 +17,7 @@ import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
 import java.time.OffsetDateTime;
 import java.util.List;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -61,14 +62,19 @@ public class AdmissionCheckInService {
         String qrToken = validateQrToken(request);
         String gateName = normalizeGateName(request.gateName());
 
-        AdmissionCheckInProcessor.ProcessResult result = processor.checkIn(
-            eventId,
-            event,
-            qrToken,
-            gateName,
-            actor.getMemberId(),
-            OffsetDateTime.now()
-        );
+        AdmissionCheckInProcessor.ProcessResult result;
+        try {
+            result = processor.checkIn(
+                eventId,
+                event,
+                qrToken,
+                gateName,
+                actor.getMemberId(),
+                OffsetDateTime.now()
+            );
+        } catch (PessimisticLockingFailureException exception) {
+            throw new BusinessException(GlobalErrorCode.ADMISSION_CHECK_IN_PROCESSING_CONFLICT);
+        }
         if (result.outcome() == AdmissionCheckInProcessor.Outcome.DUPLICATE) {
             throw new BusinessException(GlobalErrorCode.ADMISSION_CHECK_IN_DUPLICATE);
         }
@@ -96,13 +102,18 @@ public class AdmissionCheckInService {
         Event event = findEvent(eventId);
         requireCheckInStaff(event, actor);
 
-        AdmissionCheckInProcessor.ProcessResult result = processor.cancelCheckIn(
-            eventId,
-            event,
-            admissionTicketId,
-            actor.getMemberId(),
-            OffsetDateTime.now()
-        );
+        AdmissionCheckInProcessor.ProcessResult result;
+        try {
+            result = processor.cancelCheckIn(
+                eventId,
+                event,
+                admissionTicketId,
+                actor.getMemberId(),
+                OffsetDateTime.now()
+            );
+        } catch (PessimisticLockingFailureException exception) {
+            throw new BusinessException(GlobalErrorCode.ADMISSION_CHECK_IN_PROCESSING_CONFLICT);
+        }
         if (result.outcome() == AdmissionCheckInProcessor.Outcome.CANCEL_INVALID) {
             throw new BusinessException(GlobalErrorCode.ADMISSION_CHECK_IN_CANCEL_INVALID_STATE);
         }
@@ -162,17 +173,25 @@ public class AdmissionCheckInService {
         if (request == null || request.qrToken() == null || request.qrToken().isBlank()) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
-        return request.qrToken();
+        String qrToken = request.qrToken().trim();
+        if (qrToken.isBlank()) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+        return qrToken;
     }
 
     private String normalizeGateName(String gateName) {
-        if (gateName == null || gateName.isBlank()) {
+        if (gateName == null) {
             return null;
         }
-        if (gateName.length() > MAX_GATE_NAME_LENGTH) {
+        String normalized = gateName.trim();
+        if (normalized.isBlank()) {
+            return null;
+        }
+        if (normalized.length() > MAX_GATE_NAME_LENGTH) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
-        return gateName;
+        return normalized;
     }
 
     private Pageable normalize(Integer page, Integer size) {

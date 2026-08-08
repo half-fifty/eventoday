@@ -139,8 +139,8 @@ class AdmissionCheckInIntegrationTest {
         Long staffId = insertMember("cancel-staff-success");
         Long holderId = insertMember("cancel-holder-success");
         Long organizationId = insertOrganization("cancel-org-success");
-        insertEventMemberAllowedStaffFixture(staffId, organizationId);
         Long eventId = insertEvent(organizationId, "cancel-event-success", "PUBLISHED", -1);
+        insertEventMemberAllowedStaffFixture(eventId, staffId);
         Long ticketId = insertUsedAdmissionTicket(eventId, holderId, "qr-cancel-success");
 
         AdmissionCheckInDtos.CheckInCancellationResponse response =
@@ -317,8 +317,8 @@ class AdmissionCheckInIntegrationTest {
         return new AuthenticatedMemberDto(memberId, PlatformRole.USER);
     }
 
-    private void insertEventMemberAllowedStaffFixture(Long staffId, Long organizationId) {
-        insertOrganizationMember(organizationId, staffId, "OWNER", "ACTIVE");
+    private void insertEventMemberAllowedStaffFixture(Long eventId, Long staffId) {
+        insertEventMember(eventId, staffId, "CHECKIN_STAFF", true);
     }
 
     private Long insertMember(String suffix) {
@@ -577,7 +577,13 @@ class AdmissionCheckInIntegrationTest {
 
     private String logGateName(Long ticketId) {
         return jdbcTemplate.queryForObject(
-            "SELECT gate_name FROM admission_logs WHERE admission_ticket_id = ?",
+            """
+            SELECT gate_name
+            FROM admission_logs
+            WHERE admission_ticket_id = ?
+                AND action = 'CHECK_IN'
+                AND result = 'SUCCESS'
+            """,
             String.class,
             ticketId
         );

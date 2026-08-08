@@ -33,7 +33,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
@@ -62,7 +62,26 @@ class AdmissionCheckInServiceTest {
     }
 
     @Test
-    void checkIn_allowsOwnerAndNormalizesBlankGateName() {
+    void checkIn_allowsOwnerAndNormalizesInput() {
+        Event event = event();
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event));
+        given(organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
+            eq(100L), eq(10L), eq(OrganizationMemberStatus.ACTIVE), any()))
+            .willReturn(true);
+        given(processor.checkIn(eq(1L), eq(event), eq("qr-token"), eq("A Gate"), eq(10L), any()))
+            .willReturn(result(AdmissionCheckInProcessor.Outcome.SUCCESS));
+
+        AdmissionCheckInDtos.CheckInResponse response =
+            service.checkIn(1L, new AdmissionCheckInDtos.CheckInRequest(" \nqr-token\t ", "  A Gate  "), actor(10L));
+
+        assertThat(response.status()).isEqualTo(AdmissionTicketStatus.USED);
+        assertThat(response.result()).isEqualTo(AdmissionResult.SUCCESS);
+        verify(eventMemberRepository, never())
+            .existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(any(), any(), any());
+    }
+
+    @Test
+    void checkIn_normalizesBlankGateNameToNull() {
         Event event = event();
         given(eventRepository.findById(1L)).willReturn(Optional.of(event));
         given(organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
@@ -71,13 +90,7 @@ class AdmissionCheckInServiceTest {
         given(processor.checkIn(eq(1L), eq(event), eq("qr-token"), eq(null), eq(10L), any()))
             .willReturn(result(AdmissionCheckInProcessor.Outcome.SUCCESS));
 
-        AdmissionCheckInDtos.CheckInResponse response =
-            service.checkIn(1L, new AdmissionCheckInDtos.CheckInRequest("qr-token", "   "), actor(10L));
-
-        assertThat(response.status()).isEqualTo(AdmissionTicketStatus.USED);
-        assertThat(response.result()).isEqualTo(AdmissionResult.SUCCESS);
-        verify(eventMemberRepository, never())
-            .existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(any(), any(), any());
+        service.checkIn(1L, new AdmissionCheckInDtos.CheckInRequest("qr-token", " \n\t "), actor(10L));
     }
 
     @Test
@@ -204,12 +217,14 @@ class AdmissionCheckInServiceTest {
             1L, 10L, EventRole.CHECKIN_STAFF))
             .willReturn(true);
         given(processor.cancelCheckIn(eq(1L), eq(event), eq(11L), eq(10L), any()))
-            .willReturn(result(AdmissionCheckInProcessor.Outcome.SUCCESS));
+            .willReturn(cancelSuccessResult());
 
         AdmissionCheckInDtos.CheckInCancellationResponse response =
             service.cancelCheckIn(1L, 11L, actor(10L));
 
-        assertThat(response.status()).isEqualTo(AdmissionTicketStatus.USED);
+        assertThat(response.status()).isEqualTo(AdmissionTicketStatus.ISSUED);
+        assertThat(response.action()).isEqualTo(AdmissionAction.CHECK_IN_CANCEL);
+        assertThat(response.result()).isEqualTo(AdmissionResult.SUCCESS);
 
         given(processor.cancelCheckIn(eq(1L), eq(event), eq(12L), eq(10L), any()))
             .willReturn(result(AdmissionCheckInProcessor.Outcome.CANCEL_INVALID));
@@ -218,6 +233,26 @@ class AdmissionCheckInServiceTest {
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.ADMISSION_CHECK_IN_CANCEL_INVALID_STATE);
+    }
+
+    @Test
+    void checkIn_convertsPessimisticLockFailureToProcessingConflict() {
+        Event event = event();
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event));
+        given(organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
+            eq(100L), eq(10L), eq(OrganizationMemberStatus.ACTIVE), any()))
+            .willReturn(true);
+        given(processor.checkIn(eq(1L), eq(event), eq("qr-token"), eq(null), eq(10L), any()))
+            .willThrow(new PessimisticLockingFailureException("lock timeout"));
+
+        assertThatThrownBy(() -> service.checkIn(
+            1L,
+            new AdmissionCheckInDtos.CheckInRequest("qr-token", null),
+            actor(10L)
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.ADMISSION_CHECK_IN_PROCESSING_CONFLICT);
     }
 
     @Test
@@ -278,6 +313,11 @@ class AdmissionCheckInServiceTest {
 
     private AdmissionCheckInProcessor.ProcessResult result(
             AdmissionCheckInProcessor.Outcome outcome) {
+        AdmissionResult admissionResult = switch (outcome) {
+            case SUCCESS -> AdmissionResult.SUCCESS;
+            case DUPLICATE -> AdmissionResult.DUPLICATE;
+            case INVALID, CANCEL_INVALID -> AdmissionResult.INVALID;
+        };
         return new AdmissionCheckInProcessor.ProcessResult(
             outcome,
             11L,
@@ -287,9 +327,22 @@ class AdmissionCheckInServiceTest {
             OffsetDateTime.parse("2026-08-08T10:00:00+09:00"),
             21L,
             AdmissionAction.CHECK_IN,
-            outcome == AdmissionCheckInProcessor.Outcome.SUCCESS
-                ? AdmissionResult.SUCCESS
-                : AdmissionResult.INVALID,
+            admissionResult,
+            OffsetDateTime.parse("2026-08-08T10:00:00+09:00")
+        );
+    }
+
+    private AdmissionCheckInProcessor.ProcessResult cancelSuccessResult() {
+        return new AdmissionCheckInProcessor.ProcessResult(
+            AdmissionCheckInProcessor.Outcome.SUCCESS,
+            11L,
+            1L,
+            "event",
+            AdmissionTicketStatus.ISSUED,
+            null,
+            21L,
+            AdmissionAction.CHECK_IN_CANCEL,
+            AdmissionResult.SUCCESS,
             OffsetDateTime.parse("2026-08-08T10:00:00+09:00")
         );
     }

@@ -12,8 +12,12 @@ import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.Event;
+import com.min.edu.event.domain.EventStatus;
+import com.min.edu.payment.config.PaymentFinalizationProperties;
+import jakarta.persistence.EntityManager;
 import java.time.OffsetDateTime;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -22,17 +26,23 @@ public class AdmissionCheckInProcessor {
     private final AdmissionTicketRepository admissionTicketRepository;
     private final ExchangeCodeRepository exchangeCodeRepository;
     private final AdmissionLogRepository admissionLogRepository;
+    private final EntityManager entityManager;
+    private final PaymentFinalizationProperties paymentFinalizationProperties;
 
     public AdmissionCheckInProcessor(
             AdmissionTicketRepository admissionTicketRepository,
             ExchangeCodeRepository exchangeCodeRepository,
-            AdmissionLogRepository admissionLogRepository) {
+            AdmissionLogRepository admissionLogRepository,
+            EntityManager entityManager,
+            PaymentFinalizationProperties paymentFinalizationProperties) {
         this.admissionTicketRepository = admissionTicketRepository;
         this.exchangeCodeRepository = exchangeCodeRepository;
         this.admissionLogRepository = admissionLogRepository;
+        this.entityManager = entityManager;
+        this.paymentFinalizationProperties = paymentFinalizationProperties;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProcessResult checkIn(
             Long eventId,
             Event event,
@@ -40,12 +50,13 @@ public class AdmissionCheckInProcessor {
             String gateName,
             Long staffMemberId,
             OffsetDateTime now) {
+        setLocalLockTimeout();
         AdmissionTicket ticket = admissionTicketRepository.findByQrTokenForUpdate(qrToken)
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND));
         ExchangeCode exchangeCode = findExchangeCode(ticket.getExchangeCodeId());
         validateEventMatch(eventId, exchangeCode);
 
-        if (event.getStatus() != com.min.edu.event.domain.EventStatus.PUBLISHED
+        if (event.getStatus() != EventStatus.PUBLISHED
                 || !event.getEndAt().isAfter(now)) {
             AdmissionLog log = saveLog(
                 ticket.getId(),
@@ -92,13 +103,14 @@ public class AdmissionCheckInProcessor {
         return ProcessResult.success(ticket, exchangeCode, event, log);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ProcessResult cancelCheckIn(
             Long eventId,
             Event event,
             Long admissionTicketId,
             Long staffMemberId,
             OffsetDateTime now) {
+        setLocalLockTimeout();
         AdmissionTicket ticket = admissionTicketRepository.findByIdForUpdate(admissionTicketId)
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND));
         ExchangeCode exchangeCode = findExchangeCode(ticket.getExchangeCodeId());
@@ -154,6 +166,13 @@ public class AdmissionCheckInProcessor {
             .gateName(gateName)
             .processedAt(processedAt)
             .build());
+    }
+
+    private void setLocalLockTimeout() {
+        entityManager
+            .createNativeQuery("select set_config('lock_timeout', :timeout, true)")
+            .setParameter("timeout", paymentFinalizationProperties.getFinalizationLockTimeoutMs() + "ms")
+            .getSingleResult();
     }
 
     private void transition(CheckInTransition transition, OffsetDateTime now) {

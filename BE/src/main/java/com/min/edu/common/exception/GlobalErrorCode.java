@@ -12,6 +12,7 @@ public enum GlobalErrorCode implements ErrorCode {
     ADMISSION_CHECK_IN_DUPLICATE(HttpStatus.CONFLICT, "ADMISSION_409_016", "이미 입장 처리된 티켓입니다."),
     ADMISSION_CHECK_IN_EVENT_MISMATCH(HttpStatus.FORBIDDEN, "ADMISSION_403_003", "해당 행사의 입장 QR이 아닙니다."),
     ADMISSION_CHECK_IN_CANCEL_INVALID_STATE(HttpStatus.CONFLICT, "ADMISSION_409_017", "현재 상태에서는 입장 처리를 취소할 수 없습니다."),
+    ADMISSION_CHECK_IN_PROCESSING_CONFLICT(HttpStatus.CONFLICT, "ADMISSION_409_018", "현재 입장 처리를 진행하고 있습니다. 잠시 후 다시 시도해주세요."),
 
     EXCHANGE_CODE_NOT_FOUND(HttpStatus.NOT_FOUND, "ADMISSION_404_003", "교환 코드를 찾을 수 없습니다."),
     ADMISSION_TICKET_NOT_FOUND(HttpStatus.NOT_FOUND, "ADMISSION_404_004", "입장 티켓을 찾을 수 없습니다."),
