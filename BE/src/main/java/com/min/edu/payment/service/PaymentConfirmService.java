@@ -20,6 +20,8 @@ import com.min.edu.payment.toss.TossPaymentClient;
 import com.min.edu.payment.toss.TossPaymentClientException;
 import com.min.edu.payment.toss.dto.TossConfirmRequest;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
+import com.min.edu.advertisement.domain.AdvertisementStatus;
+import com.min.edu.advertisement.repository.AdvertisementRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -37,6 +39,7 @@ public class PaymentConfirmService {
     private final TossPaymentClient tossPaymentClient;
     private final PaymentFinalizer paymentFinalizer;
     private final PaymentFinalizationExceptionTranslator exceptionTranslator;
+    private final AdvertisementRepository advertisementRepository;
 
     public ConfirmPaymentResponse confirm(
             Long memberId,
@@ -63,10 +66,6 @@ public class PaymentConfirmService {
             Long memberId,
             String orderAccessToken,
             ConfirmPaymentRequest request) {
-        if (paymentOrder.getOrderType() != PaymentOrderType.EVENT_TICKET) {
-            throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
-        }
-
         validateAccess(paymentOrder, memberId, orderAccessToken, request.getOrderId());
 
         if (request.getAmount().compareTo(paymentOrder.getTotalAmount()) != 0) {
@@ -77,9 +76,19 @@ public class PaymentConfirmService {
             throw new BusinessException(GlobalErrorCode.PAYMENT_NOT_REQUIRED);
         }
 
-        TicketOrder ticketOrder = ticketOrderRepository
-            .findByPaymentOrderId(paymentOrder.getId())
-            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+        TicketOrder ticketOrder = null;
+        if (paymentOrder.getOrderType() == PaymentOrderType.EVENT_TICKET) {
+            ticketOrder = ticketOrderRepository.findByPaymentOrderId(paymentOrder.getId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+        } else if (paymentOrder.getOrderType() == PaymentOrderType.EVENT_AD) {
+            var advertisement = advertisementRepository.findByPaymentOrderId(paymentOrder.getId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+            if (advertisement.getStatus() != AdvertisementStatus.PAYMENT_PENDING && !paymentOrder.isPaid()) {
+                throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+            }
+        } else {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+        }
 
         if (paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot(
                 request.getPaymentKey(),
@@ -96,8 +105,8 @@ public class PaymentConfirmService {
             throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
         }
 
-        if (!paymentOrder.isPaid()
-                && (!paymentOrder.isPending() || !ticketOrder.isPendingPayment())) {
+        if (!paymentOrder.isPaid() && (!paymentOrder.isPending()
+                || (ticketOrder != null && !ticketOrder.isPendingPayment()))) {
             throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
         }
     }

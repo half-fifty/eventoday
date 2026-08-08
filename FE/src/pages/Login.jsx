@@ -123,7 +123,7 @@ export default function Login() {
   return (
     <div className="bg-black text-white min-h-screen flex flex-col">
       <header className="h-[44px] flex items-center px-lg">
-        <Link to="/" className="font-hero-display text-tagline text-white">EXPO HUB</Link>
+        <Link to="/" className="font-hero-display text-tagline text-white">EvenToday</Link>
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center px-lg py-xxl">
@@ -242,7 +242,7 @@ export default function Login() {
           )}
 
           <p className="mt-lg text-center text-[11px] leading-relaxed text-white/40">
-            계속 진행 시 EXPO HUB의 <a href="#" className="underline">이용약관</a> 및 <a href="#" className="underline">개인정보처리방침</a>에 동의하는 것으로 간주됩니다.
+            계속 진행 시 EvenToday의 <a href="#" className="underline">이용약관</a> 및 <a href="#" className="underline">개인정보처리방침</a>에 동의하는 것으로 간주됩니다.
           </p>
         </div>
       </main>

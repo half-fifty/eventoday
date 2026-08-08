@@ -157,7 +157,7 @@ export default function PlatformAdmin() {
       {/* Sidebar */}
       <aside className={`fixed left-0 top-0 h-screen w-[260px] bg-black text-white z-50 flex flex-col transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="px-lg py-xl flex items-center justify-between">
-          <span className="font-hero-display text-tagline text-white tracking-tight">EXPO HUB</span>
+          <span className="font-hero-display text-tagline text-white tracking-tight">EvenToday</span>
           <button onClick={() => setSidebarOpen(false)} className="md:hidden"><Icon name="close" /></button>
         </div>
         <p className="px-lg text-[11px] text-white/40 mb-sm">PLATFORM ADMIN</p>
@@ -180,7 +180,7 @@ export default function PlatformAdmin() {
             <button onClick={() => setSidebarOpen(true)} className="md:hidden"><Icon name="menu" /></button>
             <h2 className="font-display-md text-[20px]">{navItems.find((n) => n.key === page).label}</h2>
           </div>
-          <span className="text-caption text-ink-muted">EXPO HUB 플랫폼</span>
+          <span className="text-caption text-ink-muted">이벤투데이 플랫폼</span>
         </header>
 
         <div className="p-lg md:p-xl space-y-section max-w-[1200px] mx-auto">
