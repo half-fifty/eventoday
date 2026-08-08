@@ -67,4 +67,7 @@ public interface BoothRepository extends JpaRepository<Booth, Long> {
             @Param("eventId") Long eventId,
             @Param("boothCode") String boothCode
     );
+
+    // 행사 내 전체 부스 조회 (통계 집계용)
+    List<Booth> findByEventId(Long eventId);
 }
