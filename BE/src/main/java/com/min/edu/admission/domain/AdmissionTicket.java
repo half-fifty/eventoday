@@ -63,4 +63,22 @@ public class AdmissionTicket {
             .issuedAt(now)
             .build();
     }
+
+    public void checkIn(OffsetDateTime now) {
+        if (status != AdmissionTicketStatus.ISSUED) {
+            throw new IllegalStateException("Admission ticket is not check-in available.");
+        }
+
+        this.status = AdmissionTicketStatus.USED;
+        this.usedAt = now;
+    }
+
+    public void cancelCheckIn() {
+        if (status != AdmissionTicketStatus.USED) {
+            throw new IllegalStateException("Admission ticket check-in cannot be cancelled.");
+        }
+
+        this.status = AdmissionTicketStatus.ISSUED;
+        this.usedAt = null;
+    }
 }
