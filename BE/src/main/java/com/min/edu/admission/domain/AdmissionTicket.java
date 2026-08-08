@@ -49,4 +49,18 @@ public class AdmissionTicket {
 
     @Column(name = "cancelled_at")
     private OffsetDateTime cancelledAt;
+
+    public static AdmissionTicket issue(
+            Long exchangeCodeId,
+            Long memberId,
+            String qrToken,
+            OffsetDateTime now) {
+        return AdmissionTicket.builder()
+            .exchangeCodeId(exchangeCodeId)
+            .memberId(memberId)
+            .qrToken(qrToken)
+            .status(AdmissionTicketStatus.ISSUED)
+            .issuedAt(now)
+            .build();
+    }
 }

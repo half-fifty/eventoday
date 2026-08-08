@@ -8,6 +8,15 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum GlobalErrorCode implements ErrorCode {
 
+    EXCHANGE_CODE_NOT_FOUND(HttpStatus.NOT_FOUND, "ADMISSION_404_003", "Exchange code not found."),
+    EXCHANGE_CODE_INVALID_STATE(HttpStatus.CONFLICT, "ADMISSION_409_010", "Exchange code is not redeemable."),
+    EXCHANGE_CODE_EXPIRED(HttpStatus.CONFLICT, "ADMISSION_409_011", "Exchange code is expired."),
+    EXCHANGE_CODE_EVENT_NOT_REDEEMABLE(HttpStatus.CONFLICT, "ADMISSION_409_012", "Event is not redeemable."),
+    EXCHANGE_CODE_HOLDER_MISMATCH(HttpStatus.FORBIDDEN, "ADMISSION_403_001", "Exchange code holder mismatch."),
+    EXCHANGE_CODE_GUEST_NOT_REDEEMABLE(HttpStatus.FORBIDDEN, "ADMISSION_403_002", "Guest exchange code cannot be redeemed with this API."),
+    ADMISSION_TICKET_ALREADY_EXISTS(HttpStatus.CONFLICT, "ADMISSION_409_013", "Admission ticket already exists."),
+    ADMISSION_QR_TOKEN_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "ADMISSION_500_002", "Admission QR token generation failed."),
+
     EXCHANGE_CODE_REQUEST_ALREADY_ISSUED(HttpStatus.CONFLICT, "ADMISSION_409_005", "이미 발급 완료된 교환 코드 요청입니다."),
     EXCHANGE_CODE_REQUEST_ISSUANCE_INCONSISTENT(HttpStatus.CONFLICT, "ADMISSION_409_006", "교환 코드 발급 데이터가 일치하지 않습니다."),
     EXCHANGE_CODE_REQUEST_RECIPIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "ADMISSION_404_002", "교환 코드 발급 메일 수신자를 찾을 수 없습니다."),

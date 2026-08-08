@@ -1,11 +1,14 @@
 package com.min.edu.admission.repository;
 
 import com.min.edu.admission.dto.ExchangeCodeView;
+import jakarta.persistence.LockModeType;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -15,6 +18,12 @@ import com.min.edu.admission.domain.ExchangeCodeStatus;
 public interface ExchangeCodeRepository extends JpaRepository<ExchangeCode, Long> {
 
     boolean existsByCode(String code);
+
+    Optional<ExchangeCode> findByCode(String code);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from ExchangeCode c where c.code = :code")
+    Optional<ExchangeCode> findByCodeForUpdate(@Param("code") String code);
 
     List<ExchangeCode> findAllByTicketOrderIdOrderByIdAsc(Long ticketOrderId);
 
