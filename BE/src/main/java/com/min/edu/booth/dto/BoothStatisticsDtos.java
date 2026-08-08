@@ -31,4 +31,14 @@ public final class BoothStatisticsDtos {
             LocalDate statDate,
             List<HourlyEntry> hourlyStats
     ) {}
+
+    // STAT-API-002 응답 (전날 합산 + 시간대별 상세)
+    public record PreviousDaySummary(
+            Long boothId,
+            LocalDate statDate,
+            int totalReservationCount,
+            int totalNoShowCount,
+            int totalQrScanCount,
+            List<HourlyEntry> hourlyStats
+    ) {}
 }

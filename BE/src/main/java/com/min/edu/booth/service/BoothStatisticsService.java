@@ -31,7 +31,7 @@ public class BoothStatisticsService {
     private final BoothOrganizationMemberRepository boothOrganizationMemberRepository;
 
     /**
-     * 시간대별 부스 통계 조회 (STAT-API-001)
+     * 시간대별 부스 통계 조회
      *
      * 접근 권한:
      * - PLATFORM_ADMIN: 전체 허용
@@ -66,6 +66,53 @@ public class BoothStatisticsService {
                 .toList();
 
         return new BoothStatisticsDtos.HourlySummary(boothId, date, hourlyEntries);
+    }
+
+    /**
+     * 전날 부스 통계 조회
+     *
+     * 전날(LocalDate.now() - 1일) 시간대별 통계를 합산하여 반환
+     * 접근 권한은 STAT-API-001과 동일
+     *
+     * @param boothId 부스 ID
+     * @param member  인증 회원
+     */
+    public BoothStatisticsDtos.PreviousDaySummary getPreviousDayStatistics(
+            Long boothId, AuthenticatedMemberDto member) {
+
+        // 비로그인 401 처리
+        if (member == null) {
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+        }
+
+        // 부스 존재 여부 확인
+        Booth booth = boothRepository.findById(boothId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // 권한 검증
+        requireStatisticsAccess(booth, member);
+
+        // 전날 날짜 계산
+        LocalDate yesterday = LocalDate.now().minusDays(1);
+
+        // 전날 시간대별 통계 조회
+        List<BoothHourlyStatistics> stats =
+                boothHourlyStatisticsRepository.findByBoothIdAndStatDateOrderByStatHourAsc(boothId, yesterday);
+
+        List<BoothStatisticsDtos.HourlyEntry> hourlyEntries = stats.stream()
+                .map(BoothStatisticsDtos.HourlyEntry::from)
+                .toList();
+
+        // 시간대별 합산
+        int totalReservation = stats.stream().mapToInt(BoothHourlyStatistics::getReservationCount).sum();
+        int totalNoShow = stats.stream().mapToInt(BoothHourlyStatistics::getNoShowCount).sum();
+        int totalQrScan = stats.stream().mapToInt(BoothHourlyStatistics::getQrScanCount).sum();
+
+        return new BoothStatisticsDtos.PreviousDaySummary(
+                boothId, yesterday,
+                totalReservation, totalNoShow, totalQrScan,
+                hourlyEntries
+        );
     }
 
     /**

@@ -32,4 +32,14 @@ public class BoothStatisticsController {
         return ApiResponse.success(
                 boothStatisticsService.getHourlyStatistics(boothId, statDate, member));
     }
+
+    // STAT-API-002: 전날 부스 통계 조회
+    @GetMapping("/booths/{boothId}/statistics/previous-day")
+    public ApiResponse<BoothStatisticsDtos.PreviousDaySummary> getPreviousDayStatistics(
+            @PathVariable Long boothId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+
+        return ApiResponse.success(
+                boothStatisticsService.getPreviousDayStatistics(boothId, member));
+    }
 }
