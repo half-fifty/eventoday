@@ -3,6 +3,8 @@ package com.min.edu.booth.controller;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.dto.BoothStatisticsDtos;
 import com.min.edu.booth.service.BoothStatisticsService;
+import com.min.edu.common.exception.BusinessException;
+import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.common.response.ApiResponse;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +53,9 @@ public class BoothStatisticsController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @AuthenticationPrincipal AuthenticatedMemberDto member) {
 
+        // from이 to보다 늦으면 400
+        validateDateRange(from, to);
+
         return ApiResponse.success(
                 boothStatisticsService.getPopularBooths(eventId, from, to, member));
     }
@@ -63,7 +68,20 @@ public class BoothStatisticsController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @AuthenticationPrincipal AuthenticatedMemberDto member) {
 
+        // from이 to보다 늦으면 400
+        validateDateRange(from, to);
+
         return ApiResponse.success(
                 boothStatisticsService.getEventOverview(eventId, from, to, member));
+    }
+
+    /**
+     * 기간 역전 검증 공통 헬퍼
+     * from이 to보다 늦은 경우 400 Bad Request
+     */
+    private void validateDateRange(LocalDate from, LocalDate to) {
+        if (from.isAfter(to)) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
     }
 }

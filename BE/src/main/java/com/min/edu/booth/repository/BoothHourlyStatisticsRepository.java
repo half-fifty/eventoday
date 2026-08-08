@@ -26,7 +26,7 @@ public interface BoothHourlyStatisticsRepository extends JpaRepository<BoothHour
            "WHERE bhs.boothId IN :boothIds " +
            "AND bhs.statDate BETWEEN :from AND :to " +
            "GROUP BY bhs.boothId " +
-           "ORDER BY SUM(bhs.reservationCount) DESC")
+           "ORDER BY SUM(bhs.reservationCount) DESC, bhs.boothId ASC")
     List<BoothStatAggregation> aggregateByBoothIdsAndDateBetween(
             @Param("boothIds") Collection<Long> boothIds,
             @Param("from") LocalDate from,

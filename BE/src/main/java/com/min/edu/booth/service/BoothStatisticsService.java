@@ -225,29 +225,34 @@ public class BoothStatisticsService {
             return new BoothStatisticsDtos.EventOverviewSummary(eventId, from, to, 0, 0, 0, List.of());
         }
 
-        // 기간별 부스별 통계 합산 (예약수 내림차순)
-        List<BoothStatAggregation> aggregations =
+        // 기간별 부스별 통계 합산 → boothId 기준 Map으로 변환 (빠른 조회용)
+        Map<Long, BoothStatAggregation> aggregationMap =
                 boothHourlyStatisticsRepository.aggregateByBoothIdsAndDateBetween(
-                        boothCodeMap.keySet(), from, to);
+                                boothCodeMap.keySet(), from, to)
+                        .stream()
+                        .collect(Collectors.toMap(BoothStatAggregation::getBoothId, a -> a));
 
-        // 부스별 요약 DTO 변환
-        List<BoothStatisticsDtos.BoothStatSummary> boothSummaries = aggregations.stream()
-                .map(agg -> new BoothStatisticsDtos.BoothStatSummary(
-                        agg.getBoothId(),
-                        boothCodeMap.getOrDefault(agg.getBoothId(), ""),
-                        agg.getTotalReservationCount(),
-                        agg.getTotalNoShowCount(),
-                        agg.getTotalQrScanCount()
-                ))
+        // 모든 부스 포함 — 통계 행이 없으면 각 카운트 0으로 처리
+        List<BoothStatisticsDtos.BoothStatSummary> boothSummaries = boothCodeMap.entrySet().stream()
+                .map(entry -> {
+                    BoothStatAggregation agg = aggregationMap.get(entry.getKey());
+                    return new BoothStatisticsDtos.BoothStatSummary(
+                            entry.getKey(),
+                            entry.getValue(),
+                            agg != null ? agg.getTotalReservationCount() : 0L,
+                            agg != null ? agg.getTotalNoShowCount() : 0L,
+                            agg != null ? agg.getTotalQrScanCount() : 0L
+                    );
+                })
                 .toList();
 
         // 전체 합산
-        long totalReservation = aggregations.stream()
-                .mapToLong(BoothStatAggregation::getTotalReservationCount).sum();
-        long totalNoShow = aggregations.stream()
-                .mapToLong(BoothStatAggregation::getTotalNoShowCount).sum();
-        long totalQrScan = aggregations.stream()
-                .mapToLong(BoothStatAggregation::getTotalQrScanCount).sum();
+        long totalReservation = boothSummaries.stream()
+                .mapToLong(BoothStatisticsDtos.BoothStatSummary::totalReservationCount).sum();
+        long totalNoShow = boothSummaries.stream()
+                .mapToLong(BoothStatisticsDtos.BoothStatSummary::totalNoShowCount).sum();
+        long totalQrScan = boothSummaries.stream()
+                .mapToLong(BoothStatisticsDtos.BoothStatSummary::totalQrScanCount).sum();
 
         return new BoothStatisticsDtos.EventOverviewSummary(
                 eventId, from, to,
