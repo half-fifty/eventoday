@@ -6,11 +6,13 @@ import com.min.edu.booth.domain.BoothReservationSlotStatus;
 import com.min.edu.booth.domain.BoothReservationStatus;
 import com.min.edu.booth.dto.BoothReservationResponse;
 import com.min.edu.booth.dto.CreateBoothReservationRequest;
+import com.min.edu.booth.repository.BoothRepository;
 import com.min.edu.booth.repository.BoothReservationRepository;
 import com.min.edu.booth.repository.BoothReservationSlotRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
@@ -22,6 +24,10 @@ public class BoothReservationService {
 
     private final BoothReservationRepository reservationRepository;
     private final BoothReservationSlotRepository slotRepository;
+    private final BoothRepository boothRepository;
+    private final BoothVacancyNotificationService vacancyNotificationService;
+
+
     // BoothReservationSlot에서 이미 부스 검증하므로 여기서는 필요 없음
     // 예약 확정
     public BoothReservationResponse createReservation(
@@ -103,6 +109,12 @@ public class BoothReservationService {
 
         slot.decrementReservedCount(reservation.getPartySize());
         slotRepository.saveAndFlush(slot);
+
+        // 6️.빈자리 알림 발송
+        boothRepository.findById(boothId).ifPresent(booth ->
+                vacancyNotificationService.notifyVacancy(boothId, booth.getDisplayName())
+        );
+
     }
 
     private BoothReservationResponse toResponse(BoothReservation reservation) {

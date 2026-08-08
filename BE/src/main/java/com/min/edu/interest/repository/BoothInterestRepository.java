@@ -20,6 +20,9 @@ public interface BoothInterestRepository extends JpaRepository<BoothInterest, Lo
 
     List<BoothInterest> findAllByMemberId(Long memberId);
 
+    // 특정 부스에 관심 + 빈자리 알림 활성화한 회원들
+    List<BoothInterest> findByBoothIdAndVacancyNotificationEnabledTrue(Long boothId);
+
     @Modifying
     @Query(value = """
             INSERT INTO booth_interests (member_id, booth_id, vacancy_notification_enabled, created_at)
@@ -39,4 +42,6 @@ public interface BoothInterestRepository extends JpaRepository<BoothInterest, Lo
             where bi.memberId = :memberId
             """)
     List<InterestBoothResponse> findInterestBoothsByMemberId(@Param("memberId") Long memberId);
+
+
 }
