@@ -26,11 +26,14 @@ public interface BoothQrScanRepository extends JpaRepository<BoothQrScan, Long> 
     // WBS-157, 162: 행사 전체 부스 혼잡도 (인기 부스 상위 N개)
     @Query("SELECT bqs.boothId, COUNT(bqs) as congestionCount " +
             "FROM BoothQrScan bqs " +
-            "WHERE bqs.scannedAt >= :since " +
+            "JOIN Booth b ON bqs.boothId = b.id " +
+            "WHERE b.eventId = :eventId " +
+            "AND bqs.scannedAt >= :since " +
             "AND bqs.duplicate = false " +
             "GROUP BY bqs.boothId " +
             "ORDER BY congestionCount DESC")
     Page<Object[]> findPopularBooths(
+            @Param("eventId") Long eventId,  // ← 추가!
             @Param("since") OffsetDateTime since,
             Pageable pageable
     );

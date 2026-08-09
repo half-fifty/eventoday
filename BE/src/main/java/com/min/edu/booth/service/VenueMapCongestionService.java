@@ -36,25 +36,28 @@ public class VenueMapCongestionService {
     public List<VenueMapWithCongestionResponseDto> getPublishedWithCongestion(
             Long eventId, VenueMapType mapType) {
 
-        // 1️⃣ 게시된 평면도들 조회
+        // 게시된 평면도들 조회
         List<VenueMap> venueMaps = venueMapRepository
                 .findByEventIdAndMapTypeAndStatusOrderByFloorNameAsc(eventId, mapType, VenueMapStatus.PUBLISHED);
 
-        // 2️⃣ 혼잡도 데이터 (최근 10분)
+        // 혼잡도 데이터 (최근 10분)
         OffsetDateTime since = OffsetDateTime.now().minusMinutes(10);
-        Map<Long, Long> congestionMap = getCongestionMap(since);
+        Map<Long, Long> congestionMap = getCongestionMap(eventId, since);
 
-        // 3️⃣ 각 평면도별로 부스 마커 생성
+
+        // 각 평면도별로 부스 마커 생성
         return venueMaps.stream()
-                .map(venueMap -> buildVenueMapWithCongestion(venueMap, congestionMap))
+                .map(venueMap -> buildVenueMapWithCongestion(venueMap, congestionMap, eventId))  // ← eventId 추가!
                 .collect(Collectors.toList());
     }
+
 
     /**
      * 부스별 혼잡도 맵 생성
      */
-    private Map<Long, Long> getCongestionMap(OffsetDateTime since) {
-        var congestedBooths = qrScanRepository.findPopularBooths(since,
+    private Map<Long, Long> getCongestionMap(Long eventId, OffsetDateTime since) {  // ← eventId 파라미터 추가!
+        var congestedBooths = qrScanRepository.findPopularBooths(
+                eventId, since,
                 org.springframework.data.domain.PageRequest.of(0, 1000));
 
         return congestedBooths.stream()
@@ -68,7 +71,7 @@ public class VenueMapCongestionService {
      * VenueMap + 혼잡도 응답 객체 생성
      */
     private VenueMapWithCongestionResponseDto buildVenueMapWithCongestion(
-            VenueMap venueMap, Map<Long, Long> congestionMap) {
+            VenueMap venueMap, Map<Long, Long> congestionMap, Long eventId) {
 
         // 이 평면도에 속한 부스 위치들 조회
         List<BoothMapPosition> positions = boothMapPositionRepository.findByVenueMapId(venueMap.getId());

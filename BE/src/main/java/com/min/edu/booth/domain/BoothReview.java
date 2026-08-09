@@ -47,4 +47,22 @@ public class BoothReview {
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt;  // ← 추가!
+
+    // 1) 별점 수정
+    public void updateRating(Short rating) {
+        this.rating = rating;
+    }
+
+    // 2) 댓글 수정
+    public void updateComment(String comment) {
+        this.comment = comment;
+    }
+
+    // 3) 수정 시간 업데이트
+    public void updateUpdatedAt(OffsetDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
 }

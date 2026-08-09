@@ -13,6 +13,10 @@ import java.util.Optional;
 @Repository
 public interface BoothReviewRepository extends JpaRepository<BoothReview, Long> {
 
+    @Query("SELECT br FROM BoothReview br WHERE br.id = :id AND br.boothId = :boothId")
+    Optional<BoothReview> findByIdAndBoothId(@Param("id") Long id, @Param("boothId") Long boothId);
+
+
     // 회원의 부스 리뷰 조회 (중복 방지)
     Optional<BoothReview> findByMemberIdAndBoothId(Long memberId, Long boothId);
 
@@ -29,4 +33,9 @@ public interface BoothReviewRepository extends JpaRepository<BoothReview, Long> 
 
     // ===== WBS-160: 내 작성 후기 목록 =====
     Page<BoothReview> findByMemberIdOrderByCreatedAtDesc(Long memberId, Pageable pageable);
+
+
+    Page<BoothReview> findByBoothIdAndCommentContainingIgnoreCase(
+            Long boothId, String keyword, Pageable pageable);
+
 }
