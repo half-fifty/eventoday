@@ -47,8 +47,10 @@ public class BoothReviewController {
     @GetMapping("/{boothId}/reviews")
     public ResponseEntity<Page<BoothReviewResponse>> getBoothReviews(
             @PathVariable Long boothId,
+            @AuthenticationPrincipal AuthenticatedMemberDto principal,  // ← 추가
             Pageable pageable) {
 
+        // principal이 null이면 자동으로 401 반환됨
         Page<BoothReviewResponse> response = boothReviewService.getBoothReviews(boothId, pageable);
         return ResponseEntity.ok(response);
     }
@@ -64,4 +66,29 @@ public class BoothReviewController {
         );
         return ResponseEntity.ok(response);
     }
+
+    // 리뷰 삭제 (본인만 가능)
+    @DeleteMapping("/{boothId}/reviews/{reviewId}")
+    public ResponseEntity<Void> deleteReview(
+            @PathVariable Long boothId,
+            @PathVariable Long reviewId,
+            @AuthenticationPrincipal AuthenticatedMemberDto principal) {
+
+        boothReviewService.deleteReview(reviewId, boothId, principal.getMemberId());
+        return ResponseEntity.noContent().build();
+    }
+
+    // 부스별 리뷰 검색
+    @GetMapping("/{boothId}/reviews/search")
+    public ResponseEntity<Page<BoothReviewResponse>> searchReviews(
+            @PathVariable Long boothId,
+            @RequestParam String keyword,
+            @AuthenticationPrincipal AuthenticatedMemberDto principal,
+            Pageable pageable) {
+
+        Page<BoothReviewResponse> response = boothReviewService.searchReviews(boothId, keyword, pageable);
+        return ResponseEntity.ok(response);
+    }
+
+
 }

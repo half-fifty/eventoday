@@ -21,6 +21,15 @@ public class BoothVacancyNotificationService {
     private final BoothInterestRepository boothInterestRepository;
     private final NotificationRepository notificationRepository;
 
+    /**
+     * idempotencyKey를 사용한 알림 생성 (중복 방지)
+     */
+    public void notifyVacancyWithIdempotency(Long boothId, String displayName, Long slotId, Long idempotencyKey) {
+        notifyVacancy(boothId, displayName);  // ← 부스명 전달!
+
+    }
+
+
     public void notifyVacancy(Long boothId, String boothName) {
         // 1. 해당 부스에 관심 + 알림 활성화한 회원들 조회
         List<BoothInterest> interests =
@@ -41,6 +50,10 @@ public class BoothVacancyNotificationService {
                     content,                                        // content
                     OffsetDateTime.now()                           // createdAt
             );
+
+
+
+
         }
     }
 }

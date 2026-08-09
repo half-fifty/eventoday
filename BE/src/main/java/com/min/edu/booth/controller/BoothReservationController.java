@@ -3,61 +3,61 @@ package com.min.edu.booth.controller;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.dto.BoothReservationResponse;
 import com.min.edu.booth.dto.CreateBoothReservationRequest;
-import com.min.edu.booth.service.BoothReservationService;
-import com.min.edu.booth.service.RedisReservationService;
-import com.min.edu.common.exception.BusinessException;
-import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.booth.service.BoothReservationWithRedisService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/booths")
+@RequestMapping("/booths/{boothId}/reservations")
 public class BoothReservationController {
 
-    private final BoothReservationService boothReservationService;
-    private final RedisReservationService redisReservationService;  // ← 추가
+    private final BoothReservationWithRedisService reservationService;
 
-    @PostMapping("/{boothId}/reservations")
+    /**
+     * WBS-146: 예약 생성 (Redis 선점 통합)
+     *
+     * 모든 처리가 Service에서 통합됨:
+     * - Redis 임시 선점
+     * - DB 예약 저장
+     * - Redis 선점 해제
+     *
+     * Controller는 Service 메서드만 호출
+     */
+    @PostMapping
     public ResponseEntity<BoothReservationResponse> createReservation(
             @PathVariable Long boothId,
             @RequestBody @Valid CreateBoothReservationRequest request,
             @AuthenticationPrincipal AuthenticatedMemberDto principal) {
 
-        // WBS-146: Redis 선점
-        boolean reserved = redisReservationService.reserveSlot(
-                boothId, request.getSlotId(), principal.getMemberId());
-        if (!reserved) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
-        }
-
-        try {
-            BoothReservationResponse response = boothReservationService.createReservation(
-                    boothId, request, principal.getMemberId()
-            );
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (Exception e) {
-            // 실패 시 Redis 해제
-            redisReservationService.releaseSlot(boothId, request.getSlotId());
-            throw e;
-        }
+        // Service에서 Redis + DB를 통합 처리
+        BoothReservationResponse response = reservationService.createReservationWithRedis(
+                boothId,
+                request,
+                principal.getMemberId()
+        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @DeleteMapping("/{boothId}/reservations/{reservationId}")
+    /**
+     * 예약 취소
+     */
+    @DeleteMapping("/{reservationId}")
     public ResponseEntity<Void> cancelReservation(
             @PathVariable Long boothId,
             @PathVariable Long reservationId,
             @AuthenticationPrincipal AuthenticatedMemberDto principal) {
 
-        boothReservationService.cancelReservation(reservationId, boothId, principal.getMemberId());
-
-        // WBS-146: Redis 선점 해제
-        // (cancelReservation 내부에서 처리해도 됨)
-
+        reservationService.cancelReservation(reservationId, principal.getMemberId());
         return ResponseEntity.noContent().build();
     }
 }

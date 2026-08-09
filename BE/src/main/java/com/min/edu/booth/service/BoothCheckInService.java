@@ -2,11 +2,13 @@ package com.min.edu.booth.service;
 
 import com.min.edu.admission.domain.ExchangeCode;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
+import com.min.edu.booth.domain.Booth;
 import com.min.edu.booth.domain.BoothQrScan;
 import com.min.edu.booth.domain.BoothReservation;
 import com.min.edu.booth.domain.BoothReservationStatus;
 import com.min.edu.booth.dto.BoothReservationResponse;
 import com.min.edu.booth.repository.BoothQrScanRepository;
+import com.min.edu.booth.repository.BoothRepository;
 import com.min.edu.booth.repository.BoothReservationRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
@@ -24,6 +26,7 @@ public class BoothCheckInService {
     private final ExchangeCodeRepository exchangeCodeRepository;
     private final BoothReservationRepository reservationRepository;
     private final BoothQrScanRepository qrScanRepository;
+    private final BoothRepository boothRepository;  // ← 추가!
 
     /**
      * 부스 방문 확인 (checkIn)
@@ -39,41 +42,56 @@ public class BoothCheckInService {
 
         OffsetDateTime now = OffsetDateTime.now();
 
-        // 1️⃣ 교환 코드 조회 (비관적 잠금)
+        // 부스의 eventId 먼저 조회
+        Booth booth = boothRepository.findById(boothId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // 교환 코드 조회
         ExchangeCode code = exchangeCodeRepository.findByCodeForUpdate(exchangeCode)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
-        // 2️⃣ 교환 코드 검증
-        if (code.isRedeemed()) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);  // 이미 사용됨
-        }
-        if (code.isCancelled()) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);  // 취소됨
-        }
-        if (code.getExpiresAt() != null && code.getExpiresAt().isBefore(now)) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);  // 만료됨
+        // 교환 코드의 eventId와 부스의 eventId 일치 확인
+        if (!code.getEventId().equals(booth.getEventId())) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);  // 다른 행사
         }
 
-        // 3️⃣ 예약 조회 (비관적 잠금)
+        // 홀더 멤버ID 확인 (본인 코드인지)
+        if (!code.getHolderMemberId().equals(memberId)) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);  // 권한 없음
+        }
+
+        // 교환 코드 검증
+        if (code.isRedeemed()) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (code.isCancelled()) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (code.getExpiresAt() != null && code.getExpiresAt().isBefore(now)) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+
+
+        // 예약 조회 (비관적 잠금)
         BoothReservation reservation = reservationRepository.findByMemberIdAndBoothIdWithLock(memberId, boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
-        // 4️⃣ 예약 상태 확인 (RESERVED만 입장 가능)
+        // 예약 상태 확인 (RESERVED만 입장 가능)
         if (reservation.getStatus() != BoothReservationStatus.RESERVED) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
-        // 5️⃣ 상태 변경: RESERVED → CHECKED_IN
+        // 상태 변경: RESERVED → CHECKED_IN
         reservation.updateStatus(BoothReservationStatus.CHECKED_IN);
         reservation.updateCheckedInAt(now);
         reservation.updateUpdatedAt(now);
         reservationRepository.saveAndFlush(reservation);
 
-        // 6️⃣ 교환 코드 상태 변경: ISSUED → REDEEMED
+        // 교환 코드 상태 변경: ISSUED → REDEEMED
         code.redeem(now);
         exchangeCodeRepository.saveAndFlush(code);
 
-        // 7️⃣ BoothQrScan 기록 저장 (혼잡도 계산용)
+        // BoothQrScan 기록 저장 (혼잡도 계산용)
         boolean isDuplicate = checkDuplicateScan(code.getId(), boothId);
         BoothQrScan qrScan = BoothQrScan.builder()
                 .boothId(boothId)
