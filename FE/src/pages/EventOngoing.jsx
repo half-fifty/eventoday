@@ -3,7 +3,6 @@ import { Link, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
 import VenueMapPins from "../components/VenueMapPins.jsx";
-import BoothPinPopup from "../components/BoothPinPopup.jsx";
 import { ApiError } from "../api/apiClient.js";
 import { eventApi } from "../api/eventApi.js";
 import { listPublicVenueMaps } from "../api/venueMapApi.js";
@@ -42,6 +41,9 @@ const tabButtons = [
 // deterministic QR mock, same formula as original
 const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 37 + 13) % 7 < 3);
 
+// 실제 배치도 핀은 혼잡도/방문자 데이터가 없어 목록 목업과 같은 방식으로 부스 id 기반 가짜 값을 만든다.
+const mockCongestion = (boothId) => (Number(boothId) * 37 + 13) % 70 + 20;
+
 export default function EventOngoing() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [events, setEvents] = useState([]);
@@ -54,7 +56,7 @@ export default function EventOngoing() {
   const [venueMaps, setVenueMaps] = useState([]);
   const [loadingVenueMaps, setLoadingVenueMaps] = useState(false);
   const [venueMapError, setVenueMapError] = useState("");
-  const [selectedMapBooth, setSelectedMapBooth] = useState(null);
+  const [mapPinBooth, setMapPinBooth] = useState(null);
 
   const [booths, setBooths] = useState(initialBooths);
   const [tab, setTab] = useState("map");
@@ -137,14 +139,33 @@ export default function EventOngoing() {
     [booths]
   );
   const interestList = booths.filter((b) => b.interest);
-  const activeBooth = booths.find((b) => b.id === activeBoothId) || null;
+  const activeBooth = mapPinBooth || booths.find((b) => b.id === activeBoothId) || null;
 
   const openBoothSheet = (id) => {
+    setMapPinBooth(null);
     setActiveBoothId(id);
     setBoothSheetOpen(true);
   };
 
+  // 배치도 핀은 참가 부스 목록(mock)에 없는 실제 부스라서, 같은 바텀시트를 재사용하되
+  // 혼잡도/방문자 수는 부스 id 기반의 가짜 값으로 채운다.
+  const openMapBoothSheet = (position, venueMap) => {
+    setMapPinBooth({
+      id: position.boothCode,
+      name: position.displayName || position.boothCode,
+      zone: venueMap.floorName,
+      congestion: mockCongestion(position.boothId),
+      interest: false,
+      icon: "storefront",
+    });
+    setBoothSheetOpen(true);
+  };
+
   const toggleInterestFromSheet = () => {
+    if (mapPinBooth) {
+      setMapPinBooth((prev) => prev && { ...prev, interest: !prev.interest });
+      return;
+    }
     setBooths((prev) =>
       prev.map((b) => (b.id === activeBoothId ? { ...b, interest: !b.interest } : b))
     );
@@ -245,7 +266,7 @@ export default function EventOngoing() {
                   <div key={venueMap.id}>
                     <h3 className="font-body-strong text-body mb-sm">{venueMap.floorName}</h3>
                     <div className="bg-surface-pearl border border-hairline rounded-2xl p-lg">
-                      <VenueMapPins venueMap={venueMap} onPinClick={setSelectedMapBooth} />
+                      <VenueMapPins venueMap={venueMap} onPinClick={(p) => openMapBoothSheet(p, venueMap)} />
                     </div>
                   </div>
                 ))}
@@ -415,7 +436,6 @@ export default function EventOngoing() {
         </div>
       </div>
 
-      <BoothPinPopup booth={selectedMapBooth} onClose={() => setSelectedMapBooth(null)} />
     </div>
   );
 }
