@@ -3,10 +3,12 @@ import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import { eventApi } from "../api/eventApi.js";
 import { advertisementApi } from "../api/advertisementApi.js";
+import { AdminExchangeCodeRequestPanel } from "../components/ExchangeCodeRequestPanels.jsx";
 
 const navItems = [
   { key: "dashboard", label: "전체 대시보드", icon: "dashboard" },
   { key: "requests", label: "행사 등록 신청 관리", icon: "verified" },
+  { key: "exchange-codes", label: "교환 코드 관리", icon: "key" },
   { key: "accounts", label: "계정 관리", icon: "group" },
   { key: "ads", label: "광고 승인 관리", icon: "campaign" },
   { key: "stats", label: "통합 통계", icon: "bar_chart" },
@@ -268,6 +270,9 @@ export default function PlatformAdmin() {
               </div>
             </section>
           )}
+
+          {/* EXCHANGE CODES */}
+          {page === "exchange-codes" && <AdminExchangeCodeRequestPanel />}
 
           {/* ACCOUNTS */}
           {page === "accounts" && (

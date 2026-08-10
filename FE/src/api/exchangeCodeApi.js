@@ -13,4 +13,20 @@ export const exchangeCodeApi = {
     apiRequest("/exchange-codes/validation", json("POST", { code })),
   redeemExchangeCode: (code) =>
     apiRequest("/exchange-codes/redemption", json("POST", { code })),
+  createExchangeCodeRequest: (eventId, payload) =>
+    apiRequest(`/events/${eventId}/exchange-code-requests`, json("POST", payload)),
+  getEventExchangeCodeRequests: (eventId, params = {}) =>
+    apiRequest(`/events/${eventId}/exchange-code-requests?${new URLSearchParams(params)}`),
+  getExchangeCodeRequest: (requestId) =>
+    apiRequest(`/exchange-code-requests/${requestId}`),
+  getAdminExchangeCodeRequests: (params = {}) =>
+    apiRequest(`/admin/exchange-code-requests?${new URLSearchParams(params)}`),
+  approveExchangeCodeRequest: (requestId) =>
+    apiRequest(`/admin/exchange-code-requests/${requestId}/approval`, { method: "POST" }),
+  rejectExchangeCodeRequest: (requestId, reason) =>
+    apiRequest(`/admin/exchange-code-requests/${requestId}/rejection`, json("POST", { reason })),
+  issueExchangeCodes: (requestId) =>
+    apiRequest(`/admin/exchange-code-requests/${requestId}/issuance`, { method: "POST" }),
+  resendExchangeCodeEmail: (requestId) =>
+    apiRequest(`/admin/exchange-code-requests/${requestId}/email-resend`, { method: "POST" }),
 };
