@@ -166,6 +166,10 @@ public class EventService {
                 .venueMapEnabled(request.venueMapEnabled()).boothReservationEnabled(request.boothReservationEnabled())
                 .noShowGraceMinutes(request.noShowGraceMinutes()).createdAt(now).updatedAt(now).build();
         Event saved = eventRepository.save(event);
+        eventMemberRepository.save(EventMember.builder()
+                .eventId(saved.getId()).memberId(actor.getMemberId())
+                .eventRole(EventRole.EVENT_MANAGER).active(true)
+                .createdAt(now).build());
         replaceCategories(saved.getId(), request.exhibitCategoryCodes());
         return EventDtos.Detail.from(saved, categoryCodes(saved.getId()));
     }
