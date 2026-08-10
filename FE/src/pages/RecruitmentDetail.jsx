@@ -303,7 +303,7 @@ export default function RecruitmentDetail() {
                               type="button"
                               onClick={() => selectBoothFromPin(p.boothId)}
                               title={p.displayName || p.boothCode}
-                              className={`absolute w-7 h-7 -ml-3.5 -mt-7 flex items-center justify-center text-white text-[10px] font-bold rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform ${
+                              className={`absolute w-5 h-5 -ml-2.5 -mt-5 flex items-center justify-center text-white text-[8px] font-bold rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform ${
                                 p.boothId === highlightedBoothId ? "bg-error scale-125" : "bg-primary"
                               }`}
                               style={{ left: `${Number(p.xRatio) * 100}%`, top: `${Number(p.yRatio) * 100}%` }}
