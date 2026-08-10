@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import TopNav from "../components/TopNav.jsx";
 import Footer from "../components/Footer.jsx";
@@ -26,8 +26,13 @@ export default function Notices() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // 필터 변경 시 진행 중인 loadMore 결과를 무효화하기 위한 버전 카운터
+  // typeFilter가 바뀌면 ref 값이 증가하고, 이전 요청은 버전 불일치로 상태를 덮어쓰지 않는다
+  const requestVersionRef = useRef(0);
+
   useEffect(() => {
     let cancelled = false;
+    const requestVersion = ++requestVersionRef.current; // 이 필터 호출의 버전
     const load = async () => {
       setLoading(true);
       setError("");
@@ -42,6 +47,8 @@ export default function Notices() {
           size: PAGE_SIZE,
         });
         if (cancelled) return;
+        // 더 최신 필터 요청이 시작됐으면 이 결과는 무시
+        if (requestVersion !== requestVersionRef.current) return;
         // BE가 pinned DESC, publishedAt DESC로 정렬해 내려준다
         setItems(flatten(data?.content));
         setHasMore(data ? !data.last : false);
@@ -59,6 +66,8 @@ export default function Notices() {
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;
     const nextPage = page + 1;
+    // 요청 시점의 필터 버전 캡처 — 응답 도착 전 필터가 바뀌었으면 결과를 버린다
+    const requestVersion = requestVersionRef.current;
     setLoadingMore(true);
     try {
       const data = await listAllContents({
@@ -66,6 +75,7 @@ export default function Notices() {
         page: nextPage,
         size: PAGE_SIZE,
       });
+      if (requestVersion !== requestVersionRef.current) return;
       setItems((prev) => [...prev, ...flatten(data?.content)]);
       setHasMore(data ? !data.last : false);
       setPage(nextPage);
