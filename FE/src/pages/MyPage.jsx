@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
+import { admissionApi } from "../api/admissionApi.js";
 import { exchangeCodeApi } from "../api/exchangeCodeApi.js";
 import { paymentApi } from "../api/paymentApi.js";
 import useAuth from "../hooks/useAuth.js";
@@ -20,7 +21,6 @@ const subtabs = [
   { key: "reserved", label: "예약 내역" },
   { key: "visited", label: "방문한 부스" },
 ];
-const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 41 + 7) % 7 < 3);
 const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
 const formatMoney = (value) => `${Number(value || 0).toLocaleString("ko-KR")}원`;
@@ -48,6 +48,13 @@ const exchangeCodeStatusLabel = {
 const exchangeCodeSourceLabel = {
   TICKET_ORDER: "티켓 주문",
   EXTERNAL_REQUEST: "외부 발급",
+};
+
+const admissionStatusLabel = {
+  ISSUED: "사용 가능",
+  USED: "입장 완료",
+  CANCELLED: "취소",
+  EXPIRED: "만료",
 };
 
 export default function MyPage() {
@@ -96,6 +103,10 @@ export default function MyPage() {
   const [exchangeCodes, setExchangeCodes] = useState([]);
   const [exchangeCodesLoading, setExchangeCodesLoading] = useState(false);
   const [exchangeCodesError, setExchangeCodesError] = useState("");
+  const [admissionTickets, setAdmissionTickets] = useState([]);
+  const [admissionTicketsLoading, setAdmissionTicketsLoading] = useState(false);
+  const [admissionTicketsError, setAdmissionTicketsError] = useState("");
+  const [issuedAdmissionTicketId, setIssuedAdmissionTicketId] = useState(null);
   const [validationResult, setValidationResult] = useState(null);
   const [validatingCode, setValidatingCode] = useState(false);
   const [redeemingCode, setRedeemingCode] = useState(false);
@@ -124,6 +135,15 @@ export default function MyPage() {
       .then((result) => setExchangeCodes(result?.data?.content || []))
       .catch((requestError) => setExchangeCodesError(requestError.message || "교환 코드 목록을 불러오지 못했습니다."))
       .finally(() => setExchangeCodesLoading(false));
+  }, []);
+
+  const loadAdmissionTickets = useCallback(() => {
+    setAdmissionTicketsLoading(true);
+    setAdmissionTicketsError("");
+    return admissionApi.getMyAdmissionTickets({ page: 0, size: 20 })
+      .then((result) => setAdmissionTickets(result?.data?.content || []))
+      .catch((requestError) => setAdmissionTicketsError(requestError.message || "입장 티켓 목록을 불러오지 못했습니다."))
+      .finally(() => setAdmissionTicketsLoading(false));
   }, []);
 
   useEffect(() => {
@@ -196,6 +216,26 @@ export default function MyPage() {
     };
   }, [isBusinessMember, tab]);
 
+  useEffect(() => {
+    if (isBusinessMember || tab !== "qr") return;
+    let cancelled = false;
+    setAdmissionTicketsLoading(true);
+    setAdmissionTicketsError("");
+    admissionApi.getMyAdmissionTickets({ page: 0, size: 20 })
+      .then((result) => {
+        if (!cancelled) setAdmissionTickets(result?.data?.content || []);
+      })
+      .catch((requestError) => {
+        if (!cancelled) setAdmissionTicketsError(requestError.message || "입장 티켓 목록을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setAdmissionTicketsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusinessMember, tab]);
+
   const handleLogout = async () => {
     setIsLoggingOut(true);
 
@@ -212,6 +252,7 @@ export default function MyPage() {
     setCode(event.target.value);
     setValidationResult(null);
     setRedeemMsg(null);
+    setIssuedAdmissionTicketId(null);
   };
 
   const validateCode = async () => {
@@ -242,6 +283,7 @@ export default function MyPage() {
       const redeemed = result?.data;
       setValidationResult(null);
       setCode("");
+      setIssuedAdmissionTicketId(redeemed?.admissionTicketId || null);
       setRedeemMsg({
         ok: true,
         text: redeemed?.admissionTicketId
@@ -249,6 +291,7 @@ export default function MyPage() {
           : "입장 티켓이 발급되었습니다.",
       });
       await loadExchangeCodes();
+      await loadAdmissionTickets();
     } catch (requestError) {
       setRedeemMsg({ ok: false, text: requestError.message || "교환 코드 사용에 실패했습니다." });
     } finally {
@@ -385,6 +428,15 @@ export default function MyPage() {
                 {redeemMsg && (
                   <p className={`text-caption mt-sm ${redeemMsg.ok ? "text-status-available" : "text-error"}`}>{redeemMsg.text}</p>
                 )}
+                {issuedAdmissionTicketId && (
+                  <Link
+                    to={`/admission-tickets/${issuedAdmissionTicketId}`}
+                    className="mt-sm inline-flex items-center gap-1 rounded-full border border-hairline px-md py-1.5 text-caption font-body-strong"
+                  >
+                    <Icon name="qr_code_2" className="text-[16px]" />
+                    입장 티켓 보기
+                  </Link>
+                )}
               </div>
 
               <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
@@ -479,19 +531,42 @@ export default function MyPage() {
 
           {/* QR */}
           {tab === "qr" && (
-            <div className="text-center">
-              <div className="bg-black rounded-2xl p-xl flex flex-col items-center">
-                <div className="grid grid-cols-10 gap-[2px] w-[180px] mb-lg">
-                  {qrPixels.map((on, i) => (
-                    <div key={i} className={`w-full aspect-square ${on ? "bg-black" : "bg-white"}`} />
-                  ))}
-                </div>
-                <p className="text-white font-display-md text-[18px]">2026 서울 푸드테크 박람회</p>
-                <span className="text-white/70 text-caption mt-xs px-md py-1 bg-white/10 rounded-full">회원 입장 QR · 입장 완료</span>
-              </div>
+            <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
+              <div className="p-lg font-body-strong">입장 티켓</div>
+              {admissionTicketsLoading && (
+                <p className="p-lg text-caption text-ink-muted">입장 티켓 목록을 불러오는 중입니다.</p>
+              )}
+              {admissionTicketsError && (
+                <p className="p-lg text-caption text-error">{admissionTicketsError}</p>
+              )}
+              {!admissionTicketsLoading && !admissionTicketsError && admissionTickets.length === 0 && (
+                <p className="p-lg text-caption text-ink-muted">발급된 입장 티켓이 없습니다.</p>
+              )}
+              {!admissionTicketsLoading && !admissionTicketsError && admissionTickets.map((ticket) => (
+                <Link
+                  key={ticket.admissionTicketId}
+                  to={`/admission-tickets/${ticket.admissionTicketId}`}
+                  className="flex items-center gap-md p-lg transition-colors hover:bg-surface-container-low"
+                >
+                  <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#0f766e,#14b8a6)" }}>
+                    <Icon name="qr_code_2" className="text-[18px]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-body-strong truncate">{ticket.eventName}</p>
+                    <p className="text-caption text-ink-muted">입장 티켓 ID {ticket.admissionTicketId}</p>
+                    <p className="text-[11px] text-ink-muted">
+                      발급 {formatDateTime(ticket.issuedAt)}
+                      {ticket.usedAt ? ` · 사용 ${formatDateTime(ticket.usedAt)}` : ""}
+                      {ticket.cancelledAt ? ` · 취소 ${formatDateTime(ticket.cancelledAt)}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-primary-container/10 text-primary-focus">
+                    {admissionStatusLabel[ticket.status] || ticket.status}
+                  </span>
+                </Link>
+              ))}
             </div>
           )}
-
           {/* BOOTHS */}
           {tab === "booths" && (
             <div>

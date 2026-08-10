@@ -114,8 +114,57 @@ const apiRequest = async (
     return parseResponse(response);
 };
 
+const parseBlobResponse = async (response) => {
+    if (!response.ok) {
+        let result = null;
+        const contentType =
+            response.headers.get("content-type");
+
+        if (
+            contentType &&
+            contentType.includes("application/json")
+        ) {
+            result = await response.json();
+        }
+
+        throw new ApiError(
+            response.status,
+            result?.code || "UNKNOWN_ERROR",
+            result?.message || "요청 처리에 실패했습니다.",
+            result?.data || null
+        );
+    }
+
+    return response.blob();
+};
+
+const apiBlobRequest = async (
+    path,
+    options = {}
+) => {
+    let response = await sendRequest(
+        path,
+        options
+    );
+
+    if (response.status === 401) {
+        const reissueSucceeded =
+            await reissueAccessToken();
+
+        if (reissueSucceeded) {
+            response = await sendRequest(
+                path,
+                options
+            );
+        }
+    }
+
+    return parseBlobResponse(response);
+};
+
 export {
     API_BASE_URL,
     ApiError,
+    apiBlobRequest,
     apiRequest,
 };
