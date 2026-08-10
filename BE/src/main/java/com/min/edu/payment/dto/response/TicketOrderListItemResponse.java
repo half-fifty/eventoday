@@ -13,6 +13,7 @@ import lombok.Getter;
 public class TicketOrderListItemResponse {
 
     private Long ticketOrderId;
+    private Long paymentId;
     private String orderNo;
     private Long eventId;
     private String eventName;
@@ -29,6 +30,7 @@ public class TicketOrderListItemResponse {
     public static TicketOrderListItemResponse from(TicketOrderListProjection projection) {
         return new TicketOrderListItemResponse(
             projection.getTicketOrderId(),
+            projection.getPaymentId(),
             projection.getOrderNo(),
             projection.getEventId(),
             projection.getEventName(),

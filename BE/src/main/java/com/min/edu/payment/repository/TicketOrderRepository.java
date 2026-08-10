@@ -16,6 +16,7 @@ public interface TicketOrderRepository extends JpaRepository<TicketOrder, Long> 
         value = """
             SELECT
                 t.id AS ticketOrderId,
+                pay.id AS paymentId,
                 p.orderNo AS orderNo,
                 t.eventId AS eventId,
                 e.name AS eventName,
@@ -29,6 +30,7 @@ public interface TicketOrderRepository extends JpaRepository<TicketOrder, Long> 
                 t.createdAt AS createdAt
             FROM TicketOrder t
             JOIN PaymentOrder p ON p.id = t.paymentOrderId
+            LEFT JOIN Payment pay ON pay.paymentOrderId = p.id
             JOIN Event e ON e.id = t.eventId
             WHERE p.buyerMemberId = :memberId
                 AND p.buyerMemberId IS NOT NULL
@@ -52,6 +54,7 @@ public interface TicketOrderRepository extends JpaRepository<TicketOrder, Long> 
     @Query("""
         SELECT
             t.id AS ticketOrderId,
+            pay.id AS paymentId,
             p.orderNo AS orderNo,
             p.buyerMemberId AS buyerMemberId,
             t.eventId AS eventId,
@@ -66,6 +69,7 @@ public interface TicketOrderRepository extends JpaRepository<TicketOrder, Long> 
             t.createdAt AS createdAt
         FROM TicketOrder t
         JOIN PaymentOrder p ON p.id = t.paymentOrderId
+        LEFT JOIN Payment pay ON pay.paymentOrderId = p.id
         JOIN Event e ON e.id = t.eventId
         WHERE p.orderNo = :orderNo
             AND p.orderType = com.min.edu.payment.domain.PaymentOrderType.EVENT_TICKET
