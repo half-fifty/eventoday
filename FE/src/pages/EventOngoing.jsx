@@ -1,7 +1,19 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
+import VenueMapPins from "../components/VenueMapPins.jsx";
+import { ApiError } from "../api/apiClient.js";
+import { eventApi } from "../api/eventApi.js";
+import { listPublicVenueMaps } from "../api/venueMapApi.js";
+
+const formatEventPeriod = (event) => {
+  if (!event) return "";
+  const start = new Date(event.startAt);
+  const end = new Date(event.endAt);
+  const fmt = (d) => `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+  return `${fmt(start)} – ${fmt(end)} · ${event.venueName ?? ""}`;
+};
 
 const initialBooths = [
   { id: "A01", name: "맛있는 식탁", zone: "A구역 1층", congestion: 62, interest: false, icon: "lunch_dining" },
@@ -16,7 +28,6 @@ const initialBooths = [
   { id: "A10", name: "푸드 딜리버리 테크", zone: "B구역 2층", congestion: 33, interest: false, icon: "delivery_dining" },
 ];
 
-const level = (v) => (v >= 70 ? "crowded" : v >= 40 ? "normal" : "available");
 const levelLabel = (v) => (v >= 70 ? "혼잡" : v >= 40 ? "보통" : "여유");
 const levelColor = (v) => (v >= 70 ? "status-visited" : v >= 40 ? "status-pending" : "status-available");
 
@@ -31,43 +42,161 @@ const tabButtons = [
 const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 37 + 13) % 7 < 3);
 
 export default function EventOngoing() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [events, setEvents] = useState([]);
+  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [eventsError, setEventsError] = useState("");
+  const [selectedEventId, setSelectedEventId] = useState(searchParams.get("eventId") || "");
+  const [eventDetail, setEventDetail] = useState(null);
+  const [eventDetailError, setEventDetailError] = useState("");
+
+  const [venueMaps, setVenueMaps] = useState([]);
+  const [loadingVenueMaps, setLoadingVenueMaps] = useState(false);
+  const [venueMapError, setVenueMapError] = useState("");
+  const [mapPinBooth, setMapPinBooth] = useState(null);
+  // 배치도 핀은 참가 부스 목록(mock)에 없는 실제 부스라서 관심 상태를 boothId 기준으로 따로 들고 있는다.
+  const [mapBoothInterestIds, setMapBoothInterestIds] = useState(() => new Set());
+
   const [booths, setBooths] = useState(initialBooths);
   const [tab, setTab] = useState("map");
   const [activeBoothId, setActiveBoothId] = useState(null);
   const [boothSheetOpen, setBoothSheetOpen] = useState(false);
   const [qrSheetOpen, setQrSheetOpen] = useState(false);
 
+  // 진행 중인 실제 행사(PUBLISHED) 목록을 불러와 선택할 수 있게 한다.
+  useEffect(() => {
+    eventApi.list({ size: 100, sort: "startAt,asc" })
+      .then((result) => {
+        const list = result?.data?.content || [];
+        setEvents(list);
+        // selectedEventId를 클로저로 참조하면 응답이 늦게 도착했을 때 그 사이 URL로
+        // 바뀐 선택을 덮어쓸 수 있어, 그 시점의 실제 URL을 기준으로 판단한다.
+        const currentUrlEventId = new URLSearchParams(window.location.search).get("eventId");
+        if (!currentUrlEventId && list.length > 0) {
+          setSelectedEventId(String(list[0].id));
+        }
+      })
+      .catch((error) => setEventsError(error.message || "행사 목록을 불러오지 못했습니다."))
+      .finally(() => setLoadingEvents(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (selectedEventId) {
+      setSearchParams({ eventId: selectedEventId }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEventId]);
+
+  // 뒤로가기·앞으로가기 등 외부 내비게이션으로 URL의 eventId가 바뀌면 선택 상태도 맞춘다.
+  useEffect(() => {
+    const urlEventId = searchParams.get("eventId") || "";
+    if (urlEventId && urlEventId !== selectedEventId) {
+      setSelectedEventId(urlEventId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!selectedEventId) return;
+    let cancelled = false;
+
+    setEventDetail(null);
+    setEventDetailError("");
+    eventApi.detail(selectedEventId)
+      .then((result) => {
+        if (!cancelled) setEventDetail(result?.data ?? null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setEventDetail(null);
+          setEventDetailError(error instanceof ApiError ? error.message : "행사 정보를 불러오지 못했습니다.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    // eventDetail은 selectedEventId 변경 후 비동기로 도착하므로, 아직 이전 행사의
+    // eventDetail이 남아있는 동안 새 행사로 요청이 나가지 않도록 id를 함께 확인한다.
+    const isCurrentEventDetail = eventDetail && String(eventDetail.id) === String(selectedEventId);
+    if (!selectedEventId || !isCurrentEventDetail || !eventDetail.venueMapEnabled) {
+      setVenueMaps([]);
+      setVenueMapError("");
+      setLoadingVenueMaps(false);
+      return;
+    }
+
+    let cancelled = false;
+    setVenueMaps([]);
+    setVenueMapError("");
+    setLoadingVenueMaps(true);
+    listPublicVenueMaps(selectedEventId, "VISITOR")
+      .then((data) => {
+        if (!cancelled) setVenueMaps(data ?? []);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setVenueMaps([]);
+          setVenueMapError(error instanceof ApiError ? error.message : "평면도를 불러오지 못했습니다.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingVenueMaps(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEventId, eventDetail]);
+
   const top3 = useMemo(
     () => [...booths].sort((a, b) => b.congestion - a.congestion).slice(0, 3),
     [booths]
   );
   const interestList = booths.filter((b) => b.interest);
-  const activeBooth = booths.find((b) => b.id === activeBoothId) || null;
+  const activeBooth = mapPinBooth || booths.find((b) => b.id === activeBoothId) || null;
 
   const openBoothSheet = (id) => {
+    setMapPinBooth(null);
     setActiveBoothId(id);
     setBoothSheetOpen(true);
   };
 
+  // 배치도 핀은 참가 부스 목록(mock)에 없는 실제 부스라서 같은 바텀시트를 재사용한다.
+  // 혼잡도/대기시간/방문자 수는 실제 지표 API가 없어 표시하지 않는다(정보 없음 처리).
+  const openMapBoothSheet = (position, venueMap) => {
+    setMapPinBooth({
+      boothId: position.boothId,
+      id: position.boothCode,
+      name: position.displayName || position.boothCode,
+      zone: venueMap.floorName,
+      interest: mapBoothInterestIds.has(position.boothId),
+      icon: "storefront",
+      isMapBooth: true,
+    });
+    setBoothSheetOpen(true);
+  };
+
   const toggleInterestFromSheet = () => {
+    if (mapPinBooth) {
+      const { boothId } = mapPinBooth;
+      setMapBoothInterestIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(boothId)) next.delete(boothId);
+        else next.add(boothId);
+        return next;
+      });
+      setMapPinBooth((prev) => prev && { ...prev, interest: !prev.interest });
+      return;
+    }
     setBooths((prev) =>
       prev.map((b) => (b.id === activeBoothId ? { ...b, interest: !b.interest } : b))
     );
   };
-
-  const boothCell = (b) => (
-    <div
-      key={b.id}
-      onClick={() => openBoothSheet(b.id)}
-      className={`booth-cell relative h-20 sm:h-24 rounded-lg border flex flex-col items-center justify-center text-center p-1 ${
-        b.interest ? "bg-primary-container text-white border-primary-focus" : "bg-white border-hairline text-secondary"
-      }`}
-    >
-      <span className={`absolute top-1 right-1 w-2 h-2 rounded-full bg-${levelColor(b.congestion)} border border-white ${level(b.congestion) === "crowded" ? "pulse" : ""}`} />
-      <Icon name={b.icon} className={`text-[18px] ${b.interest ? "text-white" : "text-primary"}`} />
-      <span className="text-[10px] font-bold mt-1">{b.id}</span>
-    </div>
-  );
 
   return (
     <div className="bg-surface font-body text-on-surface antialiased">
@@ -102,10 +231,35 @@ export default function EventOngoing() {
       <main className="pt-[44px] md:ml-[220px] pb-[90px] md:pb-xl">
         {/* App Header & QR */}
         <section className="pt-lg pb-md px-lg bg-surface-container-low">
+          <div className="max-w-[900px] mx-auto mb-md">
+            {loadingEvents ? (
+              <p className="text-caption text-ink-muted">진행 중인 행사를 불러오는 중입니다.</p>
+            ) : eventsError ? (
+              <p className="text-caption text-error">{eventsError}</p>
+            ) : events.length === 0 ? (
+              <p className="text-caption text-ink-muted">공개된 행사가 없습니다.</p>
+            ) : (
+              <select
+                value={selectedEventId}
+                onChange={(e) => setSelectedEventId(e.target.value)}
+                className="h-[36px] rounded-full border border-hairline px-md text-caption bg-white outline-none focus:border-primary-focus"
+              >
+                {events.map((event) => (
+                  <option key={event.id} value={event.id}>{event.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
           <div className="max-w-[900px] mx-auto flex justify-between items-end">
             <div>
-              <p className="text-caption text-secondary mb-1">2026.08.12 – 08.14 · 코엑스 3층 A홀</p>
-              <h1 className="font-display-lg-mobile md:font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface">2026 서울 푸드테크 박람회</h1>
+              {eventDetailError ? (
+                <p className="text-caption text-error mb-1">{eventDetailError}</p>
+              ) : (
+                <p className="text-caption text-secondary mb-1">{formatEventPeriod(eventDetail)}</p>
+              )}
+              <h1 className="font-display-lg-mobile md:font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface">
+                {eventDetail?.name ?? "행사를 선택해 주세요"}
+              </h1>
             </div>
             <button onClick={() => setQrSheetOpen(true)} className="hidden md:flex bg-primary-container text-white px-lg py-sm rounded-full items-center gap-xs font-body-strong active:scale-95 transition-transform flex-shrink-0">
               <Icon name="qr_code_2" fill /> 입장 QR
@@ -127,27 +281,24 @@ export default function EventOngoing() {
         {/* TAB: Floor map */}
         {tab === "map" && (
           <section className="py-lg px-lg max-w-[900px] mx-auto">
-            <div className="flex items-center justify-between mb-md">
-              <h2 className="font-display-md text-[20px]">행사장 배치도</h2>
-              <div className="flex bg-surface-container-high rounded-lg p-1">
-                <button className="px-md py-1 bg-white shadow-sm rounded-md text-caption font-bold text-primary">1F</button>
-                <button className="px-md py-1 text-caption text-secondary">2F</button>
+            <h2 className="font-display-md text-[20px] mb-md">행사장 배치도</h2>
+            {loadingVenueMaps && <p className="text-caption text-ink-muted">평면도를 불러오는 중입니다.</p>}
+            {venueMapError && <p className="text-caption text-error">{venueMapError}</p>}
+            {!loadingVenueMaps && !venueMapError && venueMaps.length === 0 && (
+              <p className="text-caption text-ink-muted">등록된 평면도가 없습니다.</p>
+            )}
+            {!loadingVenueMaps && venueMaps.length > 0 && (
+              <div className="space-y-lg">
+                {venueMaps.map((venueMap) => (
+                  <div key={venueMap.id}>
+                    <h3 className="font-body-strong text-body mb-sm">{venueMap.floorName}</h3>
+                    <div className="bg-surface-pearl border border-hairline rounded-2xl p-lg">
+                      <VenueMapPins venueMap={venueMap} onPinClick={(p) => openMapBoothSheet(p, venueMap)} />
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-            <div className="floor-map-container bg-surface-pearl border border-hairline rounded-2xl relative overflow-hidden p-lg">
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-sm">{booths.map(boothCell)}</div>
-              <div className="mt-md text-center text-caption text-ink-muted border border-dashed border-hairline rounded-lg py-sm">입구 · ENTRANCE</div>
-              <div className="absolute bottom-md right-md flex flex-col gap-xs">
-                <button className="w-9 h-9 bg-white shadow-md rounded-full flex items-center justify-center border border-hairline"><Icon name="add" className="text-[18px]" /></button>
-                <button className="w-9 h-9 bg-white shadow-md rounded-full flex items-center justify-center border border-hairline"><Icon name="remove" className="text-[18px]" /></button>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-md mt-md text-caption text-on-surface-variant">
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full dot-available" />여유</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full dot-normal" />보통</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full dot-crowded" />혼잡</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-primary-container" />관심 등록</span>
-            </div>
+            )}
           </section>
         )}
 
@@ -263,18 +414,24 @@ export default function EventOngoing() {
                   <h3 className="font-display-md text-[24px] text-on-surface">{activeBooth.name}</h3>
                   <p className="text-secondary text-caption">{activeBooth.id} · {activeBooth.zone}</p>
                 </div>
-                <span className={`px-sm py-1 text-caption font-bold rounded-full bg-${levelColor(activeBooth.congestion)}/10 text-${levelColor(activeBooth.congestion)}`}>
-                  {levelLabel(activeBooth.congestion)}
-                </span>
+                {!activeBooth.isMapBooth && (
+                  <span className={`px-sm py-1 text-caption font-bold rounded-full bg-${levelColor(activeBooth.congestion)}/10 text-${levelColor(activeBooth.congestion)}`}>
+                    {levelLabel(activeBooth.congestion)}
+                  </span>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-sm mb-lg">
                 <div className="bg-surface-container-low p-md rounded-xl">
                   <p className="text-caption text-secondary mb-xs">실시간 대기</p>
-                  <p className="font-display-md text-primary text-[22px]">{Math.round(activeBooth.congestion / 2)}분</p>
+                  <p className="font-display-md text-primary text-[22px]">
+                    {activeBooth.isMapBooth ? "정보 없음" : `${Math.round(activeBooth.congestion / 2)}분`}
+                  </p>
                 </div>
                 <div className="bg-surface-container-low p-md rounded-xl">
                   <p className="text-caption text-secondary mb-xs">오늘 방문자</p>
-                  <p className="font-body-strong">{(1200 - activeBooth.congestion * 5).toLocaleString()}명</p>
+                  <p className="font-body-strong">
+                    {activeBooth.isMapBooth ? "정보 없음" : `${(1200 - activeBooth.congestion * 5).toLocaleString()}명`}
+                  </p>
                 </div>
               </div>
               <div className="flex gap-sm">
@@ -311,6 +468,7 @@ export default function EventOngoing() {
           <p className="text-caption text-ink-muted mt-xs">화면 밝기를 최대로 설정하면 현장 스캔이 더 원활해요.</p>
         </div>
       </div>
+
     </div>
   );
 }
