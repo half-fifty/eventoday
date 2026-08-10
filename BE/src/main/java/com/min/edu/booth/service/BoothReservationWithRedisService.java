@@ -17,6 +17,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.OffsetDateTime;
 
@@ -36,7 +38,9 @@ public class BoothReservationWithRedisService {
      *
      * Redis에 임시 선점 시도
      * 선점 성공 → DB에 예약 저장
-     * DB 커밋 후 Redis 선점 해제
+     * ⭐ DB 트랜잭션 커밋 후 afterCompletion에서 Redis 선점 해제
+     *
+     * 예외 발생 시: try-catch에서 지금 바로 해제 (트랜잭션 롤백 전)
      *
      * Controller에서는 이 메서드만 호출하면 됨 (Redis 처리 X)
      */
@@ -52,8 +56,8 @@ public class BoothReservationWithRedisService {
         Booth booth = boothRepository.findById(boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
-        // 슬롯 확인
-        BoothReservationSlot slot = slotRepository.findById(request.getSlotId())
+        // 슬롯 확인 (비관적 잠금으로 동시성 제어)
+        BoothReservationSlot slot = slotRepository.findByIdWithLock(request.getSlotId())
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
         // 슬롯의 부스가 맞는지 확인 (booth ownership)
@@ -97,18 +101,19 @@ public class BoothReservationWithRedisService {
 
             BoothReservation saved = reservationRepository.saveAndFlush(reservation);
 
-            // 슬롯의 남은 자리 감소
+            // 슬롯의 남은 자리 감소 (이미 비관적 잠금으로 보호됨)
             slot.incrementReservedCount(request.getPartySize());
             slotRepository.saveAndFlush(slot);
 
-            // ⭐ DB 트랜잭션 성공 후 Redis 선점 해제
-            // (임시 선점 키가 남지 않음)
-            redisReservationService.releaseSlot(boothId, request.getSlotId(), memberId);
+            // ⭐ DB 트랜잭션 커밋 후 Redis 선점 해제 등록
+            // 성공·실패 모두 afterCompletion에서 한 번만 수행
+            registerRedisReleaseOnCommit(boothId, request.getSlotId(), memberId);
 
             return toResponse(saved);
 
         } catch (Exception e) {
-            // 예약 생성 실패 시 Redis 선점 해제
+            // ⚠️ 예약 생성 실패 시 (트랜잭션 커밋 전 실패)
+            // 지금 바로 Redis 선점 해제 (트랜잭션 롤백 전)
             redisReservationService.releaseSlot(boothId, request.getSlotId(), memberId);
             throw e;
         }
@@ -119,7 +124,7 @@ public class BoothReservationWithRedisService {
      * - 예약 상태 변경 (RESERVED → CANCELLED)
      * - 슬롯 자리 복원
      * - 빈자리 알림 이벤트 발행
-     * - Redis 선점 해제
+     * - ⭐ 트랜잭션 커밋 후 afterCompletion에서 Redis 선점 해제
      */
     @Transactional
     public void cancelReservation(Long reservationId, Long boothId, Long memberId) {
@@ -149,6 +154,7 @@ public class BoothReservationWithRedisService {
         BoothReservationSlot slot = slotRepository.findByIdWithLock(reservation.getBoothReservationSlotId())
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
+        // ⭐ lower-bound 검증: 예약 인원 수보다 현재 예약 수가 작으면 에러
         if (slot.getReservedCount() < reservation.getPartySize()) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
@@ -156,8 +162,9 @@ public class BoothReservationWithRedisService {
         slot.decrementReservedCount(reservation.getPartySize());
         slotRepository.saveAndFlush(slot);
 
-        // 6️⃣ Redis 선점 해제
-        redisReservationService.releaseSlot(boothId, reservation.getBoothReservationSlotId(), memberId);
+        // 6️⃣ ⭐ 트랜잭션 커밋 후 Redis 선점 해제 등록
+        // 성공·실패 모두 afterCompletion에서 한 번만 수행
+        registerRedisReleaseOnCommit(boothId, reservation.getBoothReservationSlotId(), memberId);
 
         // 7️⃣ ⭐ 빈자리 알림 이벤트 발행
         Booth booth = boothRepository.findById(boothId)
@@ -170,6 +177,29 @@ public class BoothReservationWithRedisService {
                 reservationId,
                 booth.getDisplayName()
         ));
+    }
+
+    /**
+     * ⭐ TransactionSynchronizationManager를 사용한 Redis 해제 등록
+     *
+     * DB 트랜잭션 커밋 이후 Redis 선점 해제
+     * 성공·실패 모두 afterCompletion에서 한 번만 수행
+     *
+     * - 커밋 성공: afterCompletion 실행 → Redis 해제
+     * - 롤백 실패: afterCompletion 실행 → Redis 해제
+     * 결과: 중복 해제 절대 불가능!
+     */
+    private void registerRedisReleaseOnCommit(Long boothId, Long slotId, Long memberId) {
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        // status: STATUS_COMMITTED (성공) 또는 STATUS_ROLLED_BACK (실패)
+                        // 둘 다 여기서 한 번만 실행됨
+                        redisReservationService.releaseSlot(boothId, slotId, memberId);
+                    }
+                }
+        );
     }
 
     private BoothReservationResponse toResponse(BoothReservation reservation) {
