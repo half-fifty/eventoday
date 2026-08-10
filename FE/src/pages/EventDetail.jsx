@@ -4,10 +4,12 @@ import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/apiClient.js";
 import { eventApi } from "../api/eventApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
+import { listContents } from "../api/contentApi.js";
 import { listPublicVenueMaps } from "../api/venueMapApi.js";
 import Footer from "../components/Footer.jsx";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
+import FileDownloadLink from "../components/FileDownloadLink.jsx";
 import VenueMapPins from "../components/VenueMapPins.jsx";
 import BoothPinPopup from "../components/BoothPinPopup.jsx";
 import useAuth from "../hooks/useAuth.js";
@@ -30,6 +32,9 @@ export default function EventDetail() {
   const [purchasing, setPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState("");
   const [issuedCodes, setIssuedCodes] = useState([]);
+  // 공지·자료 (WBS-199): 권한에 따라 BE가 필터링해 내려준다
+  const [contents, setContents] = useState([]);
+  const [expandedContentId, setExpandedContentId] = useState(null);
   const [completedOrderNo, setCompletedOrderNo] = useState("");
 
   const [venueMaps, setVenueMaps] = useState([]);
@@ -46,6 +51,25 @@ export default function EventDetail() {
       .then((result) => !cancelled && setEvent(result?.data || null))
       .catch((requestError) => !cancelled && setError(requestError.message || "행사를 불러오지 못했습니다."))
       .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [eventId]);
+
+  // CONTENT-API-001: 행사 공지·자료 로드 (실패해도 페이지 표시에는 영향 없도록 조용히 처리)
+  useEffect(() => {
+    let cancelled = false;
+    setContents([]);
+    listContents(eventId)
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : [];
+        // 고정 공지 우선, 이후 게시일 최신순 정렬
+        // pinned가 undefined면 뺄셈 결과가 NaN이 되므로 boolean → 숫자로 정규화
+        list.sort((a, b) =>
+          (Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)))
+          || new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+        setContents(list);
+      })
+      .catch(() => { if (!cancelled) setContents([]); });
     return () => { cancelled = true; };
   }, [eventId]);
 
@@ -152,6 +176,53 @@ export default function EventDetail() {
             <section className="space-y-xl">
               <div><h2 className="font-display-md text-[22px] mb-md">행사 소개</h2><p className="whitespace-pre-wrap leading-7">{event.description}</p></div>
               <div><h2 className="font-display-md text-[22px] mb-md">운영 기능</h2><div className="flex flex-wrap gap-sm">{event.boothRecruitmentEnabled && <span className="px-md py-xs bg-primary/10 text-primary rounded-full text-caption">부스 모집</span>}{event.venueMapEnabled && <span className="px-md py-xs bg-primary/10 text-primary rounded-full text-caption">평면도</span>}{event.boothReservationEnabled && <span className="px-md py-xs bg-primary/10 text-primary rounded-full text-caption">부스 예약</span>}</div></div>
+
+              {/* 공지·자료 (WBS-199): 제목 클릭 시 내용 펼침, 첨부는 다운로드 링크 */}
+              {contents.length > 0 && (
+                <div>
+                  <h2 className="font-display-md text-[22px] mb-md">공지 · 자료</h2>
+                  <div className="bg-white border border-hairline rounded-2xl divide-y divide-divider-soft overflow-hidden">
+                    {contents.map((content) => (
+                      <div key={content.contentId}>
+                        <button
+                          onClick={() => setExpandedContentId(expandedContentId === content.contentId ? null : content.contentId)}
+                          className="w-full flex items-center gap-sm p-lg text-left hover:bg-surface-pearl/50 transition-colors"
+                        >
+                          <Icon
+                            name={content.contentType === "NOTICE" ? "campaign" : "folder"}
+                            className="text-[18px] text-ink-muted flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-body-strong text-[14px] truncate">
+                              {content.pinned && <Icon name="push_pin" className="text-[13px] text-primary mr-1" />}
+                              {content.title}
+                            </p>
+                            <p className="text-caption text-ink-muted">
+                              {content.contentType === "NOTICE" ? "공지" : "자료"}
+                              {content.version ? ` · v${content.version}` : ""}
+                              {content.publishedAt ? ` · ${new Date(content.publishedAt).toLocaleDateString("ko-KR")}` : ""}
+                            </p>
+                          </div>
+                          <Icon name={expandedContentId === content.contentId ? "expand_less" : "expand_more"} className="text-ink-muted text-[18px]" />
+                        </button>
+                        {expandedContentId === content.contentId && (
+                          <div className="px-lg pb-lg space-y-sm">
+                            {content.content && <p className="text-caption whitespace-pre-line bg-surface-pearl rounded-lg p-md">{content.content}</p>}
+                            {/* fileName·fileSize: BE Summary에 포함된 원본 파일명·크기 (다운로드 파일명으로 사용) */}
+                            {content.fileId && (
+                              <FileDownloadLink
+                                fileId={content.fileId}
+                                fileName={content.fileName || "첨부파일"}
+                                fileSize={content.fileSize}
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {event.venueMapEnabled && (
                 <div>
                   <h2 className="font-display-md text-[22px] mb-md">행사장 배치도</h2>
