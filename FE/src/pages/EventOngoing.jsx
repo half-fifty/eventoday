@@ -41,9 +41,6 @@ const tabButtons = [
 // deterministic QR mock, same formula as original
 const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 37 + 13) % 7 < 3);
 
-// 실제 배치도 핀은 혼잡도/방문자 데이터가 없어 목록 목업과 같은 방식으로 부스 id 기반 가짜 값을 만든다.
-const mockCongestion = (boothId) => (Number(boothId) * 37 + 13) % 70 + 20;
-
 export default function EventOngoing() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [events, setEvents] = useState([]);
@@ -57,6 +54,8 @@ export default function EventOngoing() {
   const [loadingVenueMaps, setLoadingVenueMaps] = useState(false);
   const [venueMapError, setVenueMapError] = useState("");
   const [mapPinBooth, setMapPinBooth] = useState(null);
+  // 배치도 핀은 참가 부스 목록(mock)에 없는 실제 부스라서 관심 상태를 boothId 기준으로 따로 들고 있는다.
+  const [mapBoothInterestIds, setMapBoothInterestIds] = useState(() => new Set());
 
   const [booths, setBooths] = useState(initialBooths);
   const [tab, setTab] = useState("map");
@@ -156,22 +155,30 @@ export default function EventOngoing() {
     setBoothSheetOpen(true);
   };
 
-  // 배치도 핀은 참가 부스 목록(mock)에 없는 실제 부스라서, 같은 바텀시트를 재사용하되
-  // 혼잡도/방문자 수는 부스 id 기반의 가짜 값으로 채운다.
+  // 배치도 핀은 참가 부스 목록(mock)에 없는 실제 부스라서 같은 바텀시트를 재사용한다.
+  // 혼잡도/대기시간/방문자 수는 실제 지표 API가 없어 표시하지 않는다(정보 없음 처리).
   const openMapBoothSheet = (position, venueMap) => {
     setMapPinBooth({
+      boothId: position.boothId,
       id: position.boothCode,
       name: position.displayName || position.boothCode,
       zone: venueMap.floorName,
-      congestion: mockCongestion(position.boothId),
-      interest: false,
+      interest: mapBoothInterestIds.has(position.boothId),
       icon: "storefront",
+      isMapBooth: true,
     });
     setBoothSheetOpen(true);
   };
 
   const toggleInterestFromSheet = () => {
     if (mapPinBooth) {
+      const { boothId } = mapPinBooth;
+      setMapBoothInterestIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(boothId)) next.delete(boothId);
+        else next.add(boothId);
+        return next;
+      });
       setMapPinBooth((prev) => prev && { ...prev, interest: !prev.interest });
       return;
     }
@@ -396,18 +403,24 @@ export default function EventOngoing() {
                   <h3 className="font-display-md text-[24px] text-on-surface">{activeBooth.name}</h3>
                   <p className="text-secondary text-caption">{activeBooth.id} · {activeBooth.zone}</p>
                 </div>
-                <span className={`px-sm py-1 text-caption font-bold rounded-full bg-${levelColor(activeBooth.congestion)}/10 text-${levelColor(activeBooth.congestion)}`}>
-                  {levelLabel(activeBooth.congestion)}
-                </span>
+                {!activeBooth.isMapBooth && (
+                  <span className={`px-sm py-1 text-caption font-bold rounded-full bg-${levelColor(activeBooth.congestion)}/10 text-${levelColor(activeBooth.congestion)}`}>
+                    {levelLabel(activeBooth.congestion)}
+                  </span>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-sm mb-lg">
                 <div className="bg-surface-container-low p-md rounded-xl">
                   <p className="text-caption text-secondary mb-xs">실시간 대기</p>
-                  <p className="font-display-md text-primary text-[22px]">{Math.round(activeBooth.congestion / 2)}분</p>
+                  <p className="font-display-md text-primary text-[22px]">
+                    {activeBooth.isMapBooth ? "정보 없음" : `${Math.round(activeBooth.congestion / 2)}분`}
+                  </p>
                 </div>
                 <div className="bg-surface-container-low p-md rounded-xl">
                   <p className="text-caption text-secondary mb-xs">오늘 방문자</p>
-                  <p className="font-body-strong">{(1200 - activeBooth.congestion * 5).toLocaleString()}명</p>
+                  <p className="font-body-strong">
+                    {activeBooth.isMapBooth ? "정보 없음" : `${(1200 - activeBooth.congestion * 5).toLocaleString()}명`}
+                  </p>
                 </div>
               </div>
               <div className="flex gap-sm">
