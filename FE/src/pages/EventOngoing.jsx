@@ -69,7 +69,10 @@ export default function EventOngoing() {
       .then((result) => {
         const list = result?.data?.content || [];
         setEvents(list);
-        if (!selectedEventId && list.length > 0) {
+        // selectedEventId를 클로저로 참조하면 응답이 늦게 도착했을 때 그 사이 URL로
+        // 바뀐 선택을 덮어쓸 수 있어, 그 시점의 실제 URL을 기준으로 판단한다.
+        const currentUrlEventId = new URLSearchParams(window.location.search).get("eventId");
+        if (!currentUrlEventId && list.length > 0) {
           setSelectedEventId(String(list[0].id));
         }
       })
@@ -117,9 +120,17 @@ export default function EventOngoing() {
   }, [selectedEventId]);
 
   useEffect(() => {
-    if (!selectedEventId || !eventDetail?.venueMapEnabled) return;
-    let cancelled = false;
+    // eventDetail은 selectedEventId 변경 후 비동기로 도착하므로, 아직 이전 행사의
+    // eventDetail이 남아있는 동안 새 행사로 요청이 나가지 않도록 id를 함께 확인한다.
+    const isCurrentEventDetail = eventDetail && String(eventDetail.id) === String(selectedEventId);
+    if (!selectedEventId || !isCurrentEventDetail || !eventDetail.venueMapEnabled) {
+      setVenueMaps([]);
+      setVenueMapError("");
+      setLoadingVenueMaps(false);
+      return;
+    }
 
+    let cancelled = false;
     setVenueMaps([]);
     setVenueMapError("");
     setLoadingVenueMaps(true);
@@ -140,7 +151,7 @@ export default function EventOngoing() {
     return () => {
       cancelled = true;
     };
-  }, [selectedEventId, eventDetail?.venueMapEnabled]);
+  }, [selectedEventId, eventDetail]);
 
   const top3 = useMemo(
     () => [...booths].sort((a, b) => b.congestion - a.congestion).slice(0, 3),
