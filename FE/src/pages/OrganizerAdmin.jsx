@@ -6,6 +6,7 @@ import RecruitmentManagementPanel from "../components/RecruitmentManagementPanel
 import BoothManagementPanel from "../components/BoothManagementPanel.jsx";
 import FloorplanManagementPanel from "../components/FloorplanManagementPanel.jsx";
 import { OrganizerExchangeCodeRequestPanel } from "../components/ExchangeCodeRequestPanels.jsx";
+import AdmissionManagementPanel from "../components/AdmissionManagementPanel.jsx";
 import { eventApi } from "../api/eventApi.js";
 import { getManagementRecruitment } from "../api/recruitmentApi.js";
 
@@ -16,6 +17,7 @@ const navItems = [
   { key: "assignment", label: "부스 관리", icon: "grid_view" },
   { key: "floorplan", label: "평면도 관리", icon: "map" },
   { key: "exchange-codes", label: "교환 코드 요청", icon: "key" },
+  { key: "admission", label: "현장 입장", icon: "qr_code_scanner" },
   { key: "approval", label: "행사 등록 승인 요청", icon: "verified" },
 ];
 const initialApplications = [
@@ -408,6 +410,9 @@ export default function OrganizerAdmin() {
 
           {/* EXCHANGE CODES */}
           {page === "exchange-codes" && <OrganizerExchangeCodeRequestPanel eventId={selectedEventId} />}
+
+          {/* ADMISSION */}
+          {page === "admission" && <AdmissionManagementPanel eventId={selectedEventId} />}
 
           {/* APPROVAL */}
           {page === "approval" && (
