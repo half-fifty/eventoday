@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
+import { exchangeCodeApi } from "../api/exchangeCodeApi.js";
 import { paymentApi } from "../api/paymentApi.js";
 import useAuth from "../hooks/useAuth.js";
 import { useNotifications } from "../notifications/NotificationContext.jsx";
@@ -37,6 +38,16 @@ const refundStatusLabel = {
   COMPLETED: "환불 완료",
   FAILED: "환불 실패",
   REJECTED: "환불 거절",
+};
+const exchangeCodeStatusLabel = {
+  ISSUED: "사용 전",
+  REDEEMED: "사용 완료",
+  CANCELLED: "취소",
+  EXPIRED: "만료",
+};
+const exchangeCodeSourceLabel = {
+  TICKET_ORDER: "티켓 주문",
+  EXTERNAL_REQUEST: "외부 발급",
 };
 
 export default function MyPage() {
@@ -82,6 +93,12 @@ export default function MyPage() {
   const [refunds, setRefunds] = useState([]);
   const [refundsLoading, setRefundsLoading] = useState(false);
   const [refundsError, setRefundsError] = useState("");
+  const [exchangeCodes, setExchangeCodes] = useState([]);
+  const [exchangeCodesLoading, setExchangeCodesLoading] = useState(false);
+  const [exchangeCodesError, setExchangeCodesError] = useState("");
+  const [validationResult, setValidationResult] = useState(null);
+  const [validatingCode, setValidatingCode] = useState(false);
+  const [redeemingCode, setRedeemingCode] = useState(false);
   const loginDescription = isBusinessMember
     ? `${member.organization?.name || "사업자"} · 사업자 계정`
     : "일반 회원";
@@ -99,6 +116,15 @@ export default function MyPage() {
     MANAGER: "관리자",
     STAFF: "실무자",
   }[member.organization?.organizationRole] || "권한 정보 없음";
+
+  const loadExchangeCodes = useCallback(() => {
+    setExchangeCodesLoading(true);
+    setExchangeCodesError("");
+    return exchangeCodeApi.getMyExchangeCodes({ page: 0, size: 20 })
+      .then((result) => setExchangeCodes(result?.data?.content || []))
+      .catch((requestError) => setExchangeCodesError(requestError.message || "교환 코드 목록을 불러오지 못했습니다."))
+      .finally(() => setExchangeCodesLoading(false));
+  }, []);
 
   useEffect(() => {
     const visibleTabKeys = isBusinessMember
@@ -124,6 +150,26 @@ export default function MyPage() {
       })
       .finally(() => {
         if (!cancelled) setTicketOrdersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusinessMember, tab]);
+
+  useEffect(() => {
+    if (isBusinessMember || tab !== "tickets") return;
+    let cancelled = false;
+    setExchangeCodesLoading(true);
+    setExchangeCodesError("");
+    exchangeCodeApi.getMyExchangeCodes({ page: 0, size: 20 })
+      .then((result) => {
+        if (!cancelled) setExchangeCodes(result?.data?.content || []);
+      })
+      .catch((requestError) => {
+        if (!cancelled) setExchangeCodesError(requestError.message || "교환 코드 목록을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setExchangeCodesLoading(false);
       });
     return () => {
       cancelled = true;
@@ -162,14 +208,51 @@ export default function MyPage() {
     }
   };
 
-  const redeemCode = () => {
+  const handleCodeChange = (event) => {
+    setCode(event.target.value);
+    setValidationResult(null);
+    setRedeemMsg(null);
+  };
+
+  const validateCode = async () => {
     const val = code.trim();
     if (!val) return setRedeemMsg({ ok: false, text: "교환 코드를 입력해 주세요." });
-    if (val.toUpperCase() === "USED123") {
-      setRedeemMsg({ ok: false, text: "이미 사용 완료된 교환 코드입니다." });
-    } else {
-      setRedeemMsg({ ok: true, text: "교환 코드가 확인되어 입장 QR이 발급되었습니다." });
+    if (validatingCode) return;
+    setValidatingCode(true);
+    setRedeemMsg(null);
+    setValidationResult(null);
+    try {
+      const result = await exchangeCodeApi.validateExchangeCode(val);
+      setValidationResult(result?.data || null);
+      setRedeemMsg({ ok: true, text: "교환 코드가 확인되었습니다." });
+    } catch (requestError) {
+      setRedeemMsg({ ok: false, text: requestError.message || "교환 코드를 확인하지 못했습니다." });
+    } finally {
+      setValidatingCode(false);
+    }
+  };
+
+  const redeemCode = async () => {
+    const val = code.trim();
+    if (!validationResult?.valid || redeemingCode) return;
+    setRedeemingCode(true);
+    setRedeemMsg(null);
+    try {
+      const result = await exchangeCodeApi.redeemExchangeCode(val);
+      const redeemed = result?.data;
+      setValidationResult(null);
       setCode("");
+      setRedeemMsg({
+        ok: true,
+        text: redeemed?.admissionTicketId
+          ? `입장 티켓이 발급되었습니다. 티켓 ID: ${redeemed.admissionTicketId}`
+          : "입장 티켓이 발급되었습니다.",
+      });
+      await loadExchangeCodes();
+    } catch (requestError) {
+      setRedeemMsg({ ok: false, text: requestError.message || "교환 코드 사용에 실패했습니다." });
+    } finally {
+      setRedeemingCode(false);
     }
   };
 
@@ -272,18 +355,66 @@ export default function MyPage() {
                 <div className="flex gap-sm">
                   <input
                     value={code}
-                    onChange={(e) => setCode(e.target.value)}
+                    onChange={handleCodeChange}
                     type="text"
                     placeholder="교환 코드 입력 (예: ABCD-1234)"
                     className="flex-1 h-[44px] rounded-lg border border-hairline px-sm outline-none focus:border-primary-focus"
                   />
-                  <button onClick={redeemCode} className="px-lg h-[44px] rounded-lg bg-primary text-white font-body-strong flex items-center gap-1">
-                    <Icon name="key" className="text-[18px]" />등록
+                  <button
+                    onClick={validateCode}
+                    disabled={validatingCode || redeemingCode}
+                    className="px-lg h-[44px] rounded-lg bg-primary text-white font-body-strong flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <Icon name="key" className="text-[18px]" />{validatingCode ? "확인 중" : "검증"}
                   </button>
                 </div>
+                {validationResult?.valid && (
+                  <div className="mt-md rounded-xl bg-surface-container p-md text-caption">
+                    <p className="font-body-strong text-body">{validationResult.eventName}</p>
+                    <p className="text-ink-muted">상태 {exchangeCodeStatusLabel[validationResult.status] || validationResult.status} · {exchangeCodeSourceLabel[validationResult.source] || validationResult.source}</p>
+                    <p className="text-ink-muted">만료일 {formatDateTime(validationResult.expiresAt)}</p>
+                    <button
+                      onClick={redeemCode}
+                      disabled={redeemingCode}
+                      className="mt-md w-full rounded-lg bg-black px-lg py-sm text-white font-body-strong disabled:opacity-50"
+                    >
+                      {redeemingCode ? "사용 중..." : "사용하기"}
+                    </button>
+                  </div>
+                )}
                 {redeemMsg && (
                   <p className={`text-caption mt-sm ${redeemMsg.ok ? "text-status-available" : "text-error"}`}>{redeemMsg.text}</p>
                 )}
+              </div>
+
+              <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
+                <div className="p-lg font-body-strong">내 교환 코드</div>
+                {exchangeCodesLoading && (
+                  <p className="p-lg text-caption text-ink-muted">교환 코드 목록을 불러오는 중입니다.</p>
+                )}
+                {exchangeCodesError && (
+                  <p className="p-lg text-caption text-error">{exchangeCodesError}</p>
+                )}
+                {!exchangeCodesLoading && !exchangeCodesError && exchangeCodes.length === 0 && (
+                  <p className="p-lg text-caption text-ink-muted">보유한 교환 코드가 없습니다.</p>
+                )}
+                {!exchangeCodesLoading && !exchangeCodesError && exchangeCodes.map((exchangeCode) => (
+                  <div key={exchangeCode.exchangeCodeId} className="flex items-center gap-md p-lg">
+                    <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#00b09b,#96c93d)" }}><Icon name="key" className="text-[18px]" /></div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono font-body-strong break-all">{exchangeCode.code}</p>
+                      <p className="text-caption text-ink-muted">{exchangeCode.eventName} · {exchangeCodeSourceLabel[exchangeCode.source] || exchangeCode.source}</p>
+                      <p className="text-[11px] text-ink-muted">
+                        발급 {formatDateTime(exchangeCode.createdAt)}
+                        {exchangeCode.expiresAt ? ` · 만료 ${formatDateTime(exchangeCode.expiresAt)}` : ""}
+                        {exchangeCode.redeemedAt ? ` · 사용 ${formatDateTime(exchangeCode.redeemedAt)}` : ""}
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-primary-container/10 text-primary-focus">
+                      {exchangeCodeStatusLabel[exchangeCode.status] || exchangeCode.status}
+                    </span>
+                  </div>
+                ))}
               </div>
 
               <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
