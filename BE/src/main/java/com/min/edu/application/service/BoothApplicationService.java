@@ -40,6 +40,7 @@ import java.util.Locale;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -66,6 +67,7 @@ public class BoothApplicationService {
     private final EventMemberRepository eventMemberRepository;
     private final EventRepository eventRepository;
     private final FileStorageService fileStorageService;
+    private final ApplicationEventPublisher applicationEventPublisher; // 승인·반려 알림 이벤트 발행 (커밋 후 리스너가 발송)
 
     /**
      * 부스 신청 제출
@@ -293,6 +295,12 @@ public class BoothApplicationService {
 
         log.info("부스 신청 승인 - applicationId: {}, boothId: {}, organizationId: {}, reviewedBy: {}",
                 applicationId, booth.getId(), application.getApplicantOrganizationId(), member.getMemberId());
+
+        // 승인 알림 이벤트 발행 → 커밋 이후 BoothApplicationNotificationListener가 알림·메일 발송
+        applicationEventPublisher.publishEvent(new BoothApplicationDecision(
+                application.getId(), application.getApplicationNo(),
+                application.getApplicantMemberId(), application.getContactEmail(),
+                true, null));
     }
 
     /**
@@ -330,6 +338,12 @@ public class BoothApplicationService {
 
         log.info("부스 신청 반려 - applicationId: {}, boothId: {}, reviewedBy: {}",
                 applicationId, booth.getId(), member.getMemberId());
+
+        // 반려 알림 이벤트 발행 → 커밋 이후 BoothApplicationNotificationListener가 알림·메일 발송
+        applicationEventPublisher.publishEvent(new BoothApplicationDecision(
+                application.getId(), application.getApplicationNo(),
+                application.getApplicantMemberId(), application.getContactEmail(),
+                false, request.getRejectionReason()));
     }
 
     /**
@@ -342,7 +356,7 @@ public class BoothApplicationService {
     @Transactional(readOnly = true)
     public List<BoothApplicationFileResponseDto> listFiles(Long applicationId, AuthenticatedMemberDto member) {
 
-        BoothApplication application = boothApplicationRepository.findByIdWithLock(applicationId)
+        BoothApplication application = boothApplicationRepository.findById(applicationId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
         // getDetail()과 동일한 권한 검증 패턴

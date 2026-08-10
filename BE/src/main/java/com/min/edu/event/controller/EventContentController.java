@@ -37,6 +37,17 @@ public class EventContentController {
         );
     }
 
+    // CONTENT-API-006: 전체 공지·자료 목록 (공개 행사 대상, 행사 이름 포함)
+    // 공지사항 페이지가 행사별로 N번 호출하던 것을 1회로 대체
+    @GetMapping("/contents")
+    public ApiResponse<List<EventContentDtos.BoardItem>> listAllContents(
+            @RequestParam(required = false) EventContentType contentType,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        return ApiResponse.success(
+                eventContentService.listAllContents(contentType, member)
+        );
+    }
+
     // CONTENT-API-002: 공지·자료 상세
     @GetMapping("/event-contents/{contentId}")
     public ApiResponse<EventContentDtos.Summary> getContent(

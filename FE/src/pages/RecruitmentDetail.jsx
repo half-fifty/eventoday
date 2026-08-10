@@ -269,13 +269,22 @@ export default function RecruitmentDetail() {
                   <p className="text-caption text-secondary">{recruitment.contactName}</p>
                   <p className="text-caption text-secondary">{recruitment.contactEmail}</p>
                   <p className="text-caption text-secondary">{recruitment.contactPhone}</p>
-                  <button
-                    disabled
-                    title="부스 신청 기능은 준비 중입니다"
-                    className="w-full h-[48px] bg-primary text-white rounded-xl font-body-strong opacity-40 cursor-not-allowed"
-                  >
-                    부스 신청하기 (준비 중)
-                  </button>
+                  {/* 모집 중(OPEN)일 때만 신청 가능. 평면도·목록에서 선택한 부스가 있으면 함께 전달 */}
+                  {recruitment.status === "OPEN" ? (
+                    <Link
+                      to={`/booth-apply?recruitmentId=${recruitmentId}${highlightedBoothId ? `&boothId=${highlightedBoothId}` : ""}`}
+                      className="w-full h-[48px] bg-primary text-white rounded-xl font-body-strong flex items-center justify-center hover:brightness-95 transition"
+                    >
+                      부스 신청하기
+                    </Link>
+                  ) : (
+                    <button
+                      disabled
+                      className="w-full h-[48px] bg-primary text-white rounded-xl font-body-strong opacity-40 cursor-not-allowed"
+                    >
+                      {recruitment.status === "COMPLETED" ? "모집 완료" : "모집 마감"}
+                    </button>
+                  )}
                 </div>
               </div>
 

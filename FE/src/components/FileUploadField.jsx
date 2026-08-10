@@ -2,13 +2,23 @@ import { useState } from "react";
 import { uploadFile } from "../api/fileApi.js";
 import Icon from "./Icon.jsx";
 
-export default function FileUploadField({ label, value, onChange, accept = "image/*", required = false }) {
+// validate: 업로드 전 검증 함수 (선택). 파일을 받아 에러 메시지(string) 또는 null 반환
+export default function FileUploadField({ label, value, onChange, accept = "image/*", required = false, validate }) {
   const [uploading, setUploading] = useState(false);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
   const upload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    // 업로드 전 검증 - accept 속성은 우회 가능하므로 JS에서 한 번 더 확인
+    if (validate) {
+      const validationError = validate(file);
+      if (validationError) {
+        setError(validationError);
+        event.target.value = "";
+        return;
+      }
+    }
     setUploading(true); setError("");
     try {
       const result = await uploadFile(file, "PUBLIC");
