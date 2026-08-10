@@ -118,7 +118,7 @@ public class BoothReviewService {
     }
 
     /**
-     * 6. 리뷰 수정 (✅ boothId 파라미터 추가)
+     * 6. 리뷰 수정
      */
     public BoothReviewResponse updateReview(
             Long boothId,
@@ -140,10 +140,14 @@ public class BoothReviewService {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
 
+        Short ratingShort = request.getRating().shortValue();
+
+
         // 4) 리뷰 정보 업데이트
-        review.updateRating(request.getRating());
+        review.updateRating(ratingShort);
         review.updateComment(request.getContent());
         review.updateUpdatedAt(OffsetDateTime.now());
+
 
         // 5) DB 저장
         boothReviewRepository.saveAndFlush(review);

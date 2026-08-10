@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.LockModeType;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 
 public interface BoothReservationSlotRepository extends JpaRepository<BoothReservationSlot, Long> {
@@ -28,7 +29,8 @@ public interface BoothReservationSlotRepository extends JpaRepository<BoothReser
     boolean existsByBoothIdAndStartAt(Long boothId, OffsetDateTime startAt);
 
     /**
-     * 2. 비관적 잠금으로 슬롯 조회
+     * 2. 비관적 잠금으로 슬롯 조회 (동시성 제어)
+     * - CREATE/UPDATE 시 Race Condition 방지
      *
      * @param id 슬롯 ID
      * @return Optional<BoothReservationSlot>
@@ -49,14 +51,30 @@ public interface BoothReservationSlotRepository extends JpaRepository<BoothReser
     boolean existsByBoothIdAndStartAtAndIdNot(Long boothId, OffsetDateTime startAt, Long idNot);
 
     /**
-     * 4. 부스의 예약 가능 슬롯 존재 확인 (MobileGuideService용)
+     * 4. 부스의 예약 가능 슬롯 조회 (DB 기준)
      *
-     * @param boothId 부스 ID
-     * @return 예약 가능한 슬롯이 있으면 true
+     * ⚠️ 주의: 이 메서드는 DB의 가용 슬롯만 반영합니다.
+     * Redis 선점 수를 고려한 실제 예약 가능 상태는 Service에서 처리하세요.
+     *
+     * 실제 가용 = capacity - reservedCount - Redis_selected_count
+     *           ↑ DB          ↑ DB         ↑ Service에서 조회해서 뺌
+     *
+     *
      */
     @Query("SELECT COUNT(brs) > 0 FROM BoothReservationSlot brs " +
             "WHERE brs.boothId = :boothId " +
             "AND brs.status = 'OPEN' " +
             "AND brs.reservedCount < brs.capacity")
     boolean existsByBoothIdAndAvailableSlots(@Param("boothId") Long boothId);
+
+    /**
+     * 5. 부스의 모든 OPEN 슬롯 조회 (Service에서 Redis 선점 제외용)
+     *
+     * @param boothId 부스 ID
+     * @return 부스의 모든 OPEN 슬롯 리스트
+     */
+    @Query("SELECT brs FROM BoothReservationSlot brs " +
+            "WHERE brs.boothId = :boothId " +
+            "AND brs.status = 'OPEN'")
+    List<BoothReservationSlot> findAllOpenSlotsByBoothId(@Param("boothId") Long boothId);
 }

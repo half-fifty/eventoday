@@ -54,17 +54,18 @@ public class BoothReview {
     @Column(name = "member_name")
     private String memberName;
 
-    // 1) 별점 수정 (기존 - Short)
+    // 1) 별점 수정
     public void updateRating(Short rating) {
+        if (rating == null) {
+            throw new IllegalArgumentException("평점은 null일 수 없습니다");
+        }
+        if (rating < 1 || rating > 5) {
+            throw new IllegalArgumentException("평점은 1점 이상 5점 이하여야 합니다");
+        }
         this.rating = rating;
     }
 
-    // 1-1) ✅ 별점 수정 (오버로드 - Integer)
-    public void updateRating(Integer rating) {
-        if (rating != null) {
-            this.rating = rating.shortValue();
-        }
-    }
+
 
     // 2) 댓글 수정
     public void updateComment(String comment) {

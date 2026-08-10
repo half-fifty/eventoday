@@ -26,7 +26,7 @@ public class BoothCheckInService {
     private final ExchangeCodeRepository exchangeCodeRepository;
     private final BoothReservationRepository reservationRepository;
     private final BoothQrScanRepository qrScanRepository;
-    private final BoothRepository boothRepository;  // ← 추가!
+    private final BoothRepository boothRepository;
 
     /**
      * 부스 방문 확인 (checkIn)
@@ -52,12 +52,12 @@ public class BoothCheckInService {
 
         // 교환 코드의 eventId와 부스의 eventId 일치 확인
         if (!code.getEventId().equals(booth.getEventId())) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);  // 다른 행사
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
         // 홀더 멤버ID 확인 (본인 코드인지)
         if (!code.getHolderMemberId().equals(memberId)) {
-            throw new BusinessException(GlobalErrorCode.FORBIDDEN);  // 권한 없음
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
 
         // 교환 코드 검증
@@ -70,7 +70,6 @@ public class BoothCheckInService {
         if (code.getExpiresAt() != null && code.getExpiresAt().isBefore(now)) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
-
 
         // 예약 조회 (비관적 잠금)
         BoothReservation reservation = reservationRepository.findByMemberIdAndBoothIdWithLock(memberId, boothId)
@@ -91,13 +90,14 @@ public class BoothCheckInService {
         code.redeem(now);
         exchangeCodeRepository.saveAndFlush(code);
 
-        // BoothQrScan 기록 저장 (혼잡도 계산용)
+        // ⭐ BoothQrScan 기록 저장 (혼잡도 계산용)
+        // 같은 booth에서의 최근 rescan 여부 확인 (booth 기준)
         boolean isDuplicate = checkDuplicateScan(code.getId(), boothId);
         BoothQrScan qrScan = BoothQrScan.builder()
                 .boothId(boothId)
                 .exchangeCodeId(code.getId())
                 .scannedAt(now)
-                .duplicate(isDuplicate)
+                .duplicate(isDuplicate)  // ← 정확한 중복 여부 반영
                 .build();
         qrScanRepository.saveAndFlush(qrScan);
 
@@ -105,11 +105,18 @@ public class BoothCheckInService {
     }
 
     /**
-     * 중복 스캔 여부 판별
-     * (같은 교환 코드가 이미 스캔됐으면 true)
+     * 중복 스캔 여부 판별 (booth 기준)
+     *
+     * 같은 부스에서 같은 교환 코드로 이미 스캔되었으면 true
+     * → 여러 부스에서 스캔되면 각각 unique로 취급 (부스별 혼잡도 정확화)
+     *
+     * @param exchangeCodeId 교환 코드 ID
+     * @param boothId 부스 ID
+     * @return 같은 booth에서의 최근 rescan이면 true
      */
     private boolean checkDuplicateScan(Long exchangeCodeId, Long boothId) {
-        return qrScanRepository.existsByExchangeCodeId(exchangeCodeId);
+        // ⭐ booth + exchangeCode 모두 고려 (변경됨!)
+        return qrScanRepository.existsByBoothIdAndExchangeCodeId(boothId, exchangeCodeId);
     }
 
     private BoothReservationResponse toResponse(BoothReservation reservation) {

@@ -24,15 +24,16 @@ public class BoothRecommendationService {
     private static final int CONGESTION_THRESHOLD = 3;  // 혼잡한 부스 TOP 3
 
     /**
-     * WBS-163: 혼잡도 기반 부스 추천
-     * 1. 혼잡한 부스 파악 (상위 N개)
-     * 2. 한산한 부스들 추천 (혼잡도 낮은 것)
-     * 3. 추천 이유 포함
+     * WBS-163: 혼잡도 기반 부스 추천 (최적화 버전)
+     * 1. 혼잡한 부스 파악 (상위 3개, INNER JOIN)
+     * 2. 추천 부스 조회 (LEFT JOIN, 혼잡 부수는 DB에서 제외)
+     * 3. in-memory 필터링 제거 → DB에서 직접 제외
+     * 4. 추천 이유 포함
      */
     public RecommendedBoothsResponse getRecommendedBooths(Long eventId, Pageable pageable) {
         OffsetDateTime since = OffsetDateTime.now().minusMinutes(10);
 
-        // 혼잡한 부스 TOP 3 조회 (고정)
+        // 1️⃣ 혼잡한 부스 TOP 3 조회 (INNER JOIN, 고정)
         Pageable congestedPageable = PageRequest.of(0, CONGESTION_THRESHOLD);
         var congestedPage = qrScanRepository.findPopularBooths(eventId, since, congestedPageable);
 
@@ -51,28 +52,37 @@ public class BoothRecommendationService {
             congestedBoothIds.add(boothId);
         }
 
-        // 전체 부스 조회 (요청된 페이징 적용)
-        var allBooths = qrScanRepository.findPopularBooths(eventId, since, pageable);
+        // 2️⃣ 추천 부스 조회 (LEFT JOIN, 혼잡 부수는 DB에서 제외)
+        // ⭐ 변경: findAllBoothsWithCongestion → findRecommendedBooths(excludedIds)
+        // 효과: DB에서 직접 제외, in-memory 필터링 제거
+        var recommendedPage = qrScanRepository.findRecommendedBooths(
+                eventId,
+                since,
+                congestedBoothIds,  // ← DB NOT IN 절에서 제외
+                pageable
+        );
 
         List<RecommendedBoothsResponse.RecommendedBooth> recommendedBooths = new ArrayList<>();
         int rank = 1;
 
-        // 혼잡한 부스 제외한 추천 부스
-        for (Object[] row : allBooths.getContent()) {
+        // 3️⃣ 추천 부스 (in-memory 필터링 제거!)
+        // ⭐ 이미 DB에서 congestedBoothIds 제외되었으므로
+        //   모든 row는 추천 가능한 부수
+        for (Object[] row : recommendedPage.getContent()) {
             Long boothId = ((Number) row[0]).longValue();
             long congestionCount = ((Number) row[1]).longValue();
 
-            // 혼잡한 부스는 제외
-            if (!congestedBoothIds.contains(boothId)) {
-                recommendedBooths.add(RecommendedBoothsResponse.RecommendedBooth.builder()
-                        .boothId(boothId)
-                        .congestionCount(congestionCount)
-                        .rank(rank++)
-                        .build());
-            }
+            // ⭐ 제거됨: if (!congestedBoothIds.contains(boothId))
+            // → 이미 DB에서 제외됨!
+
+            recommendedBooths.add(RecommendedBoothsResponse.RecommendedBooth.builder()
+                    .boothId(boothId)
+                    .congestionCount(congestionCount)
+                    .rank(rank++)  // ← 가장 한산한 부스부터 rank 1
+                    .build());
         }
 
-        // 추천 메시지 생성
+        // 4️⃣ 추천 메시지 생성
         String recommendation = buildRecommendationMessage(congestedBooths, recommendedBooths);
 
         return RecommendedBoothsResponse.builder()
@@ -105,7 +115,6 @@ public class BoothRecommendationService {
                     congestedList
             );
         }
-
 
         // 추천 부스 ID 목록 (상위 3개)
         String recommendedList = recommendedBooths.stream()
