@@ -1,7 +1,19 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
+import { ApiError } from "../api/apiClient.js";
+import { eventApi } from "../api/eventApi.js";
+import { listPublicVenueMaps } from "../api/venueMapApi.js";
+import { fileDownloadUrl } from "../api/fileApi.js";
+
+const formatEventPeriod = (event) => {
+  if (!event) return "";
+  const start = new Date(event.startAt);
+  const end = new Date(event.endAt);
+  const fmt = (d) => `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+  return `${fmt(start)} – ${fmt(end)} · ${event.venueName ?? ""}`;
+};
 
 const initialBooths = [
   { id: "A01", name: "맛있는 식탁", zone: "A구역 1층", congestion: 62, interest: false, icon: "lunch_dining" },
@@ -16,7 +28,6 @@ const initialBooths = [
   { id: "A10", name: "푸드 딜리버리 테크", zone: "B구역 2층", congestion: 33, interest: false, icon: "delivery_dining" },
 ];
 
-const level = (v) => (v >= 70 ? "crowded" : v >= 40 ? "normal" : "available");
 const levelLabel = (v) => (v >= 70 ? "혼잡" : v >= 40 ? "보통" : "여유");
 const levelColor = (v) => (v >= 70 ? "status-visited" : v >= 40 ? "status-pending" : "status-available");
 
@@ -31,11 +42,94 @@ const tabButtons = [
 const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 37 + 13) % 7 < 3);
 
 export default function EventOngoing() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [events, setEvents] = useState([]);
+  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [eventsError, setEventsError] = useState("");
+  const [selectedEventId, setSelectedEventId] = useState(searchParams.get("eventId") || "");
+  const [eventDetail, setEventDetail] = useState(null);
+  const [eventDetailError, setEventDetailError] = useState("");
+
+  const [venueMaps, setVenueMaps] = useState([]);
+  const [loadingVenueMaps, setLoadingVenueMaps] = useState(false);
+  const [venueMapError, setVenueMapError] = useState("");
+  const [selectedMapBooth, setSelectedMapBooth] = useState(null);
+
   const [booths, setBooths] = useState(initialBooths);
   const [tab, setTab] = useState("map");
   const [activeBoothId, setActiveBoothId] = useState(null);
   const [boothSheetOpen, setBoothSheetOpen] = useState(false);
   const [qrSheetOpen, setQrSheetOpen] = useState(false);
+
+  // 진행 중인 실제 행사(PUBLISHED) 목록을 불러와 선택할 수 있게 한다.
+  useEffect(() => {
+    eventApi.list({ size: 100, sort: "startAt,asc" })
+      .then((result) => {
+        const list = result?.data?.content || [];
+        setEvents(list);
+        if (!selectedEventId && list.length > 0) {
+          setSelectedEventId(String(list[0].id));
+        }
+      })
+      .catch((error) => setEventsError(error.message || "행사 목록을 불러오지 못했습니다."))
+      .finally(() => setLoadingEvents(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (selectedEventId) {
+      setSearchParams({ eventId: selectedEventId }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    if (!selectedEventId) return;
+    let cancelled = false;
+
+    setEventDetail(null);
+    setEventDetailError("");
+    eventApi.detail(selectedEventId)
+      .then((result) => {
+        if (!cancelled) setEventDetail(result?.data ?? null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setEventDetail(null);
+          setEventDetailError(error instanceof ApiError ? error.message : "행사 정보를 불러오지 못했습니다.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    if (!selectedEventId) return;
+    let cancelled = false;
+
+    setVenueMaps([]);
+    setVenueMapError("");
+    setLoadingVenueMaps(true);
+    listPublicVenueMaps(selectedEventId, "VISITOR")
+      .then((data) => {
+        if (!cancelled) setVenueMaps(data ?? []);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setVenueMaps([]);
+          setVenueMapError(error instanceof ApiError ? error.message : "평면도를 불러오지 못했습니다.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingVenueMaps(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEventId]);
 
   const top3 = useMemo(
     () => [...booths].sort((a, b) => b.congestion - a.congestion).slice(0, 3),
@@ -54,20 +148,6 @@ export default function EventOngoing() {
       prev.map((b) => (b.id === activeBoothId ? { ...b, interest: !b.interest } : b))
     );
   };
-
-  const boothCell = (b) => (
-    <div
-      key={b.id}
-      onClick={() => openBoothSheet(b.id)}
-      className={`booth-cell relative h-20 sm:h-24 rounded-lg border flex flex-col items-center justify-center text-center p-1 ${
-        b.interest ? "bg-primary-container text-white border-primary-focus" : "bg-white border-hairline text-secondary"
-      }`}
-    >
-      <span className={`absolute top-1 right-1 w-2 h-2 rounded-full bg-${levelColor(b.congestion)} border border-white ${level(b.congestion) === "crowded" ? "pulse" : ""}`} />
-      <Icon name={b.icon} className={`text-[18px] ${b.interest ? "text-white" : "text-primary"}`} />
-      <span className="text-[10px] font-bold mt-1">{b.id}</span>
-    </div>
-  );
 
   return (
     <div className="bg-surface font-body text-on-surface antialiased">
@@ -102,10 +182,35 @@ export default function EventOngoing() {
       <main className="pt-[44px] md:ml-[220px] pb-[90px] md:pb-xl">
         {/* App Header & QR */}
         <section className="pt-lg pb-md px-lg bg-surface-container-low">
+          <div className="max-w-[900px] mx-auto mb-md">
+            {loadingEvents ? (
+              <p className="text-caption text-ink-muted">진행 중인 행사를 불러오는 중입니다.</p>
+            ) : eventsError ? (
+              <p className="text-caption text-error">{eventsError}</p>
+            ) : events.length === 0 ? (
+              <p className="text-caption text-ink-muted">공개된 행사가 없습니다.</p>
+            ) : (
+              <select
+                value={selectedEventId}
+                onChange={(e) => setSelectedEventId(e.target.value)}
+                className="h-[36px] rounded-full border border-hairline px-md text-caption bg-white outline-none focus:border-primary-focus"
+              >
+                {events.map((event) => (
+                  <option key={event.id} value={event.id}>{event.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
           <div className="max-w-[900px] mx-auto flex justify-between items-end">
             <div>
-              <p className="text-caption text-secondary mb-1">2026.08.12 – 08.14 · 코엑스 3층 A홀</p>
-              <h1 className="font-display-lg-mobile md:font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface">2026 서울 푸드테크 박람회</h1>
+              {eventDetailError ? (
+                <p className="text-caption text-error mb-1">{eventDetailError}</p>
+              ) : (
+                <p className="text-caption text-secondary mb-1">{formatEventPeriod(eventDetail)}</p>
+              )}
+              <h1 className="font-display-lg-mobile md:font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface">
+                {eventDetail?.name ?? "행사를 선택해 주세요"}
+              </h1>
             </div>
             <button onClick={() => setQrSheetOpen(true)} className="hidden md:flex bg-primary-container text-white px-lg py-sm rounded-full items-center gap-xs font-body-strong active:scale-95 transition-transform flex-shrink-0">
               <Icon name="qr_code_2" fill /> 입장 QR
@@ -127,27 +232,42 @@ export default function EventOngoing() {
         {/* TAB: Floor map */}
         {tab === "map" && (
           <section className="py-lg px-lg max-w-[900px] mx-auto">
-            <div className="flex items-center justify-between mb-md">
-              <h2 className="font-display-md text-[20px]">행사장 배치도</h2>
-              <div className="flex bg-surface-container-high rounded-lg p-1">
-                <button className="px-md py-1 bg-white shadow-sm rounded-md text-caption font-bold text-primary">1F</button>
-                <button className="px-md py-1 text-caption text-secondary">2F</button>
+            <h2 className="font-display-md text-[20px] mb-md">행사장 배치도</h2>
+            {loadingVenueMaps && <p className="text-caption text-ink-muted">평면도를 불러오는 중입니다.</p>}
+            {venueMapError && <p className="text-caption text-error">{venueMapError}</p>}
+            {!loadingVenueMaps && !venueMapError && venueMaps.length === 0 && (
+              <p className="text-caption text-ink-muted">등록된 평면도가 없습니다.</p>
+            )}
+            {!loadingVenueMaps && venueMaps.length > 0 && (
+              <div className="space-y-lg">
+                {venueMaps.map((venueMap) => (
+                  <div key={venueMap.id}>
+                    <h3 className="font-body-strong text-body mb-sm">{venueMap.floorName}</h3>
+                    <div className="bg-surface-pearl border border-hairline rounded-2xl p-lg">
+                      <div className="relative inline-block max-w-full select-none">
+                        <img
+                          src={fileDownloadUrl(venueMap.imageFileId)}
+                          alt={`${venueMap.floorName} 평면도`}
+                          className="block max-w-full rounded-lg"
+                        />
+                        {(venueMap.positions ?? []).map((p) => (
+                          <button
+                            key={p.boothId}
+                            type="button"
+                            onClick={() => setSelectedMapBooth(p)}
+                            title={p.displayName || p.boothCode}
+                            className="absolute w-5 h-5 -ml-2.5 -mt-5 flex items-center justify-center text-white text-[8px] font-bold rounded-full border-2 border-white shadow-md bg-primary hover:scale-110 transition-transform"
+                            style={{ left: `${Number(p.xRatio) * 100}%`, top: `${Number(p.yRatio) * 100}%` }}
+                          >
+                            {p.boothCode?.slice(-2) ?? "?"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-            <div className="floor-map-container bg-surface-pearl border border-hairline rounded-2xl relative overflow-hidden p-lg">
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-sm">{booths.map(boothCell)}</div>
-              <div className="mt-md text-center text-caption text-ink-muted border border-dashed border-hairline rounded-lg py-sm">입구 · ENTRANCE</div>
-              <div className="absolute bottom-md right-md flex flex-col gap-xs">
-                <button className="w-9 h-9 bg-white shadow-md rounded-full flex items-center justify-center border border-hairline"><Icon name="add" className="text-[18px]" /></button>
-                <button className="w-9 h-9 bg-white shadow-md rounded-full flex items-center justify-center border border-hairline"><Icon name="remove" className="text-[18px]" /></button>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-md mt-md text-caption text-on-surface-variant">
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full dot-available" />여유</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full dot-normal" />보통</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full dot-crowded" />혼잡</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-primary-container" />관심 등록</span>
-            </div>
+            )}
           </section>
         )}
 
@@ -311,6 +431,31 @@ export default function EventOngoing() {
           <p className="text-caption text-ink-muted mt-xs">화면 밝기를 최대로 설정하면 현장 스캔이 더 원활해요.</p>
         </div>
       </div>
+
+      {/* Map pin info popup */}
+      {selectedMapBooth && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-lg"
+          onClick={() => setSelectedMapBooth(null)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-[360px] w-full p-xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedMapBooth(null)}
+              className="absolute top-lg right-lg text-ink-muted hover:text-on-surface"
+            >
+              <Icon name="close" className="text-[22px]" />
+            </button>
+            <h3 className="font-display-md text-[18px] mb-1">
+              {selectedMapBooth.displayName || selectedMapBooth.boothCode}
+            </h3>
+            <p className="text-caption text-ink-muted">{selectedMapBooth.boothCode}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
