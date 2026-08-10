@@ -51,6 +51,7 @@ public class VenueMapCongestionService {
                 .collect(Collectors.toList());
     }
 
+    private static final int QR_SCAN_QUERY_LIMIT = 1000;
 
     /**
      * 부스별 혼잡도 맵 생성
@@ -58,7 +59,7 @@ public class VenueMapCongestionService {
     private Map<Long, Long> getCongestionMap(Long eventId, OffsetDateTime since) {  // ← eventId 파라미터 추가!
         var congestedBooths = qrScanRepository.findPopularBooths(
                 eventId, since,
-                org.springframework.data.domain.PageRequest.of(0, 1000));
+                org.springframework.data.domain.PageRequest.of(0, QR_SCAN_QUERY_LIMIT));
 
         return congestedBooths.stream()
                 .collect(Collectors.toMap(

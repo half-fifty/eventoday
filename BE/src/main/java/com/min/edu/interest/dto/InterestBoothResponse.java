@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Builder
 public class InterestBoothResponse {
+
     @JsonProperty("boothId")
     private Long boothId;
 

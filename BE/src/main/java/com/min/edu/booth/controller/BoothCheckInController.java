@@ -4,6 +4,8 @@ import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.dto.BoothCheckInRequest;
 import com.min.edu.booth.dto.BoothReservationResponse;
 import com.min.edu.booth.service.BoothCheckInService;
+import com.min.edu.common.exception.BusinessException;
+import com.min.edu.common.exception.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -27,6 +29,12 @@ public class BoothCheckInController {
             @PathVariable Long boothId,
             @RequestBody BoothCheckInRequest request,
             @AuthenticationPrincipal AuthenticatedMemberDto principal) {
+
+        // 1) 인증 검증
+        if (principal == null) {
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+        }
+
 
         BoothReservationResponse response = checkInService.checkIn(
                 boothId,
