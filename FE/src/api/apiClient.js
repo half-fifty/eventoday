@@ -84,9 +84,10 @@ const parseResponse = async (response) => {
     return result;
 };
 
-const apiRequest = async (
+const requestWithReissue = async (
     path,
-    options = {}
+    options = {},
+    parser
 ) => {
     let response = await sendRequest(
         path,
@@ -111,11 +112,46 @@ const apiRequest = async (
         }
     }
 
-    return parseResponse(response);
+    return parser(response);
 };
+
+const apiRequest = async (
+    path,
+    options = {}
+) => requestWithReissue(path, options, parseResponse);
+
+const parseBlobResponse = async (response) => {
+    if (!response.ok) {
+        let result = null;
+        const contentType =
+            response.headers.get("content-type");
+
+        if (
+            contentType &&
+            contentType.includes("application/json")
+        ) {
+            result = await response.json();
+        }
+
+        throw new ApiError(
+            response.status,
+            result?.code || "UNKNOWN_ERROR",
+            result?.message || "요청 처리에 실패했습니다.",
+            result?.data || null
+        );
+    }
+
+    return response.blob();
+};
+
+const apiBlobRequest = async (
+    path,
+    options = {}
+) => requestWithReissue(path, options, parseBlobResponse);
 
 export {
     API_BASE_URL,
     ApiError,
+    apiBlobRequest,
     apiRequest,
 };

@@ -67,6 +67,7 @@ class TicketOrderQueryControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value("200"))
             .andExpect(jsonPath("$.data.content[0].ticketOrderId").value(1))
+            .andExpect(jsonPath("$.data.content[0].paymentId").value(5))
             .andExpect(jsonPath("$.data.content[0].orderNo").value("EVT-20260803-000000000001"))
             .andExpect(jsonPath("$.data.content[0].eventId").value(100))
             .andExpect(jsonPath("$.data.content[0].eventName").value("Event"))
@@ -179,6 +180,7 @@ class TicketOrderQueryControllerTest {
             .andExpect(jsonPath("$.code").value("200"))
             .andExpect(jsonPath("$.data.orderNo").value("ORDER-1"))
             .andExpect(jsonPath("$.data.ticketOrderId").value(1))
+            .andExpect(jsonPath("$.data.paymentId").value(5))
             .andExpect(jsonPath("$.data.eventName").value("Event"))
             .andExpect(jsonPath("$.data.exchangeCodes").isArray())
             .andExpect(jsonPath("$.data.buyerName").doesNotExist())
@@ -289,6 +291,7 @@ class TicketOrderQueryControllerTest {
     private TicketOrderListItemResponse item() {
         return new TicketOrderListItemResponse(
             1L,
+            5L,
             "EVT-20260803-000000000001",
             100L,
             "Event",
@@ -307,6 +310,7 @@ class TicketOrderQueryControllerTest {
     private TicketOrderDetailResponse detailResponse() {
         return new TicketOrderDetailResponse(
             1L,
+            5L,
             "ORDER-1",
             100L,
             "Event",

@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
 import { ANONYMOUS, loadTossPayments } from "@tosspayments/tosspayments-sdk";
 import { Link, useParams } from "react-router-dom";
+import { ApiError } from "../api/apiClient.js";
 import { eventApi } from "../api/eventApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
 import { listContents } from "../api/contentApi.js";
+import { listPublicVenueMaps } from "../api/venueMapApi.js";
 import Footer from "../components/Footer.jsx";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
 import FileDownloadLink from "../components/FileDownloadLink.jsx";
+import VenueMapPins from "../components/VenueMapPins.jsx";
+import BoothPinPopup from "../components/BoothPinPopup.jsx";
 import useAuth from "../hooks/useAuth.js";
 
 const formatDateTime = (value) => value
@@ -31,6 +35,12 @@ export default function EventDetail() {
   // 공지·자료 (WBS-199): 권한에 따라 BE가 필터링해 내려준다
   const [contents, setContents] = useState([]);
   const [expandedContentId, setExpandedContentId] = useState(null);
+  const [completedOrderNo, setCompletedOrderNo] = useState("");
+
+  const [venueMaps, setVenueMaps] = useState([]);
+  const [loadingVenueMaps, setLoadingVenueMaps] = useState(false);
+  const [venueMapError, setVenueMapError] = useState("");
+  const [selectedMapBooth, setSelectedMapBooth] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,18 +70,54 @@ export default function EventDetail() {
     return () => { cancelled = true; };
   }, [eventId]);
 
+  useEffect(() => {
+    if (!eventId || !event?.venueMapEnabled) return;
+    let cancelled = false;
+    setVenueMaps([]);
+    setVenueMapError("");
+    setLoadingVenueMaps(true);
+    listPublicVenueMaps(eventId, "VISITOR")
+      .then((data) => { if (!cancelled) setVenueMaps(data ?? []); })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setVenueMaps([]);
+          setVenueMapError(requestError instanceof ApiError ? requestError.message : "평면도를 불러오지 못했습니다.");
+        }
+      })
+      .finally(() => { if (!cancelled) setLoadingVenueMaps(false); });
+    return () => { cancelled = true; };
+  }, [eventId, event?.venueMapEnabled]);
+
   const submitTicketOrder = async (submitEvent) => {
     submitEvent.preventDefault();
+    if (purchasing) return;
+    const ticketQuantity = Number(quantity);
+    const purchaseLimit = event.ticketPurchaseLimit || 1;
+    if (!Number.isInteger(ticketQuantity) || ticketQuantity < 1 || ticketQuantity > purchaseLimit) {
+      setPurchaseError(`수량은 1매부터 ${purchaseLimit}매까지 선택할 수 있습니다.`);
+      return;
+    }
     setPurchasing(true);
     setPurchaseError("");
     try {
       const payload = {
-        quantity: Number(quantity),
-        ...(isAuthenticated ? {} : { buyer }),
+        quantity: ticketQuantity,
+        ...(isAuthenticated ? {} : {
+          buyer: {
+            name: buyer.name.trim(),
+            email: buyer.email.trim(),
+            phone: buyer.phone.trim(),
+          },
+        }),
       };
       const result = await eventApi.createTicketOrder(eventId, payload);
       const order = result?.data;
       if (!order) throw new Error("티켓 주문 정보를 받지 못했습니다.");
+
+      setCompletedOrderNo(order.orderNo || "");
+      if (order.orderAccessToken) {
+        sessionStorage.setItem(`ticket-order-token:${order.orderNo}`, order.orderAccessToken);
+      }
 
       if (!order.paymentRequired) {
         setIssuedCodes(order.exchangeCodes || []);
@@ -80,9 +126,6 @@ export default function EventDetail() {
 
       const clientKey = import.meta.env.VITE_TOSS_CLIENT_KEY;
       if (!clientKey) throw new Error("VITE_TOSS_CLIENT_KEY가 설정되지 않아 결제창을 열 수 없습니다.");
-      if (order.orderAccessToken) {
-        sessionStorage.setItem(`ticket-order-token:${order.orderNo}`, order.orderAccessToken);
-      }
       const tossPayments = await loadTossPayments(clientKey);
       const payment = tossPayments.payment({ customerKey: ANONYMOUS });
       await payment.requestPayment({
@@ -105,6 +148,7 @@ export default function EventDetail() {
     setPurchaseOpen(false);
     setPurchaseError("");
     setIssuedCodes([]);
+    setCompletedOrderNo("");
   };
 
   const now = Date.now();
@@ -171,6 +215,28 @@ export default function EventDetail() {
                   </div>
                 </div>
               )}
+              {event.venueMapEnabled && (
+                <div>
+                  <h2 className="font-display-md text-[22px] mb-md">행사장 배치도</h2>
+                  {loadingVenueMaps && <p className="text-caption text-ink-muted">평면도를 불러오는 중입니다.</p>}
+                  {venueMapError && <p className="text-caption text-error">{venueMapError}</p>}
+                  {!loadingVenueMaps && !venueMapError && venueMaps.length === 0 && (
+                    <p className="text-caption text-ink-muted">등록된 평면도가 없습니다.</p>
+                  )}
+                  {!loadingVenueMaps && venueMaps.length > 0 && (
+                    <div className="space-y-lg">
+                      {venueMaps.map((venueMap) => (
+                        <div key={venueMap.id}>
+                          <h3 className="font-body-strong text-body mb-sm">{venueMap.floorName}</h3>
+                          <div className="bg-surface-pearl border border-hairline rounded-2xl p-lg">
+                            <VenueMapPins venueMap={venueMap} onPinClick={setSelectedMapBooth} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
             <aside className="bg-white border border-hairline rounded-2xl p-lg h-fit space-y-md">
               <p className="flex gap-sm"><Icon name="calendar_month" /><span>{formatDateTime(event.startAt)}<br />~ {formatDateTime(event.endAt)}</span></p>
@@ -186,7 +252,7 @@ export default function EventDetail() {
       {purchaseOpen && event && <div className="fixed inset-0 z-50 bg-black/50 grid place-items-center p-lg" onMouseDown={(e) => e.target === e.currentTarget && closePurchase()}>
         <section role="dialog" aria-modal="true" aria-labelledby="ticket-title" className="w-full max-w-md bg-white rounded-2xl p-xl shadow-2xl">
           <div className="flex items-start justify-between gap-md mb-lg"><div><p className="text-caption text-primary">TICKET</p><h2 id="ticket-title" className="font-display-md text-[24px]">{issuedCodes.length ? "예매 완료" : "티켓 구매"}</h2></div><button type="button" onClick={closePurchase} aria-label="닫기"><Icon name="close" /></button></div>
-          {issuedCodes.length ? <div className="space-y-md"><p>무료 티켓이 발급되었습니다.</p>{issuedCodes.map((item, index) => <div key={item.exchangeCode || index} className="rounded-xl bg-surface-container p-md"><p className="text-caption text-ink-muted">입장 코드 {index + 1}</p><p className="font-mono font-bold text-lg break-all">{item.exchangeCode || item.code}</p></div>)}<button type="button" onClick={closePurchase} className="w-full py-sm bg-primary text-white rounded-full">확인</button></div> : <form onSubmit={submitTicketOrder} className="space-y-md">
+          {issuedCodes.length ? <div className="space-y-md"><p>무료 티켓이 발급되었습니다.</p>{issuedCodes.map((item, index) => <div key={item.exchangeCode || index} className="rounded-xl bg-surface-container p-md"><p className="text-caption text-ink-muted">입장 코드 {index + 1}</p><p className="font-mono font-bold text-lg break-all">{item.exchangeCode || item.code}</p></div>)}{completedOrderNo && <Link to={`/tickets/orders/${completedOrderNo}`} className="block w-full py-sm border border-hairline rounded-full text-center">주문 상세 보기</Link>}<button type="button" onClick={closePurchase} className="w-full py-sm bg-primary text-white rounded-full">확인</button></div> : <form onSubmit={submitTicketOrder} className="space-y-md">
             <div className="rounded-xl bg-surface-container p-md"><p className="font-body-strong">{event.name}</p><p className="text-caption text-ink-muted">1매 {Number(event.ticketPrice) === 0 ? "무료" : `${Number(event.ticketPrice).toLocaleString("ko-KR")}원`}</p></div>
             <label className="block">수량<input required min="1" max={event.ticketPurchaseLimit || 1} type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label>
             {!isAuthenticated && <div className="space-y-md border-t border-hairline pt-md"><p className="text-caption text-ink-muted">비회원 구매 정보</p><label className="block">이름<input required value={buyer.name} onChange={(e) => setBuyer({ ...buyer, name: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label><label className="block">이메일<input required type="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label><label className="block">전화번호<input required placeholder="010-1234-5678" value={buyer.phone} onChange={(e) => setBuyer({ ...buyer, phone: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label></div>}
@@ -196,6 +262,7 @@ export default function EventDetail() {
           </form>}
         </section>
       </div>}
+      <BoothPinPopup booth={selectedMapBooth} onClose={() => setSelectedMapBooth(null)} />
     </div>
   );
 }

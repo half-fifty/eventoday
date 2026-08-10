@@ -7,6 +7,8 @@ public interface TicketOrderDetailProjection {
 
     Long getTicketOrderId();
 
+    Long getPaymentId();
+
     String getOrderNo();
 
     Long getBuyerMemberId();

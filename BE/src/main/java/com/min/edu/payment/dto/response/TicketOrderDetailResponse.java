@@ -15,6 +15,7 @@ import lombok.Getter;
 public class TicketOrderDetailResponse {
 
     private Long ticketOrderId;
+    private Long paymentId;
     private String orderNo;
     private Long eventId;
     private String eventName;
@@ -34,6 +35,7 @@ public class TicketOrderDetailResponse {
             List<ExchangeCode> exchangeCodes) {
         return new TicketOrderDetailResponse(
             projection.getTicketOrderId(),
+            projection.getPaymentId(),
             projection.getOrderNo(),
             projection.getEventId(),
             projection.getEventName(),

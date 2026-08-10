@@ -9,4 +9,31 @@ export const paymentApi = {
     },
     body: JSON.stringify(payload),
   }),
+  getMyTicketOrders: (params = {}) =>
+    apiRequest(`/members/me/ticket-orders?${new URLSearchParams(params)}`),
+  getTicketOrder: (orderNo, orderAccessToken = null) => apiRequest(`/ticket-orders/${orderNo}`, {
+    headers: {
+      ...(orderAccessToken ? { "X-Order-Access-Token": orderAccessToken } : {}),
+    },
+  }),
+  getPayment: (paymentId, orderAccessToken = null) => apiRequest(`/payments/${paymentId}`, {
+    headers: {
+      ...(orderAccessToken ? { "X-Order-Access-Token": orderAccessToken } : {}),
+    },
+  }),
+  requestRefund: (paymentId, payload, orderAccessToken = null) => apiRequest(`/payments/${paymentId}/refunds`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(orderAccessToken ? { "X-Order-Access-Token": orderAccessToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  }),
+  getMyRefunds: (params = {}) =>
+    apiRequest(`/members/me/refunds?${new URLSearchParams(params)}`),
+  getRefund: (refundId, orderAccessToken = null) => apiRequest(`/refunds/${refundId}`, {
+    headers: {
+      ...(orderAccessToken ? { "X-Order-Access-Token": orderAccessToken } : {}),
+    },
+  }),
 };
