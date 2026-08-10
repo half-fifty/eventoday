@@ -162,7 +162,7 @@ export default function PlatformAdmin() {
           <span className="font-hero-display text-tagline text-white tracking-tight">EvenToday</span>
           <button onClick={() => setSidebarOpen(false)} className="md:hidden"><Icon name="close" /></button>
         </div>
-        <p className="px-lg text-[11px] text-white/40 mb-sm">PLATFORM ADMIN</p>
+        <p className="px-lg text-[11px] text-white/40 mb-sm">관리자센터</p>
         <nav className="flex-1 px-sm space-y-1">
           {navItems.map((n) => (
             <button key={n.key} onClick={() => gotoPage(n.key)} className={navBtnCls(page === n.key)}>
