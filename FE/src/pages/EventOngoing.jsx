@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
+import VenueMapPins from "../components/VenueMapPins.jsx";
+import BoothPinPopup from "../components/BoothPinPopup.jsx";
 import { ApiError } from "../api/apiClient.js";
 import { eventApi } from "../api/eventApi.js";
 import { listPublicVenueMaps } from "../api/venueMapApi.js";
-import { fileDownloadUrl } from "../api/fileApi.js";
 
 const formatEventPeriod = (event) => {
   if (!event) return "";
@@ -244,25 +245,7 @@ export default function EventOngoing() {
                   <div key={venueMap.id}>
                     <h3 className="font-body-strong text-body mb-sm">{venueMap.floorName}</h3>
                     <div className="bg-surface-pearl border border-hairline rounded-2xl p-lg">
-                      <div className="relative inline-block max-w-full select-none">
-                        <img
-                          src={fileDownloadUrl(venueMap.imageFileId)}
-                          alt={`${venueMap.floorName} 평면도`}
-                          className="block max-w-full rounded-lg"
-                        />
-                        {(venueMap.positions ?? []).map((p) => (
-                          <button
-                            key={p.boothId}
-                            type="button"
-                            onClick={() => setSelectedMapBooth(p)}
-                            title={p.displayName || p.boothCode}
-                            className="absolute w-5 h-5 -ml-2.5 -mt-5 flex items-center justify-center text-white text-[8px] font-bold rounded-full border-2 border-white shadow-md bg-primary hover:scale-110 transition-transform"
-                            style={{ left: `${Number(p.xRatio) * 100}%`, top: `${Number(p.yRatio) * 100}%` }}
-                          >
-                            {p.boothCode?.slice(-2) ?? "?"}
-                          </button>
-                        ))}
-                      </div>
+                      <VenueMapPins venueMap={venueMap} onPinClick={setSelectedMapBooth} />
                     </div>
                   </div>
                 ))}
@@ -432,30 +415,7 @@ export default function EventOngoing() {
         </div>
       </div>
 
-      {/* Map pin info popup */}
-      {selectedMapBooth && (
-        <div
-          className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-lg"
-          onClick={() => setSelectedMapBooth(null)}
-        >
-          <div
-            className="bg-white rounded-2xl max-w-[360px] w-full p-xl relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => setSelectedMapBooth(null)}
-              className="absolute top-lg right-lg text-ink-muted hover:text-on-surface"
-            >
-              <Icon name="close" className="text-[22px]" />
-            </button>
-            <h3 className="font-display-md text-[18px] mb-1">
-              {selectedMapBooth.displayName || selectedMapBooth.boothCode}
-            </h3>
-            <p className="text-caption text-ink-muted">{selectedMapBooth.boothCode}</p>
-          </div>
-        </div>
-      )}
+      <BoothPinPopup booth={selectedMapBooth} onClose={() => setSelectedMapBooth(null)} />
     </div>
   );
 }

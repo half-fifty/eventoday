@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { ANONYMOUS, loadTossPayments } from "@tosspayments/tosspayments-sdk";
 import { Link, useParams } from "react-router-dom";
+import { ApiError } from "../api/apiClient.js";
 import { eventApi } from "../api/eventApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
+import { listPublicVenueMaps } from "../api/venueMapApi.js";
 import Footer from "../components/Footer.jsx";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
+import VenueMapPins from "../components/VenueMapPins.jsx";
+import BoothPinPopup from "../components/BoothPinPopup.jsx";
 import useAuth from "../hooks/useAuth.js";
 
 const formatDateTime = (value) => value
@@ -27,6 +31,11 @@ export default function EventDetail() {
   const [purchaseError, setPurchaseError] = useState("");
   const [issuedCodes, setIssuedCodes] = useState([]);
 
+  const [venueMaps, setVenueMaps] = useState([]);
+  const [loadingVenueMaps, setLoadingVenueMaps] = useState(false);
+  const [venueMapError, setVenueMapError] = useState("");
+  const [selectedMapBooth, setSelectedMapBooth] = useState(null);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -36,6 +45,24 @@ export default function EventDetail() {
       .then((result) => !cancelled && setEvent(result?.data || null))
       .catch((requestError) => !cancelled && setError(requestError.message || "행사를 불러오지 못했습니다."))
       .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [eventId]);
+
+  useEffect(() => {
+    if (!eventId) return;
+    let cancelled = false;
+    setVenueMaps([]);
+    setVenueMapError("");
+    setLoadingVenueMaps(true);
+    listPublicVenueMaps(eventId, "VISITOR")
+      .then((data) => { if (!cancelled) setVenueMaps(data ?? []); })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setVenueMaps([]);
+          setVenueMapError(requestError instanceof ApiError ? requestError.message : "평면도를 불러오지 못했습니다.");
+        }
+      })
+      .finally(() => { if (!cancelled) setLoadingVenueMaps(false); });
     return () => { cancelled = true; };
   }, [eventId]);
 
@@ -108,6 +135,28 @@ export default function EventDetail() {
             <section className="space-y-xl">
               <div><h2 className="font-display-md text-[22px] mb-md">행사 소개</h2><p className="whitespace-pre-wrap leading-7">{event.description}</p></div>
               <div><h2 className="font-display-md text-[22px] mb-md">운영 기능</h2><div className="flex flex-wrap gap-sm">{event.boothRecruitmentEnabled && <span className="px-md py-xs bg-primary/10 text-primary rounded-full text-caption">부스 모집</span>}{event.venueMapEnabled && <span className="px-md py-xs bg-primary/10 text-primary rounded-full text-caption">평면도</span>}{event.boothReservationEnabled && <span className="px-md py-xs bg-primary/10 text-primary rounded-full text-caption">부스 예약</span>}</div></div>
+              {event.venueMapEnabled && (
+                <div>
+                  <h2 className="font-display-md text-[22px] mb-md">행사장 배치도</h2>
+                  {loadingVenueMaps && <p className="text-caption text-ink-muted">평면도를 불러오는 중입니다.</p>}
+                  {venueMapError && <p className="text-caption text-error">{venueMapError}</p>}
+                  {!loadingVenueMaps && !venueMapError && venueMaps.length === 0 && (
+                    <p className="text-caption text-ink-muted">등록된 평면도가 없습니다.</p>
+                  )}
+                  {!loadingVenueMaps && venueMaps.length > 0 && (
+                    <div className="space-y-lg">
+                      {venueMaps.map((venueMap) => (
+                        <div key={venueMap.id}>
+                          <h3 className="font-body-strong text-body mb-sm">{venueMap.floorName}</h3>
+                          <div className="bg-surface-pearl border border-hairline rounded-2xl p-lg">
+                            <VenueMapPins venueMap={venueMap} onPinClick={setSelectedMapBooth} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
             <aside className="bg-white border border-hairline rounded-2xl p-lg h-fit space-y-md">
               <p className="flex gap-sm"><Icon name="calendar_month" /><span>{formatDateTime(event.startAt)}<br />~ {formatDateTime(event.endAt)}</span></p>
@@ -133,6 +182,7 @@ export default function EventDetail() {
           </form>}
         </section>
       </div>}
+      <BoothPinPopup booth={selectedMapBooth} onClose={() => setSelectedMapBooth(null)} />
     </div>
   );
 }

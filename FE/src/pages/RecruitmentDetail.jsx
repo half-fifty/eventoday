@@ -7,7 +7,7 @@ import { ApiError } from "../api/apiClient.js";
 import { getPublicRecruitment } from "../api/recruitmentApi.js";
 import { listPublicBooths } from "../api/boothApi.js";
 import { listPublicVenueMaps } from "../api/venueMapApi.js";
-import { fileDownloadUrl } from "../api/fileApi.js";
+import VenueMapPins from "../components/VenueMapPins.jsx";
 
 const STATUS_BADGE = {
   OPEN: { label: "모집 중", cls: "bg-primary-container/10 text-primary-focus" },
@@ -291,27 +291,11 @@ export default function RecruitmentDetail() {
                     <div key={venueMap.id}>
                       <h4 className="font-body-strong text-body mb-md">부스 배치도 · {venueMap.floorName}</h4>
                       <div className="bg-white rounded-2xl border border-hairline p-lg">
-                        <div className="relative inline-block max-w-full select-none">
-                          <img
-                            src={fileDownloadUrl(venueMap.imageFileId)}
-                            alt={`${venueMap.floorName} 평면도`}
-                            className="block max-w-full rounded-lg"
-                          />
-                          {(venueMap.positions ?? []).map((p) => (
-                            <button
-                              key={p.boothId}
-                              type="button"
-                              onClick={() => selectBoothFromPin(p.boothId)}
-                              title={p.displayName || p.boothCode}
-                              className={`absolute w-5 h-5 -ml-2.5 -mt-5 flex items-center justify-center text-white text-[8px] font-bold rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform ${
-                                p.boothId === highlightedBoothId ? "bg-error scale-125" : "bg-primary"
-                              }`}
-                              style={{ left: `${Number(p.xRatio) * 100}%`, top: `${Number(p.yRatio) * 100}%` }}
-                            >
-                              {p.boothCode?.slice(-2) ?? "?"}
-                            </button>
-                          ))}
-                        </div>
+                        <VenueMapPins
+                          venueMap={venueMap}
+                          onPinClick={(p) => selectBoothFromPin(p.boothId)}
+                          pinClassName={(p) => (p.boothId === highlightedBoothId ? "bg-error scale-125" : "bg-primary")}
+                        />
                       </div>
                     </div>
                   ))}
