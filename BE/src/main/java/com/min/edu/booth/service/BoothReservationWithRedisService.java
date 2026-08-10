@@ -7,12 +7,14 @@ import com.min.edu.booth.domain.BoothReservationStatus;
 import com.min.edu.booth.domain.BoothReservationSlotStatus;
 import com.min.edu.booth.dto.BoothReservationResponse;
 import com.min.edu.booth.dto.CreateBoothReservationRequest;
+import com.min.edu.booth.event.BoothVacancyEvent;
 import com.min.edu.booth.repository.BoothRepository;
 import com.min.edu.booth.repository.BoothReservationRepository;
 import com.min.edu.booth.repository.BoothReservationSlotRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +29,7 @@ public class BoothReservationWithRedisService {
     private final BoothReservationSlotRepository slotRepository;
     private final BoothRepository boothRepository;
     private final RedisReservationService redisReservationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * WBS-146: Redis 선점을 포함한 예약 생성 (통합 서비스)
@@ -98,47 +101,75 @@ public class BoothReservationWithRedisService {
             slot.incrementReservedCount(request.getPartySize());
             slotRepository.saveAndFlush(slot);
 
-            //  DB 트랜잭션 성공 후 Redis 선점 해제
+            // ⭐ DB 트랜잭션 성공 후 Redis 선점 해제
             // (임시 선점 키가 남지 않음)
-            redisReservationService.releaseSlot(boothId, request.getSlotId(),memberId);
+            redisReservationService.releaseSlot(boothId, request.getSlotId(), memberId);
 
             return toResponse(saved);
 
         } catch (Exception e) {
             // 예약 생성 실패 시 Redis 선점 해제
-            redisReservationService.releaseSlot(boothId, request.getSlotId(),memberId);
+            redisReservationService.releaseSlot(boothId, request.getSlotId(), memberId);
             throw e;
         }
     }
 
     /**
-     * 예약 취소
+     * 예약 취소 (이벤트 발행 포함)
+     * - 예약 상태 변경 (RESERVED → CANCELLED)
+     * - 슬롯 자리 복원
+     * - 빈자리 알림 이벤트 발행
+     * - Redis 선점 해제
      */
     @Transactional
-    public void cancelReservation(Long reservationId, Long memberId) {
-        BoothReservation reservation = reservationRepository.findByIdAndMemberId(reservationId, memberId)
+    public void cancelReservation(Long reservationId, Long boothId, Long memberId) {
+        // 1️⃣ 예약 조회 (비관적 잠금)
+        BoothReservation reservation = reservationRepository.findByIdAndMemberIdWithLock(reservationId, memberId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
+        // 2️⃣ boothId 검증
+        if (!reservation.getBoothId().equals(boothId)) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        // 3️⃣ 예약 상태 확인
         if (reservation.getStatus() != BoothReservationStatus.RESERVED) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
         OffsetDateTime now = OffsetDateTime.now();
 
-        // 상태 변경
+        // 4️⃣ 예약 상태 변경 (CANCELLED)
         reservation.updateStatus(BoothReservationStatus.CANCELLED);
         reservation.updateCancelledAt(now);
         reservation.updateUpdatedAt(now);
         reservationRepository.saveAndFlush(reservation);
 
-        // 슬롯 자리 복원
-        BoothReservationSlot slot = slotRepository.findById(reservation.getBoothReservationSlotId())
+        // 5️⃣ 슬롯 자리 복원 (비관적 잠금)
+        BoothReservationSlot slot = slotRepository.findByIdWithLock(reservation.getBoothReservationSlotId())
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        if (slot.getReservedCount() < reservation.getPartySize()) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+
         slot.decrementReservedCount(reservation.getPartySize());
         slotRepository.saveAndFlush(slot);
 
-        // Redis 선점 해제
-        redisReservationService.releaseSlot(reservation.getBoothId(), reservation.getBoothReservationSlotId(),memberId);
+        // 6️⃣ Redis 선점 해제
+        redisReservationService.releaseSlot(boothId, reservation.getBoothReservationSlotId(), memberId);
+
+        // 7️⃣ ⭐ 빈자리 알림 이벤트 발행
+        Booth booth = boothRepository.findById(boothId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        eventPublisher.publishEvent(new BoothVacancyEvent(
+                this,
+                boothId,
+                reservation.getBoothReservationSlotId(),
+                reservationId,
+                booth.getDisplayName()
+        ));
     }
 
     private BoothReservationResponse toResponse(BoothReservation reservation) {

@@ -1,94 +1,98 @@
 package com.min.edu.booth.controller;
 
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
-import com.min.edu.booth.dto.BoothAverageRatingResponse;
 import com.min.edu.booth.dto.BoothReviewResponse;
 import com.min.edu.booth.dto.CreateBoothReviewRequest;
+import com.min.edu.booth.dto.UpdateBoothReviewRequest;
 import com.min.edu.booth.service.BoothReviewService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/booths")
+@RequestMapping("/booths/{boothId}/reviews")
 public class BoothReviewController {
 
-    private final BoothReviewService boothReviewService;
+    private final BoothReviewService reviewService;
 
-    // 리뷰 작성
-    @PostMapping("/{boothId}/reviews")
+    /**
+     * 부스 후기 작성
+     */
+    @PostMapping
     public ResponseEntity<BoothReviewResponse> createReview(
             @PathVariable Long boothId,
             @RequestBody @Valid CreateBoothReviewRequest request,
             @AuthenticationPrincipal AuthenticatedMemberDto principal) {
 
-        BoothReviewResponse response = boothReviewService.createReview(
-                boothId, request, principal.getMemberId()
+        BoothReviewResponse response = reviewService.createReview(
+                boothId,
+                request,
+                principal.getMemberId()
         );
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    // 평균 별점 조회
-    @GetMapping("/{boothId}/average-rating")
-    public ResponseEntity<BoothAverageRatingResponse> getAverageRating(
-            @PathVariable Long boothId) {
-
-        BoothAverageRatingResponse response = boothReviewService.getAverageRating(boothId);
         return ResponseEntity.ok(response);
     }
 
-    // WBS-159: 부스별 후기 목록 조회
-    @GetMapping("/{boothId}/reviews")
-    public ResponseEntity<Page<BoothReviewResponse>> getBoothReviews(
+    /**
+     * 부스 후기 수정
+     */
+    @PutMapping("/{reviewId}")
+    public ResponseEntity<BoothReviewResponse> updateReview(
             @PathVariable Long boothId,
-            @AuthenticationPrincipal AuthenticatedMemberDto principal,  // ← 추가
-            Pageable pageable) {
+            @PathVariable Long reviewId,
+            @RequestBody @Valid UpdateBoothReviewRequest request,
+            @AuthenticationPrincipal AuthenticatedMemberDto principal) {
 
-        // principal이 null이면 자동으로 401 반환됨
-        Page<BoothReviewResponse> response = boothReviewService.getBoothReviews(boothId, pageable);
-        return ResponseEntity.ok(response);
-    }
-
-    // WBS-160: 내 작성 후기 목록 조회
-    @GetMapping("/reviews/my")
-    public ResponseEntity<Page<BoothReviewResponse>> getMyReviews(
-            @AuthenticationPrincipal AuthenticatedMemberDto principal,
-            Pageable pageable) {
-
-        Page<BoothReviewResponse> response = boothReviewService.getMyReviews(
-                principal.getMemberId(), pageable
+        BoothReviewResponse response = reviewService.updateReview(
+                boothId,
+                reviewId,
+                request,
+                principal.getMemberId()
         );
         return ResponseEntity.ok(response);
     }
 
-    // 리뷰 삭제 (본인만 가능)
-    @DeleteMapping("/{boothId}/reviews/{reviewId}")
+    /**
+     * 부스 후기 삭제
+     */
+    @DeleteMapping("/{reviewId}")
     public ResponseEntity<Void> deleteReview(
             @PathVariable Long boothId,
             @PathVariable Long reviewId,
             @AuthenticationPrincipal AuthenticatedMemberDto principal) {
 
-        boothReviewService.deleteReview(reviewId, boothId, principal.getMemberId());
+        reviewService.deleteReview(
+                boothId,
+                reviewId,
+                principal.getMemberId()
+        );
         return ResponseEntity.noContent().build();
     }
 
-    // 부스별 리뷰 검색
-    @GetMapping("/{boothId}/reviews/search")
-    public ResponseEntity<Page<BoothReviewResponse>> searchReviews(
+    /**
+     * 부스의 모든 후기 조회 (페이징)
+     */
+    @GetMapping
+    public ResponseEntity<Page<BoothReviewResponse>> getReviews(
             @PathVariable Long boothId,
-            @RequestParam String keyword,
-            @AuthenticationPrincipal AuthenticatedMemberDto principal,
             Pageable pageable) {
 
-        Page<BoothReviewResponse> response = boothReviewService.searchReviews(boothId, keyword, pageable);
+        Page<BoothReviewResponse> response = reviewService.getReviews(boothId, pageable);
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * 부스의 평균 별점 조회
+     */
+    @GetMapping("/average-rating")
+    public ResponseEntity<Double> getAverageRating(
+            @PathVariable Long boothId) {
 
+        Double averageRating = reviewService.getAverageRating(boothId);
+        return ResponseEntity.ok(averageRating);
+    }
 }

@@ -51,9 +51,16 @@ public class BoothReview {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;  // ← 추가!
 
-    // 1) 별점 수정
+    // 1) 별점 수정 (기존 - Short)
     public void updateRating(Short rating) {
         this.rating = rating;
+    }
+
+    // 1-1) ✅ 별점 수정 (오버로드 - Integer)
+    public void updateRating(Integer rating) {
+        if (rating != null) {
+            this.rating = rating.shortValue();
+        }
     }
 
     // 2) 댓글 수정

@@ -57,7 +57,7 @@ public class BoothReservationController {
             @PathVariable Long reservationId,
             @AuthenticationPrincipal AuthenticatedMemberDto principal) {
 
-        reservationService.cancelReservation(reservationId, principal.getMemberId());
+        reservationService.cancelReservation(reservationId, principal.getMemberId() ,boothId);
         return ResponseEntity.noContent().build();
     }
 }
