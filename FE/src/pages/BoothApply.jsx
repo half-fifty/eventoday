@@ -58,7 +58,7 @@ export default function BoothApply() {
     <div className="bg-background text-on-surface">
       {/* Top Nav */}
       <header className="fixed top-0 w-full h-[44px] z-[100] bg-black flex justify-between items-center px-lg">
-        <Link to="/" className="font-hero-display text-tagline text-white">EXPO HUB</Link>
+        <Link to="/" className="font-hero-display text-tagline text-white">EvenToday</Link>
         <div className="flex items-center gap-sm">
           <NotificationBell />
           <Link to="/event-recruiting" className="text-white/80 hover:text-white text-nav-link font-nav-link flex items-center gap-1">
@@ -200,7 +200,7 @@ export default function BoothApply() {
 
       <footer className="bg-surface-container-low text-on-surface py-section w-full">
         <div className="max-w-[1200px] mx-auto px-lg text-center">
-          <p className="text-[14px] text-on-surface-variant opacity-60">© 2026 EXPO HUB. All rights reserved.</p>
+          <p className="text-[14px] text-on-surface-variant opacity-60">© 2026 EvenToday. All rights reserved.</p>
         </div>
       </footer>
     </div>

@@ -8,6 +8,30 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum GlobalErrorCode implements ErrorCode {
 
+    ADMISSION_CHECK_IN_INVALID_STATE(HttpStatus.CONFLICT, "ADMISSION_409_015", "현재 상태에서는 입장 처리할 수 없습니다."),
+    ADMISSION_CHECK_IN_DUPLICATE(HttpStatus.CONFLICT, "ADMISSION_409_016", "이미 입장 처리된 티켓입니다."),
+    ADMISSION_CHECK_IN_EVENT_MISMATCH(HttpStatus.FORBIDDEN, "ADMISSION_403_003", "해당 행사의 입장 QR이 아닙니다."),
+    ADMISSION_CHECK_IN_CANCEL_INVALID_STATE(HttpStatus.CONFLICT, "ADMISSION_409_017", "현재 상태에서는 입장 처리를 취소할 수 없습니다."),
+    ADMISSION_CHECK_IN_PROCESSING_CONFLICT(HttpStatus.CONFLICT, "ADMISSION_409_018", "현재 입장 처리를 진행하고 있습니다. 잠시 후 다시 시도해주세요."),
+
+    EXCHANGE_CODE_NOT_FOUND(HttpStatus.NOT_FOUND, "ADMISSION_404_003", "교환 코드를 찾을 수 없습니다."),
+    ADMISSION_TICKET_NOT_FOUND(HttpStatus.NOT_FOUND, "ADMISSION_404_004", "입장 티켓을 찾을 수 없습니다."),
+    EXCHANGE_CODE_INVALID_STATE(HttpStatus.CONFLICT, "ADMISSION_409_010", "사용할 수 없는 교환 코드입니다."),
+    EXCHANGE_CODE_EXPIRED(HttpStatus.CONFLICT, "ADMISSION_409_011", "만료된 교환 코드입니다."),
+    EXCHANGE_CODE_EVENT_NOT_REDEEMABLE(HttpStatus.CONFLICT, "ADMISSION_409_012", "교환 코드를 사용할 수 없는 행사입니다."),
+    EXCHANGE_CODE_HOLDER_MISMATCH(HttpStatus.FORBIDDEN, "ADMISSION_403_001", "교환 코드 소유자가 일치하지 않습니다."),
+    EXCHANGE_CODE_GUEST_NOT_REDEEMABLE(HttpStatus.FORBIDDEN, "ADMISSION_403_002", "게스트 교환 코드는 이 API에서 사용할 수 없습니다."),
+    ADMISSION_TICKET_ALREADY_EXISTS(HttpStatus.CONFLICT, "ADMISSION_409_013", "이미 입장 티켓이 발급된 교환 코드입니다."),
+    ADMISSION_TICKET_QR_NOT_AVAILABLE(HttpStatus.CONFLICT, "ADMISSION_409_014", "현재 상태에서는 입장 QR을 조회할 수 없습니다."),
+    ADMISSION_QR_TOKEN_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "ADMISSION_500_002", "입장 QR 토큰 생성에 실패했습니다."),
+    ADMISSION_QR_IMAGE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "ADMISSION_500_003", "입장 QR 이미지 생성에 실패했습니다."),
+
+    EXCHANGE_CODE_REQUEST_ALREADY_ISSUED(HttpStatus.CONFLICT, "ADMISSION_409_005", "이미 발급 완료된 교환 코드 요청입니다."),
+    EXCHANGE_CODE_REQUEST_ISSUANCE_INCONSISTENT(HttpStatus.CONFLICT, "ADMISSION_409_006", "교환 코드 발급 데이터가 일치하지 않습니다."),
+    EXCHANGE_CODE_REQUEST_RECIPIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "ADMISSION_404_002", "교환 코드 발급 메일 수신자를 찾을 수 없습니다."),
+    EXCHANGE_CODE_REQUEST_RECIPIENT_EMAIL_MISSING(HttpStatus.CONFLICT, "ADMISSION_409_007", "교환 코드 발급 메일 수신자 이메일이 없습니다."),
+    EXCHANGE_CODE_REQUEST_EVENT_ENDED(HttpStatus.CONFLICT, "ADMISSION_409_008", "종료된 행사에는 교환 코드를 발급할 수 없습니다."),
+    EXCHANGE_CODE_REQUEST_EMAIL_ALREADY_SENT(HttpStatus.CONFLICT, "ADMISSION_409_009", "이미 교환 코드 발급 메일을 발송했습니다."),
 
 
 

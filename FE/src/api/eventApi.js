@@ -10,6 +10,9 @@ export const eventApi = {
   managedOrganizations: () => apiRequest("/v1/me/managed-organizations"),
   list: (params = {}) => apiRequest(`/v1/events?${new URLSearchParams(params)}`),
   detail: (eventId) => apiRequest(`/v1/events/${eventId}`),
+  exhibitCategories: () => apiRequest("/v1/exhibit-categories"),
+  createTicketOrder: (eventId, payload) =>
+    apiRequest(`/events/${eventId}/ticket-orders`, json("POST", payload)),
   organizationList: (organizationId, params = {}) =>
     apiRequest(`/v1/organizations/${organizationId}/events?${new URLSearchParams(params)}`),
   managedDetail: (organizationId, eventId) =>

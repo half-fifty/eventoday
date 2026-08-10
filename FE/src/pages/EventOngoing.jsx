@@ -153,7 +153,7 @@ export default function EventOngoing() {
     <div className="bg-surface font-body text-on-surface antialiased">
       {/* Top Nav */}
       <header className="fixed top-0 w-full h-[44px] z-[100] bg-black flex justify-between items-center px-lg">
-        <Link to="/" className="font-hero-display text-tagline text-white">EXPO HUB</Link>
+        <Link to="/" className="font-hero-display text-tagline text-white">EvenToday</Link>
         <div className="flex items-center gap-sm">
           <button className="text-white/80 hover:text-white transition-colors"><Icon name="search" className="text-[20px]" /></button>
           <NotificationBell />

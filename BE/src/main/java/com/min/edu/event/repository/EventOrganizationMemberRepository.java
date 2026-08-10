@@ -15,4 +15,6 @@ public interface EventOrganizationMemberRepository extends JpaRepository<Organiz
             Collection<OrganizationRole> roles);
     List<OrganizationMember> findAllByMemberIdAndStatusAndOrganizationRoleIn(
             Long memberId, OrganizationMemberStatus status, Collection<OrganizationRole> roles);
+    List<OrganizationMember> findAllByOrganizationIdAndStatusAndOrganizationRoleIn(
+            Long organizationId, OrganizationMemberStatus status, Collection<OrganizationRole> roles);
 }

@@ -3,6 +3,7 @@ package com.min.edu.event.controller;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.response.ApiResponse;
 import com.min.edu.event.domain.EventStatus;
+import com.min.edu.event.domain.RegionCode;
 import com.min.edu.event.dto.EventDtos;
 import com.min.edu.event.service.EventService;
 import jakarta.validation.Valid;
@@ -41,10 +42,19 @@ public class EventController {
     public ApiResponse<Page<EventDtos.Summary>> findPublicEvents(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String eventType,
+            @RequestParam(required = false) RegionCode regionCode,
+            @RequestParam(required = false) List<String> exhibitCategoryCodes,
+            @RequestParam(required = false) String venueName,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime startFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime startTo,
             Pageable pageable) {
-        return ApiResponse.success(eventService.findPublicEvents(keyword, eventType, startFrom, startTo, pageable));
+        return ApiResponse.success(eventService.findPublicEvents(keyword, eventType, regionCode,
+                exhibitCategoryCodes, venueName, startFrom, startTo, pageable));
+    }
+
+    @GetMapping("/exhibit-categories")
+    public ApiResponse<List<EventDtos.ExhibitCategoryResponse>> findExhibitCategories() {
+        return ApiResponse.success(eventService.findExhibitCategories());
     }
 
     @GetMapping("/events/{eventId}")

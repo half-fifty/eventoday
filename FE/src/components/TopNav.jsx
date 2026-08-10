@@ -30,7 +30,7 @@ export default function TopNav({ active = "events" }) {
   return (
     <header className="fixed top-0 w-full h-[44px] z-[100] bg-black flex justify-between items-center px-lg">
       <Link to="/" className="font-hero-display text-tagline text-white">
-        EXPO HUB
+        EvenToday
       </Link>
       <nav className="hidden md:flex gap-xl h-full items-center">
         <Link className={`${linkBase} ${active === "events" ? activeCls : idleCls}`} to="/">
@@ -38,6 +38,9 @@ export default function TopNav({ active = "events" }) {
         </Link>
         <Link className={`${linkBase} ${active === "recruiting" ? activeCls : idleCls}`} to="/recruitments">
           부스 모집 공고
+        </Link>
+        <Link className={`${linkBase} ${active === "venues" ? activeCls : idleCls}`} to="/venues">
+          전시장 안내
         </Link>
         <Link className={`${linkBase} ${active === "mypage" ? activeCls : idleCls}`} to="/mypage">
           마이페이지

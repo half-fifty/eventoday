@@ -17,6 +17,18 @@ const NOTIFICATION_META = {
     iconClass: "bg-primary-fixed text-primary",
     accentClass: "bg-primary-container",
   },
+  EVENT_APPROVED: {
+    icon: "task_alt",
+    label: "행사 승인",
+    iconClass: "bg-[#e8f8ed] text-[#137b3a]",
+    accentClass: "bg-[#34c759]",
+  },
+  EVENT_REJECTED: {
+    icon: "error_outline",
+    label: "행사 반려",
+    iconClass: "bg-error/10 text-error",
+    accentClass: "bg-error",
+  },
 };
 
 const DEFAULT_NOTIFICATION_META = {
@@ -69,9 +81,17 @@ const getNotificationTarget = (notification) => {
     return null;
   }
 
-  switch (notification.referenceType.toUpperCase()) {
+  const referenceType = notification.referenceType.toUpperCase();
+  if (referenceType.startsWith("EVR:")) {
+    const organizationId = referenceType.slice("EVR:".length);
+    return `/organizer-admin?organizationId=${encodeURIComponent(organizationId)}&eventId=${notification.referenceId}`;
+  }
+
+  switch (referenceType) {
     case "EVENT":
       return `/events/${notification.referenceId}`;
+    case "EVENT_REVIEW":
+      return `/organizer-admin?eventId=${notification.referenceId}`;
     case "RECRUITMENT":
     case "BOOTH_RECRUITMENT":
       return `/recruitments/${notification.referenceId}`;

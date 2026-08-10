@@ -90,6 +90,28 @@ public class PaymentOrder {
             .build();
     }
 
+    public static PaymentOrder createEventAdOrder(
+            String orderNo,
+            Long buyerMemberId,
+            String buyerName,
+            String buyerEmail,
+            BigDecimal totalAmount,
+            OffsetDateTime expiresAt,
+            OffsetDateTime now) {
+        return PaymentOrder.builder()
+            .orderNo(orderNo)
+            .buyerMemberId(buyerMemberId)
+            .buyerName(buyerName)
+            .buyerEmail(buyerEmail)
+            .orderType(PaymentOrderType.EVENT_AD)
+            .totalAmount(totalAmount)
+            .status(PaymentOrderStatus.PENDING.name())
+            .expiresAt(expiresAt)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+    }
+
     public boolean isPaid() {
         return PaymentOrderStatus.PAID.name().equals(status);
     }

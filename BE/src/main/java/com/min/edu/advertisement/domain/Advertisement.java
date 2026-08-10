@@ -72,6 +72,22 @@ public class Advertisement {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    public void assignPaymentOrder(Long paymentOrderId, OffsetDateTime now) {
+        if (eventId == null || boothId != null || this.paymentOrderId != null) {
+            throw new IllegalStateException("행사 광고에만 결제 주문을 연결할 수 있습니다.");
+        }
+        this.paymentOrderId = paymentOrderId;
+        this.updatedAt = now;
+    }
+
+    public void markPaid(OffsetDateTime now) {
+        if (status != AdvertisementStatus.PAYMENT_PENDING || paymentOrderId == null) {
+            throw new IllegalStateException("결제 대기 중인 행사 광고가 아닙니다.");
+        }
+        this.status = AdvertisementStatus.PAID;
+        this.updatedAt = now;
+    }
+
     public void update(Long bannerFileId, String adText, OffsetDateTime startAt,
             OffsetDateTime endAt, OffsetDateTime now) {
         if (status != AdvertisementStatus.PAYMENT_PENDING
@@ -82,6 +98,15 @@ public class Advertisement {
         this.adText = adText;
         this.startAt = startAt;
         this.endAt = endAt;
+        this.updatedAt = now;
+    }
+
+    public void updateCreative(Long bannerFileId, String adText, OffsetDateTime now) {
+        if (status != AdvertisementStatus.SCHEDULED && status != AdvertisementStatus.ACTIVE) {
+            throw new IllegalStateException("승인되어 노출 예정이거나 노출 중인 광고만 콘텐츠를 수정할 수 있습니다.");
+        }
+        this.bannerFileId = bannerFileId;
+        this.adText = adText;
         this.updatedAt = now;
     }
 

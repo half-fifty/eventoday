@@ -79,12 +79,48 @@ public class ExchangeCode {
             .build();
     }
 
+    public static ExchangeCode createForExchangeCodeRequest(
+            Long eventId,
+            Long exchangeCodeRequestId,
+            String code,
+            OffsetDateTime expiresAt,
+            OffsetDateTime now) {
+        return ExchangeCode.builder()
+            .eventId(eventId)
+            .exchangeCodeRequestId(exchangeCodeRequestId)
+            .code(code)
+            .status(ExchangeCodeStatus.ISSUED)
+            .expiresAt(expiresAt)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+    }
+
     public boolean isRedeemed() {
         return status == ExchangeCodeStatus.REDEEMED;
     }
 
     public boolean isCancelled() {
         return status == ExchangeCodeStatus.CANCELLED;
+    }
+
+    public boolean isIssued() {
+        return status == ExchangeCodeStatus.ISSUED;
+    }
+
+    public void assignHolder(Long memberId, OffsetDateTime now) {
+        this.holderMemberId = memberId;
+        this.updatedAt = now;
+    }
+
+    public void redeem(OffsetDateTime now) {
+        if (!isIssued()) {
+            throw new IllegalStateException("Exchange code is not redeemable.");
+        }
+
+        this.status = ExchangeCodeStatus.REDEEMED;
+        this.redeemedAt = now;
+        this.updatedAt = now;
     }
 
     public void cancel(OffsetDateTime now) {
