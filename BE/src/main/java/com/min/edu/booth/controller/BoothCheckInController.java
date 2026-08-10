@@ -26,9 +26,9 @@ public class BoothCheckInController {
      */
     @PostMapping("/check-in")
     public ResponseEntity<BoothReservationResponse> checkIn(
-            @PathVariable Long boothId,
-            @RequestBody BoothCheckInRequest request,
-            @AuthenticationPrincipal AuthenticatedMemberDto principal) {
+            `@PathVariable` Long boothId,
+            `@RequestBody` `@Valid` BoothCheckInRequest request,
+            `@AuthenticationPrincipal` AuthenticatedMemberDto principal) {
 
         // 1) 인증 검증
         if (principal == null) {
