@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
@@ -148,8 +148,12 @@ export default function BoothApply() {
     (!filters.water || booth.waterAvailable);
 
   // URL로 전달된 부스 사전 선택 (목록 로드 후 1회)
+  // "부스 더 보기"로 booths가 갱신될 때마다 재실행되면 사용자가 고른 부스가
+  // preselectBoothId로 되돌아가므로 ref 플래그로 1회만 적용한다
+  const preselectAppliedRef = useRef(false);
   useEffect(() => {
-    if (preselectBoothId && booths.length > 0) {
+    if (preselectBoothId && booths.length > 0 && !preselectAppliedRef.current) {
+      preselectAppliedRef.current = true;
       const target = booths.find((b) => String(b.id) === preselectBoothId);
       if (target && target.status === "AVAILABLE") setSelectedBoothId(target.id);
     }

@@ -97,6 +97,8 @@ export default function OrganizerAdmin() {
   const [appLoadingMore, setAppLoadingMore] = useState(false);
   // 서버 totalElements 기반 정확한 통계 카운트 (목록 100건 제한과 무관하게 정확)
   const [appCounts, setAppCounts] = useState(null); // { pending, approved } | null
+  // 승인·반려·검토 시작 후 카운트를 다시 불러오기 위한 트리거
+  const [appCountsVersion, setAppCountsVersion] = useState(0);
 
   // 공지·자료 (WBS-199/200)
   const [contents, setContents] = useState([]);
@@ -296,7 +298,10 @@ export default function OrganizerAdmin() {
       })
       .catch(() => { if (active) setAppCounts(null); }); // 실패 시 목록 기반 계산으로 폴백
     return () => { active = false; };
-  }, [selectedEventId]);
+  }, [selectedEventId, appCountsVersion]);
+
+  // 상태 전이 성공 후 호출 - 대시보드 카드 숫자를 서버 기준으로 다시 맞춘다
+  const refreshAppCounts = () => setAppCountsVersion((v) => v + 1);
 
   // CONTENT-API-001: 공지·자료 목록 로드 (WBS-199)
   useEffect(() => {
@@ -437,6 +442,7 @@ export default function OrganizerAdmin() {
     try {
       await startReview(applicationId);
       patchApplicationStatus(applicationId, "UNDER_REVIEW");
+      refreshAppCounts(); // 검토 대기 카운트 재조회
     } catch (error) {
       setAppError(error.message || "검토 시작에 실패했습니다.");
     } finally {
@@ -452,6 +458,7 @@ export default function OrganizerAdmin() {
     try {
       await approveApplication(applicationId);
       patchApplicationStatus(applicationId, "APPROVED");
+      refreshAppCounts(); // 검토 대기·승인 카운트 재조회
     } catch (error) {
       setAppError(error.message || "승인에 실패했습니다.");
     } finally {
@@ -471,6 +478,7 @@ export default function OrganizerAdmin() {
     try {
       await rejectApplication(rejectTarget.id, rejectReason.trim());
       patchApplicationStatus(rejectTarget.id, "REJECTED");
+      refreshAppCounts(); // 검토 대기 카운트 재조회
       setRejectTarget(null);
     } catch (error) {
       setAppError(error.message || "반려에 실패했습니다.");
@@ -1194,7 +1202,9 @@ function AppRow({
         {a.status === "SUBMITTED" && (
           <button
             onClick={(e) => { e.stopPropagation(); onStartReview(a.id); }}
-            disabled={appActionId === a.id}
+            /* 핸들러가 처리 중이면 전체 요청을 막으므로 비활성화 범위도 전체로 맞춘다
+               (내 행만 비활성화하면 다른 행 버튼이 눌려도 반응이 없어 보인다) */
+            disabled={Boolean(appActionId)}
             className="text-[11px] font-bold px-sm py-1 rounded-full border border-status-pending text-status-pending hover:bg-status-pending/10 transition-colors whitespace-nowrap disabled:opacity-50"
           >
             {appActionId === a.id ? "처리 중..." : "검토 시작"}
@@ -1204,7 +1214,7 @@ function AppRow({
           <div className="flex gap-xs">
             <button
               onClick={(e) => { e.stopPropagation(); onApprove(a.id); }}
-              disabled={appActionId === a.id}
+              disabled={Boolean(appActionId)}
               title="승인"
               className="w-8 h-8 rounded-full bg-status-available/10 text-status-available flex items-center justify-center disabled:opacity-50"
             >
@@ -1212,8 +1222,9 @@ function AppRow({
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onOpenReject(a); }}
+              disabled={Boolean(appActionId)}
               title="반려"
-              className="w-8 h-8 rounded-full bg-status-visited/10 text-status-visited flex items-center justify-center"
+              className="w-8 h-8 rounded-full bg-status-visited/10 text-status-visited flex items-center justify-center disabled:opacity-50"
             >
               <Icon name="close" className="text-[16px]" />
             </button>

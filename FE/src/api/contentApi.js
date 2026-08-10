@@ -38,11 +38,15 @@ const listContents = async (eventId, contentType) => {
   return response.data;
 };
 
-// CONTENT-API-006: 전체 공지·자료 목록 (공개 행사 대상)
-// 응답 항목: { eventName, content: { contentId, eventId, title, fileName, fileSize, ... } }
-const listAllContents = async (contentType) => {
-  const query = contentType ? `?contentType=${contentType}` : "";
-  const response = await apiRequest(`/contents${query}`);
+// CONTENT-API-006: 전체 공지·자료 목록 (공개 행사 대상, 페이지네이션)
+// params: { contentType, page, size }  ※ size 최대 100
+// 응답: { content: [{ eventName, content: {...} }], page, size, totalElements, totalPages, first, last, empty }
+const listAllContents = async (params = {}) => {
+  const query = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, value]) => value !== "" && value != null))
+  );
+  const queryString = query.toString();
+  const response = await apiRequest(`/contents${queryString ? `?${queryString}` : ""}`);
   return response.data;
 };
 

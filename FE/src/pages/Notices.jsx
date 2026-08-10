@@ -7,8 +7,13 @@ import FileDownloadLink from "../components/FileDownloadLink.jsx";
 import { listAllContents } from "../api/contentApi.js";
 
 // 전체 공지사항 페이지
-// CONTENT-API-006(전체 공지 목록)으로 1회 호출해 공개 행사의 공지·자료를 모아 보여준다.
+// CONTENT-API-006(전체 공지 목록)으로 공개 행사의 공지·자료를 페이지 단위로 조회한다.
 // (기존: 행사 목록 조회 후 행사별 N번 병렬 호출 → BE API 추가로 대체)
+const PAGE_SIZE = 20;
+
+// 응답 항목 { eventName, content: {...} } → 렌더링 편의를 위해 평탄화
+const flatten = (list) => (list || []).map((item) => ({ ...item.content, eventName: item.eventName }));
+
 export default function Notices() {
   const [items, setItems] = useState([]); // { ...content, eventName }
   const [loading, setLoading] = useState(true);
@@ -16,22 +21,30 @@ export default function Notices() {
   const [expandedId, setExpandedId] = useState(null);
   const [typeFilter, setTypeFilter] = useState(""); // "" | "NOTICE" | "RESOURCE"
 
+  // 페이지네이션 - 필터가 바뀌면 첫 페이지부터 다시 조회
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
       setError("");
+      setPage(0);
+      setHasMore(false);
+      setExpandedId(null);
       try {
-        // 응답 항목: { eventName, content: {...} } → 렌더링 편의를 위해 평탄화
-        const list = await listAllContents();
+        // 유형 필터는 BE에서 처리 (전체를 받아와 클라이언트에서 거르지 않는다)
+        const data = await listAllContents({
+          contentType: typeFilter || undefined,
+          page: 0,
+          size: PAGE_SIZE,
+        });
         if (cancelled) return;
-        const merged = (list || []).map((item) => ({ ...item.content, eventName: item.eventName }));
-        // BE가 pinned·publishedAt 순으로 정렬해 주지만, 행사 간 병합 순서 보장을 위해 한 번 더 정렬
-        // pinned가 undefined면 뺄셈 결과가 NaN이 되므로 boolean → 숫자로 정규화
-        merged.sort((a, b) =>
-          (Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)))
-          || new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
-        setItems(merged);
+        // BE가 pinned DESC, publishedAt DESC로 정렬해 내려준다
+        setItems(flatten(data?.content));
+        setHasMore(data ? !data.last : false);
       } catch (requestError) {
         if (!cancelled) setError(requestError.message || "공지사항을 불러오지 못했습니다.");
       } finally {
@@ -40,9 +53,31 @@ export default function Notices() {
     };
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [typeFilter]);
 
-  const filtered = typeFilter ? items.filter((c) => c.contentType === typeFilter) : items;
+  // 다음 페이지 이어붙이기
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    const nextPage = page + 1;
+    setLoadingMore(true);
+    try {
+      const data = await listAllContents({
+        contentType: typeFilter || undefined,
+        page: nextPage,
+        size: PAGE_SIZE,
+      });
+      setItems((prev) => [...prev, ...flatten(data?.content)]);
+      setHasMore(data ? !data.last : false);
+      setPage(nextPage);
+    } catch (requestError) {
+      setError(requestError.message || "공지사항을 더 불러오지 못했습니다.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // 필터링은 BE에서 처리하므로 그대로 사용
+  const filtered = items;
 
   return (
     <div className="min-h-screen bg-surface-pearl flex flex-col">
@@ -126,6 +161,17 @@ export default function Notices() {
                 )}
               </div>
             ))}
+            {/* 다음 페이지 이어붙이기 (서버 응답의 last 기준) */}
+            {hasMore && (
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="w-full p-md text-caption text-primary hover:bg-surface-pearl/50 transition-colors disabled:opacity-50"
+              >
+                {loadingMore ? "불러오는 중..." : "더 보기"}
+              </button>
+            )}
           </div>
         )}
       </main>
