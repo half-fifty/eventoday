@@ -38,6 +38,14 @@ const listContents = async (eventId, contentType) => {
   return response.data;
 };
 
+// CONTENT-API-006: 전체 공지·자료 목록 (공개 행사 대상)
+// 응답 항목: { eventName, content: { contentId, eventId, title, fileName, fileSize, ... } }
+const listAllContents = async (contentType) => {
+  const query = contentType ? `?contentType=${contentType}` : "";
+  const response = await apiRequest(`/contents${query}`);
+  return response.data;
+};
+
 // CONTENT-API-002: 공지·자료 상세
 const getContent = async (contentId) => {
   const response = await apiRequest(`/event-contents/${contentId}`);
@@ -68,4 +76,4 @@ const deleteContent = async (contentId) => {
   await apiRequest(`/event-contents/${contentId}`, { method: "DELETE" });
 };
 
-export { listContents, getContent, createContent, updateContent, deleteContent };
+export { listContents, listAllContents, getContent, createContent, updateContent, deleteContent };

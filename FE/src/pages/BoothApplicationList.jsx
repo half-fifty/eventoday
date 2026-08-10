@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import TopNav from "../components/TopNav.jsx";
 import Footer from "../components/Footer.jsx";
@@ -79,6 +79,9 @@ export default function BoothApplicationList() {
     return () => { cancelled = true; };
   }, [exhibitorOrg?.organizationId]);
 
+  // 상세 패널 빠른 전환 시 늦게 도착한 이전 요청 응답이 화면을 덮어쓰지 않도록 하는 가드
+  const detailRequestRef = useRef(null);
+
   // APP-API-003 상세 + APP-API-009 첨부파일 동시 로드
   const openDetail = (applicationId) => {
     setSelectedId(applicationId);
@@ -88,21 +91,26 @@ export default function BoothApplicationList() {
     setDetailLoading(true);
     setPrevStat(null);
     setPrevStatError("");
+    detailRequestRef.current = applicationId; // 최신 요청 식별자 기록
     Promise.all([getApplication(applicationId), listApplicationFiles(applicationId)])
       .then(([app, fileList]) => {
+        if (detailRequestRef.current !== applicationId) return; // 다른 신청으로 전환됨 → 무시
         setDetail(app);
         setFiles(Array.isArray(fileList) ? fileList : []);
         // 승인된 신청이면 배정된 부스의 전날 통계 조회 (실패해도 상세 표시에 영향 없음)
         if (app?.status === "APPROVED" && app?.boothId) {
           getPreviousDayStatistics(app.boothId)
-            .then((stat) => setPrevStat(stat))
-            .catch((err) => setPrevStatError(err.message || "전날 통계를 불러오지 못했습니다."));
+            .then((stat) => { if (detailRequestRef.current === applicationId) setPrevStat(stat); })
+            .catch((err) => { if (detailRequestRef.current === applicationId) setPrevStatError(err.message || "전날 통계를 불러오지 못했습니다."); });
         }
       })
       .catch((err) => {
+        if (detailRequestRef.current !== applicationId) return;
         setCancelError(err instanceof ApiError ? err.message : "상세 정보를 불러오지 못했습니다.");
       })
-      .finally(() => setDetailLoading(false));
+      .finally(() => {
+        if (detailRequestRef.current === applicationId) setDetailLoading(false);
+      });
   };
 
   const closeDetail = () => {
@@ -283,8 +291,8 @@ export default function BoothApplicationList() {
                   </div>
                 )}
 
-                {/* STAT-API-002: 승인된 신청 - 배정 부스의 전날 통계 */}
-                {detail.status === "APPROVED" && (
+                {/* STAT-API-002: 승인된 신청 - 배정 부스의 전날 통계 (boothId가 있어야 조회 가능) */}
+                {detail.status === "APPROVED" && detail.boothId && (
                   <div className="space-y-sm">
                     <p className="text-caption font-body-strong">전날 부스 통계</p>
                     {prevStatError ? (
@@ -295,17 +303,18 @@ export default function BoothApplicationList() {
                       <div className="bg-surface-pearl rounded-xl p-lg space-y-md">
                         <p className="text-caption text-ink-muted">{prevStat.statDate} 기준</p>
                         <div className="grid grid-cols-3 gap-sm text-center">
+                          {/* 집계가 없는 날짜에 수치가 null일 수 있어 기본값 0 처리 */}
                           <div className="bg-white rounded-lg p-md">
                             <p className="text-caption text-ink-muted">예약</p>
-                            <p className="font-display-md text-[20px]">{prevStat.totalReservationCount.toLocaleString()}</p>
+                            <p className="font-display-md text-[20px]">{(prevStat.totalReservationCount ?? 0).toLocaleString()}</p>
                           </div>
                           <div className="bg-white rounded-lg p-md">
                             <p className="text-caption text-ink-muted">QR 방문</p>
-                            <p className="font-display-md text-[20px]">{prevStat.totalQrScanCount.toLocaleString()}</p>
+                            <p className="font-display-md text-[20px]">{(prevStat.totalQrScanCount ?? 0).toLocaleString()}</p>
                           </div>
                           <div className="bg-white rounded-lg p-md">
                             <p className="text-caption text-ink-muted">노쇼</p>
-                            <p className="font-display-md text-[20px]">{prevStat.totalNoShowCount.toLocaleString()}</p>
+                            <p className="font-display-md text-[20px]">{(prevStat.totalNoShowCount ?? 0).toLocaleString()}</p>
                           </div>
                         </div>
                         {/* 시간대별 상세: 집계가 있는 시간대만 표시 */}

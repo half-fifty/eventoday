@@ -10,6 +10,24 @@ import { submitApplication } from "../api/boothApplicationApi.js";
 import { uploadFile } from "../api/fileApi.js";
 import useAuth from "../hooks/useAuth.js";
 
+// BE FileService.ALLOWED_EXTENSIONS와 동일한 허용 확장자 목록
+const ALLOWED_FILE_EXTS = ["pdf", "doc", "docx", "jpg", "jpeg", "png", "gif", "webp"];
+// BE FileService 최대 업로드 크기와 동일 (10MB)
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+// 업로드 전 공통 검증 (견적서·기타 첨부 공용): 통과 시 null, 실패 시 에러 메시지 반환
+// accept 속성은 파일 선택 다이얼로그의 힌트일 뿐이라 드래그앤드롭 등으로 우회 가능 → JS 검증 필요
+const validateUploadFile = (file) => {
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (!ALLOWED_FILE_EXTS.includes(ext)) {
+    return "허용되지 않는 파일 형식입니다. PDF, Word(.doc/.docx), 이미지 파일만 첨부할 수 있어요.";
+  }
+  if (file.size > MAX_FILE_SIZE) {
+    return "파일 크기는 최대 10MB까지 업로드할 수 있어요.";
+  }
+  return null;
+};
+
 // 신청 폼 초기값 - BE BoothApplicationSubmitRequestDto 필드와 1:1 대응
 const emptyForm = {
   teamName: "",
@@ -43,6 +61,11 @@ export default function BoothApply() {
 
   const [filters, setFilters] = useState({ elec: false, water: false });
   const [selectedBoothId, setSelectedBoothId] = useState(null);
+
+  // 부스 페이지네이션 (RecruitmentDetail.jsx와 동일한 "부스 더 보기" 패턴)
+  const [boothPage, setBoothPage] = useState(0);
+  const [boothHasMore, setBoothHasMore] = useState(false);
+  const [loadingMoreBooths, setLoadingMoreBooths] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [estimateFileId, setEstimateFileId] = useState(null);
   const [otherFiles, setOtherFiles] = useState([]); // { fileId, name }
@@ -62,6 +85,8 @@ export default function BoothApply() {
     let cancelled = false;
     setLoading(true);
     setLoadError("");
+    setBoothPage(0);
+    setBoothHasMore(false);
     getPublicRecruitment(recruitmentId)
       .then((rec) => {
         if (cancelled) return null;
@@ -70,7 +95,11 @@ export default function BoothApply() {
         return listPublicBooths(rec.eventId, { page: 0, size: 100 });
       })
       .then((data) => {
-        if (!cancelled && data) setBooths(data.content || []);
+        if (!cancelled && data) {
+          setBooths(data.content || []);
+          // last가 false면 뒤 페이지가 더 있음 → "부스 더 보기" 노출
+          setBoothHasMore(!data.last);
+        }
       })
       .catch((err) => {
         if (!cancelled) {
@@ -82,6 +111,23 @@ export default function BoothApply() {
       });
     return () => { cancelled = true; };
   }, [recruitmentId]);
+
+  // 다음 페이지 부스 로드 (100개 초과 행사 대응 - 없으면 뒤쪽 부스가 표시되지 않음)
+  const loadMoreBooths = async () => {
+    if (!recruitment?.eventId || loadingMoreBooths || !boothHasMore) return;
+    const nextPage = boothPage + 1;
+    setLoadingMoreBooths(true);
+    try {
+      const data = await listPublicBooths(recruitment.eventId, { page: nextPage, size: 100 });
+      setBooths((prev) => [...prev, ...(data?.content || [])]);
+      setBoothHasMore(data ? !data.last : false);
+      setBoothPage(nextPage);
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : "부스 목록을 더 불러오지 못했습니다.");
+    } finally {
+      setLoadingMoreBooths(false);
+    }
+  };
 
   // 로그인 회원 정보로 담당자 이메일 미리 채우기
   useEffect(() => {
@@ -132,17 +178,14 @@ export default function BoothApply() {
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  // BE FileService.ALLOWED_EXTENSIONS와 동일한 허용 확장자 목록
-  const ALLOWED_FILE_EXTS = ["pdf", "doc", "docx", "jpg", "jpeg", "png", "gif", "webp"];
-
   // 기타 첨부파일 업로드 (최대 5개)
   const uploadOtherFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file || otherFiles.length >= 5) return;
-    // 업로드 전 확장자 검사 (BE 화이트리스트 기준)
-    const ext = file.name.split(".").pop().toLowerCase();
-    if (!ALLOWED_FILE_EXTS.includes(ext)) {
-      setSubmitError("허용되지 않는 파일 형식입니다. PDF, Word(.doc/.docx), 이미지 파일만 첨부할 수 있어요.");
+    // 업로드 전 확장자·용량 검사 (견적서와 동일한 공용 헬퍼)
+    const validationError = validateUploadFile(file);
+    if (validationError) {
+      setSubmitError(validationError);
       event.target.value = "";
       return;
     }
@@ -309,6 +352,17 @@ export default function BoothApply() {
                     })}
                   </div>
                 )}
+                {/* 100개 초과 행사: 다음 페이지 부스 로드 */}
+                {boothHasMore && (
+                  <button
+                    type="button"
+                    onClick={loadMoreBooths}
+                    disabled={loadingMoreBooths}
+                    className="w-full mt-md py-sm border border-hairline rounded-full text-caption text-on-surface hover:bg-surface-pearl transition-colors disabled:opacity-50"
+                  >
+                    {loadingMoreBooths ? "불러오는 중..." : "부스 더 보기"}
+                  </button>
+                )}
                 <p className="text-[12px] text-primary-focus font-medium mt-md flex items-center gap-1">
                   <Icon name="info" className="text-[16px]" /> 회색 부스는 조건 불일치 또는 이미 신청·배정되어 선택할 수 없습니다.
                 </p>
@@ -330,6 +384,7 @@ export default function BoothApply() {
                   accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp"
                   value={estimateFileId}
                   onChange={setEstimateFileId}
+                  validate={validateUploadFile}
                 />
                 {/* 기타 첨부파일 (선택, 최대 5개) */}
                 <div className="space-y-sm">

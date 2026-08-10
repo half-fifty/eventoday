@@ -50,10 +50,19 @@ const formatDate = (iso) => {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
 };
 
+// 로컬 시간대 기준 YYYY-MM-DD 문자열
+// (toISOString()은 UTC 기준이라 KST 오전 9시 이전엔 전날 날짜가 나옴)
+const toLocalDateString = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
 // 통계 조회 기본 기간: 최근 30일 (YYYY-MM-DD)
 const statPeriod = () => {
-  const to = new Date().toISOString().slice(0, 10);
-  const from = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+  const to = toLocalDateString(new Date());
+  const from = toLocalDateString(new Date(Date.now() - 29 * 86400000));
   return { from, to };
 };
 
@@ -81,6 +90,13 @@ export default function OrganizerAdmin() {
   const [rejectTarget, setRejectTarget] = useState(null); // 반려 모달 대상 신청
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
+  const [appActionId, setAppActionId] = useState(null); // 검토 시작·승인 처리 중인 신청 ID (중복 클릭 방지)
+  // 신청 목록 페이지네이션 (100건 초과 시 "더 보기")
+  const [appPage, setAppPage] = useState(0);
+  const [appHasMore, setAppHasMore] = useState(false);
+  const [appLoadingMore, setAppLoadingMore] = useState(false);
+  // 서버 totalElements 기반 정확한 통계 카운트 (목록 100건 제한과 무관하게 정확)
+  const [appCounts, setAppCounts] = useState(null); // { pending, approved } | null
 
   // 공지·자료 (WBS-199/200)
   const [contents, setContents] = useState([]);
@@ -99,7 +115,7 @@ export default function OrganizerAdmin() {
 
   // STAT-API-001: 시간대별 부스 통계 (부스·날짜 선택형)
   const [hourlyBoothId, setHourlyBoothId] = useState("");
-  const [hourlyDate, setHourlyDate] = useState(() => new Date().toISOString().slice(0, 10)); // 기본값 오늘
+  const [hourlyDate, setHourlyDate] = useState(() => toLocalDateString(new Date())); // 기본값 오늘 (로컬 시간대 기준)
   const [hourlyStats, setHourlyStats] = useState([]);
   const [hourlyLoading, setHourlyLoading] = useState(false);
   const [hourlyError, setHourlyError] = useState("");
@@ -230,10 +246,55 @@ export default function OrganizerAdmin() {
     setAppError("");
     setExpandedAppId(null);
     setAppFiles({});
+    setAppPage(0);
+    setAppHasMore(false);
     listEventApplications(selectedEventId, { page: 0, size: 100 })
-      .then((data) => { if (active) setApplications(data?.content || []); })
+      .then((data) => {
+        if (!active) return;
+        setApplications(data?.content || []);
+        // last가 false면 100건 초과 → "더 보기" 노출
+        setAppHasMore(data ? !data.last : false);
+      })
       .catch((error) => { if (active) setAppError(error.message || "신청 목록을 불러오지 못했습니다."); })
       .finally(() => { if (active) setAppLoading(false); });
+    return () => { active = false; };
+  }, [selectedEventId]);
+
+  // 다음 페이지 신청 로드 (100건 초과 행사 대응)
+  const loadMoreApplications = async () => {
+    if (!selectedEventId || appLoadingMore || !appHasMore) return;
+    const nextPage = appPage + 1;
+    setAppLoadingMore(true);
+    try {
+      const data = await listEventApplications(selectedEventId, { page: nextPage, size: 100 });
+      setApplications((prev) => [...prev, ...(data?.content || [])]);
+      setAppHasMore(data ? !data.last : false);
+      setAppPage(nextPage);
+    } catch (error) {
+      setAppError(error.message || "신청 목록을 더 불러오지 못했습니다.");
+    } finally {
+      setAppLoadingMore(false);
+    }
+  };
+
+  // 대시보드 카드용 정확한 카운트: 상태별 totalElements만 조회 (size:1 최소 요청)
+  // 목록이 100건에서 잘려도 카드 숫자는 서버 집계값으로 정확하게 표시된다
+  useEffect(() => {
+    if (!selectedEventId) { setAppCounts(null); return; }
+    let active = true;
+    Promise.all([
+      listEventApplications(selectedEventId, { status: "SUBMITTED", page: 0, size: 1 }),
+      listEventApplications(selectedEventId, { status: "UNDER_REVIEW", page: 0, size: 1 }),
+      listEventApplications(selectedEventId, { status: "APPROVED", page: 0, size: 1 }),
+    ])
+      .then(([submitted, underReview, approved]) => {
+        if (!active) return;
+        setAppCounts({
+          pending: (submitted?.totalElements || 0) + (underReview?.totalElements || 0),
+          approved: approved?.totalElements || 0,
+        });
+      })
+      .catch(() => { if (active) setAppCounts(null); }); // 실패 시 목록 기반 계산으로 폴백
     return () => { active = false; };
   }, [selectedEventId]);
 
@@ -369,24 +430,32 @@ export default function OrganizerAdmin() {
   const patchApplicationStatus = (applicationId, status) =>
     setApplications((prev) => prev.map((a) => (a.id === applicationId ? { ...a, status } : a)));
 
-  // APP-API-006: 검토 시작 (WBS-197)
+  // APP-API-006: 검토 시작 (WBS-197) - appActionId로 중복 클릭 방지
   const handleStartReview = async (applicationId) => {
+    if (appActionId) return; // 이미 처리 중인 요청이 있으면 무시
+    setAppActionId(applicationId);
     try {
       await startReview(applicationId);
       patchApplicationStatus(applicationId, "UNDER_REVIEW");
     } catch (error) {
       setAppError(error.message || "검토 시작에 실패했습니다.");
+    } finally {
+      setAppActionId(null);
     }
   };
 
-  // APP-API-007: 승인·부스 배정 (WBS-198)
+  // APP-API-007: 승인·부스 배정 (WBS-198) - 승인은 부스 배정을 동반하므로 중복 요청 차단 필수
   const handleApprove = async (applicationId) => {
+    if (appActionId) return;
     if (!window.confirm("이 신청을 승인하시겠습니까? 승인 시 부스가 자동 배정됩니다.")) return;
+    setAppActionId(applicationId);
     try {
       await approveApplication(applicationId);
       patchApplicationStatus(applicationId, "APPROVED");
     } catch (error) {
       setAppError(error.message || "승인에 실패했습니다.");
+    } finally {
+      setAppActionId(null);
     }
   };
 
@@ -410,18 +479,21 @@ export default function OrganizerAdmin() {
     }
   };
 
-  // APP-API-009: 신청서 행 펼침 시 첨부파일 1회 로드
-  const toggleAppDetail = async (applicationId) => {
+  // 첨부파일 로드 (실패 시 null 저장 → "첨부 없음"과 구분하고 재시도 가능)
+  const loadAppFiles = async (applicationId) => {
+    try {
+      const fileList = await listApplicationFiles(applicationId);
+      setAppFiles((prev) => ({ ...prev, [applicationId]: fileList || [] }));
+    } catch {
+      setAppFiles((prev) => ({ ...prev, [applicationId]: null }));
+    }
+  };
+
+  // APP-API-009: 신청서 행 펼침 시 첨부파일 1회 로드 (미조회 상태(undefined)일 때만 요청)
+  const toggleAppDetail = (applicationId) => {
     const next = expandedAppId === applicationId ? null : applicationId;
     setExpandedAppId(next);
-    if (next && !appFiles[next]) {
-      try {
-        const fileList = await listApplicationFiles(next);
-        setAppFiles((prev) => ({ ...prev, [next]: fileList || [] }));
-      } catch {
-        setAppFiles((prev) => ({ ...prev, [next]: [] }));
-      }
-    }
+    if (next && appFiles[next] === undefined) loadAppFiles(next);
   };
 
   // CONTENT-API-003/004: 공지·자료 등록/수정 (WBS-200)
@@ -497,105 +569,10 @@ export default function OrganizerAdmin() {
       active ? "border-primary bg-primary/10 text-primary font-body-strong shadow-sm" : "border-transparent text-on-surface-variant hover:border-primary/30 hover:bg-surface-container"
     }`;
 
-  // 신청서 행: 클릭 시 상세·첨부파일 펼침, 상태별 액션 버튼 노출 (WBS-197/198)
-  const AppRow = ({ a, compact = false }) => {
-    const badge = APP_BADGE[a.status] ?? { label: a.status, cls: "bg-surface-container text-ink-muted" };
-    const expanded = !compact && expandedAppId === a.id;
-    return (
-      <div>
-        <div
-          className="flex items-center gap-sm p-lg cursor-pointer hover:bg-surface-pearl/50 transition-colors"
-          onClick={() => !compact && toggleAppDetail(a.id)}
-        >
-          <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center flex-shrink-0">
-            <Icon name="description" className="text-[18px] text-ink-muted" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-body-strong text-[14px] truncate">{a.teamName}</p>
-            <p className="text-caption text-ink-muted">신청번호 {a.applicationNo} · 제출일 {formatDate(a.submittedAt)}</p>
-          </div>
-          <span className={`text-[11px] font-bold px-sm py-1 rounded-full whitespace-nowrap ${badge.cls}`}>{badge.label}</span>
-          {/* 상태별 액션: SUBMITTED→검토 시작, UNDER_REVIEW→승인/반려 */}
-          {a.status === "SUBMITTED" && (
-            <button
-              onClick={(e) => { e.stopPropagation(); handleStartReview(a.id); }}
-              className="text-[11px] font-bold px-sm py-1 rounded-full border border-status-pending text-status-pending hover:bg-status-pending/10 transition-colors whitespace-nowrap"
-            >
-              검토 시작
-            </button>
-          )}
-          {a.status === "UNDER_REVIEW" && (
-            <div className="flex gap-xs">
-              <button
-                onClick={(e) => { e.stopPropagation(); handleApprove(a.id); }}
-                title="승인"
-                className="w-8 h-8 rounded-full bg-status-available/10 text-status-available flex items-center justify-center"
-              >
-                <Icon name="check" className="text-[16px]" />
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); openRejectModal(a); }}
-                title="반려"
-                className="w-8 h-8 rounded-full bg-status-visited/10 text-status-visited flex items-center justify-center"
-              >
-                <Icon name="close" className="text-[16px]" />
-              </button>
-            </div>
-          )}
-          {!compact && <Icon name={expanded ? "expand_less" : "expand_more"} className="text-ink-muted text-[18px]" />}
-        </div>
-
-        {/* 펼침 상세: 신청 내용 + 첨부파일 */}
-        {expanded && (
-          <div className="px-lg pb-lg space-y-md bg-surface-pearl/30">
-            <div className="grid grid-cols-2 gap-sm text-caption pt-md">
-              <p><span className="text-ink-muted">담당자</span> {a.contactName}</p>
-              <p><span className="text-ink-muted">연락처</span> {a.contactPhone}</p>
-              <p className="col-span-2"><span className="text-ink-muted">이메일</span> {a.contactEmail}</p>
-              {a.expectedVisitors != null && <p><span className="text-ink-muted">예상 방문객</span> {a.expectedVisitors}명</p>}
-              <p className="col-span-2">
-                <span className="text-ink-muted">설비</span>{" "}
-                {[
-                  a.electricityRequired && "전기",
-                  a.waterRequired && "급수",
-                  a.drainageRequired && "배수",
-                  a.internetRequired && "인터넷",
-                ].filter(Boolean).join(", ") || "요청 없음"}
-              </p>
-            </div>
-            <div className="space-y-xs">
-              <p className="text-caption font-body-strong">활동 소개</p>
-              <p className="text-caption bg-white rounded-lg p-md whitespace-pre-line">{a.activityDescription}</p>
-            </div>
-            <div className="space-y-xs">
-              <p className="text-caption font-body-strong">전시 내용</p>
-              <p className="text-caption bg-white rounded-lg p-md whitespace-pre-line">{a.exhibitionContent}</p>
-            </div>
-            <div className="space-y-xs">
-              <p className="text-caption font-body-strong">첨부파일</p>
-              {appFiles[a.id] === undefined ? (
-                <p className="text-caption text-ink-muted">불러오는 중...</p>
-              ) : appFiles[a.id].length === 0 ? (
-                <p className="text-caption text-ink-muted">첨부파일이 없습니다.</p>
-              ) : (
-                <div className="flex flex-col gap-xs items-start">
-                  {appFiles[a.id].map((file) => (
-                    <FileDownloadLink
-                      key={file.fileId}
-                      downloadUrl={file.downloadUrl}
-                      fileId={file.fileId}
-                      fileName={`[${file.fileType === "ESTIMATE" ? "견적서" : "기타"}] ${file.originalName}`}
-                      fileSize={file.fileSize}
-                      className="bg-white"
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
+  // 첨부파일 재시도: 실패 캐시(null)를 초기화하고 다시 로드
+  const retryAppFiles = (applicationId) => {
+    setAppFiles((prev) => ({ ...prev, [applicationId]: undefined }));
+    loadAppFiles(applicationId);
   };
 
   return (
@@ -701,11 +678,12 @@ export default function OrganizerAdmin() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-lg">
                 <div className="bg-surface-pearl p-lg rounded-xl border border-hairline">
                   <div className="flex justify-between items-start mb-md"><span className="text-caption text-on-surface-variant">검토 대기 신청서</span><Icon name="schedule" className="text-status-pending" /></div>
-                  <span className="font-display-md text-[26px]">{appLoading ? "..." : pending.length}</span>
+                  {/* appCounts(서버 totalElements) 우선, 실패 시 로드된 목록 기반 폴백 */}
+                  <span className="font-display-md text-[26px]">{appLoading ? "..." : (appCounts?.pending ?? pending.length)}</span>
                 </div>
                 <div className="bg-surface-pearl p-lg rounded-xl border border-hairline">
                   <div className="flex justify-between items-start mb-md"><span className="text-caption text-on-surface-variant">승인된 신청서</span><Icon name="grid_view" className="text-status-assigned" /></div>
-                  <span className="font-display-md text-[26px]">{appLoading ? "..." : approvedCount}</span>
+                  <span className="font-display-md text-[26px]">{appLoading ? "..." : (appCounts?.approved ?? approvedCount)}</span>
                 </div>
                 <div className="bg-surface-pearl p-lg rounded-xl border border-hairline">
                   <div className="flex justify-between items-start mb-md"><span className="text-caption text-on-surface-variant">부스 예약 건수</span><Icon name="group" className="text-status-available" /></div>
@@ -788,7 +766,17 @@ export default function OrganizerAdmin() {
                   {pending.length === 0 ? (
                     <p className="p-lg text-caption text-ink-muted">검토할 신청서가 없습니다.</p>
                   ) : (
-                    pending.map((a) => <AppRow key={a.id} a={a} compact />)
+                    pending.map((a) => (
+                      <AppRow
+                        key={a.id}
+                        a={a}
+                        compact
+                        appActionId={appActionId}
+                        onStartReview={handleStartReview}
+                        onApprove={handleApprove}
+                        onOpenReject={openRejectModal}
+                      />
+                    ))
                   )}
                 </div>
               </div>
@@ -817,7 +805,31 @@ export default function OrganizerAdmin() {
                       {selectedEventId ? "접수된 신청서가 없습니다." : "행사를 먼저 선택해 주세요."}
                     </p>
                   ) : (
-                    applications.map((a) => <AppRow key={a.id} a={a} />)
+                    applications.map((a) => (
+                      <AppRow
+                        key={a.id}
+                        a={a}
+                        expanded={expandedAppId === a.id}
+                        files={appFiles[a.id]}
+                        appActionId={appActionId}
+                        onToggle={toggleAppDetail}
+                        onStartReview={handleStartReview}
+                        onApprove={handleApprove}
+                        onOpenReject={openRejectModal}
+                        onRetryFiles={retryAppFiles}
+                      />
+                    ))
+                  )}
+                  {/* 100건 초과 시 다음 페이지 로드 */}
+                  {appHasMore && (
+                    <button
+                      type="button"
+                      onClick={loadMoreApplications}
+                      disabled={appLoadingMore}
+                      className="w-full p-md text-caption text-primary hover:bg-surface-pearl/50 transition-colors disabled:opacity-50"
+                    >
+                      {appLoadingMore ? "불러오는 중..." : "신청서 더 보기"}
+                    </button>
                   )}
                 </div>
               )}
@@ -1141,6 +1153,133 @@ export default function OrganizerAdmin() {
               </button>
             </div>
           </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 신청서 행: 클릭 시 상세·첨부파일 펼침, 상태별 액션 버튼 노출 (WBS-197/198)
+// OrganizerAdmin 본문 밖에 정의 - 본문 안에 두면 매 렌더마다 새 컴포넌트 타입으로
+// 인식되어 하위 트리가 통째로 리마운트되므로(펼침 상세 DOM 상태 초기화) 분리했다
+function AppRow({
+  a,
+  compact = false,
+  expanded = false,
+  files,          // appFiles[a.id]: undefined=로딩, null=실패, []=없음, [...]=목록
+  appActionId,    // 처리 중인 신청 ID (버튼 비활성화)
+  onToggle,
+  onStartReview,
+  onApprove,
+  onOpenReject,
+  onRetryFiles,
+}) {
+  const badge = APP_BADGE[a.status] ?? { label: a.status, cls: "bg-surface-container text-ink-muted" };
+  const isExpanded = !compact && expanded;
+  return (
+    <div>
+      <div
+        className="flex items-center gap-sm p-lg cursor-pointer hover:bg-surface-pearl/50 transition-colors"
+        onClick={() => !compact && onToggle(a.id)}
+      >
+        <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center flex-shrink-0">
+          <Icon name="description" className="text-[18px] text-ink-muted" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-body-strong text-[14px] truncate">{a.teamName}</p>
+          <p className="text-caption text-ink-muted">신청번호 {a.applicationNo} · 제출일 {formatDate(a.submittedAt)}</p>
+        </div>
+        <span className={`text-[11px] font-bold px-sm py-1 rounded-full whitespace-nowrap ${badge.cls}`}>{badge.label}</span>
+        {/* 상태별 액션: SUBMITTED→검토 시작, UNDER_REVIEW→승인/반려 */}
+        {a.status === "SUBMITTED" && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onStartReview(a.id); }}
+            disabled={appActionId === a.id}
+            className="text-[11px] font-bold px-sm py-1 rounded-full border border-status-pending text-status-pending hover:bg-status-pending/10 transition-colors whitespace-nowrap disabled:opacity-50"
+          >
+            {appActionId === a.id ? "처리 중..." : "검토 시작"}
+          </button>
+        )}
+        {a.status === "UNDER_REVIEW" && (
+          <div className="flex gap-xs">
+            <button
+              onClick={(e) => { e.stopPropagation(); onApprove(a.id); }}
+              disabled={appActionId === a.id}
+              title="승인"
+              className="w-8 h-8 rounded-full bg-status-available/10 text-status-available flex items-center justify-center disabled:opacity-50"
+            >
+              <Icon name="check" className="text-[16px]" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onOpenReject(a); }}
+              title="반려"
+              className="w-8 h-8 rounded-full bg-status-visited/10 text-status-visited flex items-center justify-center"
+            >
+              <Icon name="close" className="text-[16px]" />
+            </button>
+          </div>
+        )}
+        {!compact && <Icon name={isExpanded ? "expand_less" : "expand_more"} className="text-ink-muted text-[18px]" />}
+      </div>
+
+      {/* 펼침 상세: 신청 내용 + 첨부파일 */}
+      {isExpanded && (
+        <div className="px-lg pb-lg space-y-md bg-surface-pearl/30">
+          <div className="grid grid-cols-2 gap-sm text-caption pt-md">
+            <p><span className="text-ink-muted">담당자</span> {a.contactName}</p>
+            <p><span className="text-ink-muted">연락처</span> {a.contactPhone}</p>
+            <p className="col-span-2"><span className="text-ink-muted">이메일</span> {a.contactEmail}</p>
+            {a.expectedVisitors != null && <p><span className="text-ink-muted">예상 방문객</span> {a.expectedVisitors}명</p>}
+            <p className="col-span-2">
+              <span className="text-ink-muted">설비</span>{" "}
+              {[
+                a.electricityRequired && "전기",
+                a.waterRequired && "급수",
+                a.drainageRequired && "배수",
+                a.internetRequired && "인터넷",
+              ].filter(Boolean).join(", ") || "요청 없음"}
+            </p>
+          </div>
+          <div className="space-y-xs">
+            <p className="text-caption font-body-strong">활동 소개</p>
+            <p className="text-caption bg-white rounded-lg p-md whitespace-pre-line">{a.activityDescription}</p>
+          </div>
+          <div className="space-y-xs">
+            <p className="text-caption font-body-strong">전시 내용</p>
+            <p className="text-caption bg-white rounded-lg p-md whitespace-pre-line">{a.exhibitionContent}</p>
+          </div>
+          <div className="space-y-xs">
+            <p className="text-caption font-body-strong">첨부파일</p>
+            {files === undefined ? (
+              <p className="text-caption text-ink-muted">불러오는 중...</p>
+            ) : files === null ? (
+              /* 조회 실패: "첨부 없음"과 구분해 재시도 버튼 제공 */
+              <p className="text-caption text-error">
+                첨부파일을 불러오지 못했습니다.{" "}
+                <button
+                  onClick={(e) => { e.stopPropagation(); onRetryFiles(a.id); }}
+                  className="underline"
+                >
+                  다시 시도
+                </button>
+              </p>
+            ) : files.length === 0 ? (
+              <p className="text-caption text-ink-muted">첨부파일이 없습니다.</p>
+            ) : (
+              <div className="flex flex-col gap-xs items-start">
+                {files.map((file) => (
+                  <FileDownloadLink
+                    key={file.fileId}
+                    downloadUrl={file.downloadUrl}
+                    fileId={file.fileId}
+                    fileName={`[${file.fileType === "ESTIMATE" ? "견적서" : "기타"}] ${file.originalName}`}
+                    fileSize={file.fileSize}
+                    className="bg-white"
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

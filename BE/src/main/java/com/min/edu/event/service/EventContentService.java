@@ -3,10 +3,12 @@ package com.min.edu.event.service;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.domain.Event;
 import com.min.edu.event.domain.EventContent;
 import com.min.edu.event.domain.EventContentAudience;
 import com.min.edu.event.domain.EventContentType;
 import com.min.edu.event.domain.EventRole;
+import com.min.edu.event.domain.EventStatus;
 import com.min.edu.event.dto.EventContentDtos;
 import com.min.edu.event.repository.EventContentRepository;
 import com.min.edu.event.repository.EventMemberRepository;
@@ -21,6 +23,9 @@ import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import java.time.OffsetDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -82,10 +87,88 @@ public class EventContentService {
         // 상단 고정 공지 우선(pinned DESC), 최신순(publishedAt DESC) 정렬
         Sort sort = Sort.by(Sort.Order.desc("pinned"), Sort.Order.desc("publishedAt"));
 
-        return eventContentRepository.findAll(spec, sort)
-                .stream()
-                .map(EventContentDtos.Summary::from)
+        List<EventContent> contents = eventContentRepository.findAll(spec, sort);
+
+        // 첨부파일 메타(원본명·크기)를 일괄 조회해 응답에 포함 (파일별 N+1 쿼리 방지)
+        Map<Long, FileAsset> fileAssets = loadFileAssets(contents);
+
+        return contents.stream()
+                .map(c -> EventContentDtos.Summary.from(c, findFileAsset(fileAssets, c.getFileId())))
                 .toList();
+    }
+
+    /**
+     * 전체 공지·자료 목록 조회 (CONTENT-API-006)
+     *
+     * 공개(PUBLISHED) 행사의 공지·자료를 행사 이름과 함께 한 번에 반환한다.
+     * 공지사항 페이지(/notices)가 행사별로 N번 호출하던 것을 1회 호출로 대체.
+     *
+     * audience 정책: PLATFORM_ADMIN은 전체, 그 외(비로그인 포함)는 ALL만 노출
+     *
+     * @param contentType 콘텐츠 유형 필터 (null이면 전체)
+     * @param member      인증 회원 (비로그인이면 null)
+     */
+    public List<EventContentDtos.BoardItem> listAllContents(
+            EventContentType contentType, AuthenticatedMemberDto member) {
+
+        // 공개된 행사만 대상 → id → 행사 이름 맵
+        List<Event> publishedEvents = eventRepository.findAllByStatus(EventStatus.PUBLISHED);
+        if (publishedEvents.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, String> eventNames = publishedEvents.stream()
+                .collect(Collectors.toMap(Event::getId, Event::getName));
+
+        // 전체 목록은 공개 페이지 용도이므로 ALL audience만 (PLATFORM_ADMIN은 전체)
+        List<EventContentAudience> allowedAudiences =
+                (member != null && member.getPlatformRole() == PlatformRole.PLATFORM_ADMIN)
+                        ? Arrays.asList(EventContentAudience.values())
+                        : List.of(EventContentAudience.ALL);
+
+        Specification<EventContent> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(root.get("eventId").in(eventNames.keySet()));
+            predicates.add(root.get("audience").in(allowedAudiences));
+            if (contentType != null) {
+                predicates.add(cb.equal(root.get("contentType"), contentType));
+            }
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
+
+        Sort sort = Sort.by(Sort.Order.desc("pinned"), Sort.Order.desc("publishedAt"));
+        List<EventContent> contents = eventContentRepository.findAll(spec, sort);
+
+        // 첨부파일 메타 일괄 조회 (N+1 방지)
+        Map<Long, FileAsset> fileAssets = loadFileAssets(contents);
+
+        return contents.stream()
+                .map(c -> new EventContentDtos.BoardItem(
+                        eventNames.get(c.getEventId()),
+                        EventContentDtos.Summary.from(c, findFileAsset(fileAssets, c.getFileId()))))
+                .toList();
+    }
+
+    /**
+     * 맵에서 파일 메타 조회 (null 안전)
+     * Map.of()로 만든 불변 맵은 get(null) 호출 시 NPE를 던지므로
+     * fileId가 없는(첨부 없는) 콘텐츠는 맵 조회 없이 null 반환
+     */
+    private FileAsset findFileAsset(Map<Long, FileAsset> fileAssets, Long fileId) {
+        return fileId != null ? fileAssets.get(fileId) : null;
+    }
+
+    /** 콘텐츠 목록의 fileId를 모아 FileAsset을 일괄 조회 (fileId → FileAsset 맵) */
+    private Map<Long, FileAsset> loadFileAssets(List<EventContent> contents) {
+        List<Long> fileIds = contents.stream()
+                .map(EventContent::getFileId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (fileIds.isEmpty()) {
+            return Map.of();
+        }
+        return fileAssetRepository.findAllById(fileIds).stream()
+                .collect(Collectors.toMap(FileAsset::getId, f -> f));
     }
 
     /**
@@ -112,7 +195,12 @@ public class EventContentService {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
 
-        return EventContentDtos.Summary.from(content);
+        // 첨부파일이 있으면 원본명·크기 포함
+        FileAsset fileAsset = content.getFileId() != null
+                ? fileAssetRepository.findById(content.getFileId()).orElse(null)
+                : null;
+
+        return EventContentDtos.Summary.from(content, fileAsset);
     }
 
     /**
@@ -148,13 +236,14 @@ public class EventContentService {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
 
-        // 파일이 있으면 업로드 후 fileId 획득 (롤백 보상을 위해 storageKey 보관)
+        // 파일이 있으면 업로드 후 fileId 획득 (롤백 보상을 위해 FileAsset 보관)
         Long fileId = null;
+        FileAsset uploadedAsset = null;
         String uploadedStorageKey = null;
         if (file != null && !file.isEmpty()) {
             fileId = fileService.upload(file, FileAccessLevel.PRIVATE, member.getMemberId()).getFileId();
-            uploadedStorageKey = fileAssetRepository.findById(fileId)
-                    .map(FileAsset::getStorageKey).orElse(null);
+            uploadedAsset = fileAssetRepository.findById(fileId).orElse(null);
+            uploadedStorageKey = uploadedAsset != null ? uploadedAsset.getStorageKey() : null;
         }
 
         OffsetDateTime now = OffsetDateTime.now();
@@ -173,7 +262,7 @@ public class EventContentService {
         );
 
         try {
-            return EventContentDtos.Summary.from(eventContentRepository.save(content));
+            return EventContentDtos.Summary.from(eventContentRepository.save(content), uploadedAsset);
         } catch (Exception e) {
             // 트랜잭션 롤백 시 S3 고아 파일 보상 삭제
             if (uploadedStorageKey != null) {
@@ -221,12 +310,13 @@ public class EventContentService {
         // 새 파일이 있으면 업로드 후 fileId 교체, 없으면 기존 fileId 유지
         Long oldFileId = content.getFileId();
         Long fileId = oldFileId;
+        FileAsset newAsset = null;
         String newStorageKey = null;
 
         if (file != null && !file.isEmpty()) {
             fileId = fileService.upload(file, FileAccessLevel.PRIVATE, member.getMemberId()).getFileId();
-            newStorageKey = fileAssetRepository.findById(fileId)
-                    .map(FileAsset::getStorageKey).orElse(null);
+            newAsset = fileAssetRepository.findById(fileId).orElse(null);
+            newStorageKey = newAsset != null ? newAsset.getStorageKey() : null;
         }
 
         try {
@@ -242,7 +332,12 @@ public class EventContentService {
                     OffsetDateTime.now()
             );
 
-            EventContentDtos.Summary result = EventContentDtos.Summary.from(content);
+            // 응답용 파일 메타: 새 파일이면 newAsset, 기존 유지면 기존 파일 조회
+            FileAsset resultAsset = newAsset != null
+                    ? newAsset
+                    : (fileId != null ? fileAssetRepository.findById(fileId).orElse(null) : null);
+
+            EventContentDtos.Summary result = EventContentDtos.Summary.from(content, resultAsset);
 
             // 파일 교체 완료 후 기존 파일 S3·DB에서 삭제
             if (newStorageKey != null && oldFileId != null) {

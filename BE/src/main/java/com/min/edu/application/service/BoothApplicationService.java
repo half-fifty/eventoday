@@ -21,11 +21,6 @@ import com.min.edu.booth.repository.BoothOrganizationMemberRepository;
 import com.min.edu.booth.repository.BoothRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
-import com.min.edu.common.mail.EmailMessage;
-import com.min.edu.common.mail.EmailSender;
-import com.min.edu.notification.domain.NotificationType;
-import com.min.edu.notification.dto.NotificationEventDto;
-import com.min.edu.notification.producer.NotificationProducer;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventRepository;
@@ -45,6 +40,7 @@ import java.util.Locale;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -71,8 +67,7 @@ public class BoothApplicationService {
     private final EventMemberRepository eventMemberRepository;
     private final EventRepository eventRepository;
     private final FileStorageService fileStorageService;
-    private final NotificationProducer notificationProducer; // 승인·반려 사이트 알림 발송
-    private final EmailSender emailSender;                   // 승인·반려 이메일 발송
+    private final ApplicationEventPublisher applicationEventPublisher; // 승인·반려 알림 이벤트 발행 (커밋 후 리스너가 발송)
 
     /**
      * 부스 신청 제출
@@ -301,8 +296,11 @@ public class BoothApplicationService {
         log.info("부스 신청 승인 - applicationId: {}, boothId: {}, organizationId: {}, reviewedBy: {}",
                 applicationId, booth.getId(), application.getApplicantOrganizationId(), member.getMemberId());
 
-        // 신청자에게 승인 알림 + 이메일 발송
-        sendDecisionNotification(application, true, null);
+        // 승인 알림 이벤트 발행 → 커밋 이후 BoothApplicationNotificationListener가 알림·메일 발송
+        applicationEventPublisher.publishEvent(new BoothApplicationDecision(
+                application.getId(), application.getApplicationNo(),
+                application.getApplicantMemberId(), application.getContactEmail(),
+                true, null));
     }
 
     /**
@@ -341,49 +339,11 @@ public class BoothApplicationService {
         log.info("부스 신청 반려 - applicationId: {}, boothId: {}, reviewedBy: {}",
                 applicationId, booth.getId(), member.getMemberId());
 
-        // 신청자에게 반려 알림 + 이메일 발송
-        sendDecisionNotification(application, false, request.getRejectionReason());
-    }
-
-    /**
-     * 부스 신청 승인/반려 결과를 신청자에게 사이트 알림 + 이메일로 발송
-     * - 알림/메일 실패가 승인·반려 트랜잭션을 롤백시키지 않도록 try-catch로 감싼다
-     *   (EventReviewNotificationListener와 동일한 방식)
-     */
-    private void sendDecisionNotification(BoothApplication application, boolean approved, String rejectionReason) {
-        String result = approved ? "승인" : "반려";
-        String title = String.format("부스 신청이 %s되었습니다", result);
-        String content = approved
-                ? String.format("신청번호 %s 부스 신청이 승인되었습니다.", application.getApplicationNo())
-                : String.format("신청번호 %s 부스 신청이 반려되었습니다. 사유: %s",
-                        application.getApplicationNo(), rejectionReason);
-        NotificationType type = approved
-                ? NotificationType.BOOTH_APPLICATION_APPROVED
-                : NotificationType.BOOTH_APPLICATION_REJECTED;
-
-        // 사이트 알림: 신청서를 제출한 회원에게 발송
-        try {
-            NotificationEventDto notification = NotificationEventDto.create(
-                    application.getApplicantMemberId(), // 받을 회원 ID
-                    type,                               // 알림 종류
-                    "BOOTH_APPLICATION",                // 이동할 대상 종류
-                    application.getId(),                // 이동할 대상 ID
-                    title,
-                    content);
-            notificationProducer.send(notification); // Kafka에 알림을 넣어서 보내기
-        } catch (RuntimeException exception) {
-            log.error("부스 신청 {} 알림 발송 실패 - applicationId: {}", result, application.getId(), exception);
-        }
-
-        // 이메일: 신청서에 기재된 담당자 이메일로 발송
-        try {
-            emailSender.send(new EmailMessage(
-                    application.getContactEmail(),
-                    "[EVENTODAY] " + title,
-                    "<h2>" + title + "</h2><p>" + content + "</p>"));
-        } catch (RuntimeException exception) {
-            log.error("부스 신청 {} 메일 발송 실패 - applicationId: {}", result, application.getId(), exception);
-        }
+        // 반려 알림 이벤트 발행 → 커밋 이후 BoothApplicationNotificationListener가 알림·메일 발송
+        applicationEventPublisher.publishEvent(new BoothApplicationDecision(
+                application.getId(), application.getApplicationNo(),
+                application.getApplicantMemberId(), application.getContactEmail(),
+                false, request.getRejectionReason()));
     }
 
     /**

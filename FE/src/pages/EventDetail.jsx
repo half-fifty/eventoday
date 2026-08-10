@@ -63,7 +63,10 @@ export default function EventDetail() {
         if (cancelled) return;
         const list = Array.isArray(data) ? data : [];
         // 고정 공지 우선, 이후 게시일 최신순 정렬
-        list.sort((a, b) => (b.pinned - a.pinned) || new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+        // pinned가 undefined면 뺄셈 결과가 NaN이 되므로 boolean → 숫자로 정규화
+        list.sort((a, b) =>
+          (Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)))
+          || new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
         setContents(list);
       })
       .catch(() => { if (!cancelled) setContents([]); });
@@ -205,8 +208,13 @@ export default function EventDetail() {
                         {expandedContentId === content.contentId && (
                           <div className="px-lg pb-lg space-y-sm">
                             {content.content && <p className="text-caption whitespace-pre-line bg-surface-pearl rounded-lg p-md">{content.content}</p>}
+                            {/* fileName·fileSize: BE Summary에 포함된 원본 파일명·크기 (다운로드 파일명으로 사용) */}
                             {content.fileId && (
-                              <FileDownloadLink fileId={content.fileId} fileName="첨부파일 다운로드" />
+                              <FileDownloadLink
+                                fileId={content.fileId}
+                                fileName={content.fileName || "첨부파일"}
+                                fileSize={content.fileSize}
+                              />
                             )}
                           </div>
                         )}
