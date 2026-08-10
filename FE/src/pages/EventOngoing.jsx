@@ -86,6 +86,15 @@ export default function EventOngoing() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEventId]);
 
+  // 뒤로가기·앞으로가기 등 외부 내비게이션으로 URL의 eventId가 바뀌면 선택 상태도 맞춘다.
+  useEffect(() => {
+    const urlEventId = searchParams.get("eventId") || "";
+    if (urlEventId && urlEventId !== selectedEventId) {
+      setSelectedEventId(urlEventId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   useEffect(() => {
     if (!selectedEventId) return;
     let cancelled = false;
@@ -109,7 +118,7 @@ export default function EventOngoing() {
   }, [selectedEventId]);
 
   useEffect(() => {
-    if (!selectedEventId) return;
+    if (!selectedEventId || !eventDetail?.venueMapEnabled) return;
     let cancelled = false;
 
     setVenueMaps([]);
@@ -132,7 +141,7 @@ export default function EventOngoing() {
     return () => {
       cancelled = true;
     };
-  }, [selectedEventId]);
+  }, [selectedEventId, eventDetail?.venueMapEnabled]);
 
   const top3 = useMemo(
     () => [...booths].sort((a, b) => b.congestion - a.congestion).slice(0, 3),

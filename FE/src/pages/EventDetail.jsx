@@ -49,7 +49,7 @@ export default function EventDetail() {
   }, [eventId]);
 
   useEffect(() => {
-    if (!eventId) return;
+    if (!eventId || !event?.venueMapEnabled) return;
     let cancelled = false;
     setVenueMaps([]);
     setVenueMapError("");
@@ -64,7 +64,7 @@ export default function EventDetail() {
       })
       .finally(() => { if (!cancelled) setLoadingVenueMaps(false); });
     return () => { cancelled = true; };
-  }, [eventId]);
+  }, [eventId, event?.venueMapEnabled]);
 
   const submitTicketOrder = async (submitEvent) => {
     submitEvent.preventDefault();
