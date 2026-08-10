@@ -23,6 +23,8 @@ import EventMembers from "./pages/EventMembers.jsx";
 import OrganizerAdvertisements from "./pages/OrganizerAdvertisements.jsx";
 import AdvertisementPaymentResult from "./pages/AdvertisementPaymentResult.jsx";
 import TicketPaymentResult from "./pages/TicketPaymentResult.jsx";
+import TicketOrderDetail from "./pages/TicketOrderDetail.jsx";
+import PaymentDetail from "./pages/PaymentDetail.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import VenueGuide from "./pages/VenueGuide.jsx";
 import { AuthProvider } from "./auth/AuthProvider.jsx";
@@ -60,6 +62,8 @@ const router = createBrowserRouter([
   { path: "/organizer-admin/advertisements/payment/fail", element: <AdvertisementPaymentResult failed /> },
   { path: "/tickets/payment/success", element: <TicketPaymentResult /> },
   { path: "/tickets/payment/fail", element: <TicketPaymentResult failed /> },
+  { path: "/tickets/orders/:orderNo", element: <TicketOrderDetail /> },
+  { path: "/payments/:paymentId", element: <PaymentDetail /> },
   {
     path: "/platform-admin",
     element: (

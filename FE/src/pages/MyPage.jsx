@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
+import { paymentApi } from "../api/paymentApi.js";
 import useAuth from "../hooks/useAuth.js";
 import { useNotifications } from "../notifications/NotificationContext.jsx";
 
@@ -18,6 +19,18 @@ const subtabs = [
   { key: "visited", label: "방문한 부스" },
 ];
 const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 41 + 7) % 7 < 3);
+const formatDateTime = (value) =>
+  value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
+const formatMoney = (value) => `${Number(value || 0).toLocaleString("ko-KR")}원`;
+const orderStatusLabel = {
+  PENDING: "대기",
+  PAID: "결제 완료",
+  CONFIRMED: "확정",
+  CANCELLED: "취소",
+  EXPIRED: "만료",
+  FAILED: "실패",
+  REFUNDED: "환불 완료",
+};
 
 export default function MyPage() {
   const { member, logout } = useAuth();
@@ -56,6 +69,9 @@ export default function MyPage() {
   const [redeemMsg, setRedeemMsg] = useState(null); // { ok, text }
   const [rating, setRating] = useState(0);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [ticketOrders, setTicketOrders] = useState([]);
+  const [ticketOrdersLoading, setTicketOrdersLoading] = useState(false);
+  const [ticketOrdersError, setTicketOrdersError] = useState("");
   const loginDescription = isBusinessMember
     ? `${member.organization?.name || "사업자"} · 사업자 계정`
     : "일반 회원";
@@ -82,6 +98,26 @@ export default function MyPage() {
     if (!visibleTabKeys.includes(tab)) {
       setTab(visibleTabKeys[0]);
     }
+  }, [isBusinessMember, tab]);
+
+  useEffect(() => {
+    if (isBusinessMember || tab !== "tickets") return;
+    let cancelled = false;
+    setTicketOrdersLoading(true);
+    setTicketOrdersError("");
+    paymentApi.getMyTicketOrders({ page: 0, size: 20 })
+      .then((result) => {
+        if (!cancelled) setTicketOrders(result?.data?.content || []);
+      })
+      .catch((requestError) => {
+        if (!cancelled) setTicketOrdersError(requestError.message || "예매 내역을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setTicketOrdersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isBusinessMember, tab]);
 
   const handleLogout = async () => {
@@ -222,22 +258,28 @@ export default function MyPage() {
 
               <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
                 <div className="p-lg font-body-strong">예매한 행사</div>
-                <div className="flex items-center gap-md p-lg">
-                  <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#ff9966,#ff5e62)" }}><Icon name="confirmation_number" className="text-[18px]" /></div>
-                  <div className="flex-1">
-                    <p className="font-body-strong">2026 서울 푸드테크 박람회</p>
-                    <p className="text-caption text-ink-muted">코엑스 · 08.12–08.14</p>
-                  </div>
-                  <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-status-blocked/10 text-status-blocked">입장 완료</span>
-                </div>
-                <div className="flex items-center gap-md p-lg">
-                  <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#ee9ca7,#ffdde1)" }}><Icon name="confirmation_number" className="text-[18px]" /></div>
-                  <div className="flex-1">
-                    <p className="font-body-strong">K-뷰티 & 코스메틱 전시회</p>
-                    <p className="text-caption text-ink-muted">코엑스 · 09.10–09.13</p>
-                  </div>
-                  <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-primary-container/10 text-primary-focus">사용 전</span>
-                </div>
+                {ticketOrdersLoading && (
+                  <p className="p-lg text-caption text-ink-muted">예매 내역을 불러오는 중입니다.</p>
+                )}
+                {ticketOrdersError && (
+                  <p className="p-lg text-caption text-error">{ticketOrdersError}</p>
+                )}
+                {!ticketOrdersLoading && !ticketOrdersError && ticketOrders.length === 0 && (
+                  <p className="p-lg text-caption text-ink-muted">아직 구매한 티켓이 없습니다.</p>
+                )}
+                {!ticketOrdersLoading && !ticketOrdersError && ticketOrders.map((order) => (
+                  <Link key={order.orderNo} to={`/tickets/orders/${order.orderNo}`} className="flex items-center gap-md p-lg transition-colors hover:bg-surface-container-low">
+                    <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#ff9966,#ff5e62)" }}><Icon name="confirmation_number" className="text-[18px]" /></div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-body-strong truncate">{order.eventName}</p>
+                      <p className="text-caption text-ink-muted">주문 {order.orderNo} · {order.quantity}매 · {formatMoney(order.totalAmount)}</p>
+                      <p className="text-[11px] text-ink-muted">주문 일시 {formatDateTime(order.createdAt)}</p>
+                    </div>
+                    <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-primary-container/10 text-primary-focus">
+                      {orderStatusLabel[order.ticketOrderStatus] || order.ticketOrderStatus}
+                    </span>
+                  </Link>
+                ))}
               </div>
             </div>
           )}
