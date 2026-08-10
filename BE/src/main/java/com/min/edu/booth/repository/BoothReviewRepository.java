@@ -6,36 +6,45 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
-@Repository
 public interface BoothReviewRepository extends JpaRepository<BoothReview, Long> {
 
-    @Query("SELECT br FROM BoothReview br WHERE br.id = :id AND br.boothId = :boothId")
-    Optional<BoothReview> findByIdAndBoothId(@Param("id") Long id, @Param("boothId") Long boothId);
-
-
-    // 회원의 부스 리뷰 조회 (중복 방지)
+    // 기존 메서드들
     Optional<BoothReview> findByMemberIdAndBoothId(Long memberId, Long boothId);
 
-    // 부스별 평균 별점 조회
-    @Query("SELECT AVG(br.rating) FROM BoothReview br WHERE br.boothId = :boothId")
-    Optional<Double> findAverageRatingByBoothId(@Param("boothId") Long boothId);
+    Optional<Double> findAverageRatingByBoothId(Long boothId);
 
-    // 부스별 리뷰 개수
-    @Query("SELECT COUNT(br) FROM BoothReview br WHERE br.boothId = :boothId")
-    long countByBoothId(@Param("boothId") Long boothId);
+    long countByBoothId(Long boothId);
 
-    // ===== WBS-159: 부스별 후기 목록 =====
     Page<BoothReview> findByBoothIdOrderByCreatedAtDesc(Long boothId, Pageable pageable);
 
-    // ===== WBS-160: 내 작성 후기 목록 =====
     Page<BoothReview> findByMemberIdOrderByCreatedAtDesc(Long memberId, Pageable pageable);
 
+    Page<BoothReview> findByBoothIdAndCommentContainingIgnoreCase(Long boothId, String keyword, Pageable pageable);
 
-    Page<BoothReview> findByBoothIdAndCommentContainingIgnoreCase(
-            Long boothId, String keyword, Pageable pageable);
+    Optional<BoothReview> findByIdAndBoothId(Long id, Long boothId);
 
+    // ===== 새로운 Batch 쿼리 메서드 =====
+
+    /**
+     * 여러 부스의 평점을 Batch로 조회
+     *
+     * @param boothIds 부스 ID 목록
+     * @return [[boothId, averageRating], ...]
+     */
+    @Query("SELECT br.boothId, AVG(br.rating) FROM BoothReview br WHERE br.boothId IN :boothIds GROUP BY br.boothId")
+    List<Object[]> findAverageRatingsByBoothIds(@Param("boothIds") Collection<Long> boothIds);
+
+    /**
+     * 여러 부스의 후기 수를 Batch로 조회
+     *
+     * @param boothIds 부스 ID 목록
+     * @return [[boothId, count], ...]
+     */
+    @Query("SELECT br.boothId, COUNT(br.id) FROM BoothReview br WHERE br.boothId IN :boothIds GROUP BY br.boothId")
+    List<Object[]> findReviewCountsByBoothIds(@Param("boothIds") Collection<Long> boothIds);
 }

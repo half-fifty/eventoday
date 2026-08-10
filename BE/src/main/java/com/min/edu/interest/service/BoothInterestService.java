@@ -1,5 +1,6 @@
 package com.min.edu.interest.service;
 
+import com.min.edu.booth.domain.BoothInterest;
 import com.min.edu.interest.dto.InterestBoothResponse;
 import com.min.edu.interest.repository.BoothInterestRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,14 @@ public class BoothInterestService {
     private final BoothInterestRepository boothInterestRepository;
 
     public void register(Long memberId, Long boothId) {
-        boothInterestRepository.upsertInterest(memberId, boothId);
+        BoothInterest interest = boothInterestRepository.findByMemberIdAndBoothId(memberId, boothId)
+                .orElse(BoothInterest.builder()
+                        .memberId(memberId)
+                        .boothId(boothId)
+                        .vacancyNotificationEnabled(false)
+                        .build());
+
+        boothInterestRepository.saveAndFlush(interest);
     }
 
     public void remove(Long memberId, Long boothId) {
@@ -29,4 +37,9 @@ public class BoothInterestService {
 public List<InterestBoothResponse> getMyInterests(Long memberId) {
     return boothInterestRepository.findInterestBoothsByMemberId(memberId);
 }
+
+
+
+
+
 }

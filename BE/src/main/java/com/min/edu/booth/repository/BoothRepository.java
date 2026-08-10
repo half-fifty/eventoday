@@ -19,6 +19,8 @@ public interface BoothRepository extends JpaRepository<Booth, Long> {
 
     List<Booth> findByEventIdAndIdIn(Long eventId, Collection<Long> ids);
 
+
+
     List<Booth> findByIdIn(List<Long> ids);
 
     boolean existsByEventIdAndBoothCode(Long eventId, String boothCode);
@@ -80,4 +82,14 @@ public interface BoothRepository extends JpaRepository<Booth, Long> {
 
     // 행사 내 전체 부스 조회 (통계 집계용)
     List<Booth> findByEventId(Long eventId);
+
+    /**
+     * 행사 내에서 부스명으로 검색 (Pageable 지원)
+     */
+    Page<Booth> findByEventIdAndDisplayNameContainingIgnoreCase(
+            Long eventId,
+            String keyword,
+            Pageable pageable);
+
+
 }
