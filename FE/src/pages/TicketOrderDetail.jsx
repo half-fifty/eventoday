@@ -30,6 +30,7 @@ export default function TicketOrderDetail() {
     const orderAccessToken = sessionStorage.getItem(`ticket-order-token:${orderNo}`);
     setLoading(true);
     setError("");
+    setOrder(null);
     paymentApi.getTicketOrder(orderNo, orderAccessToken)
       .then((result) => {
         if (!cancelled) setOrder(result?.data || null);

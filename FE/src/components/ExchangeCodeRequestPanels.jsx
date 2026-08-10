@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "./Icon.jsx";
 import { exchangeCodeApi } from "../api/exchangeCodeApi.js";
 
@@ -21,6 +21,10 @@ const statusClass = (status) => {
 };
 
 const normalizePageContent = (result) => result?.data?.content || [];
+const pageInfo = (result) => ({
+  number: result?.data?.number || 0,
+  totalPages: result?.data?.totalPages || 1,
+});
 
 function RequestRow({ request, onSelect }) {
   return (
@@ -155,11 +159,14 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [quantity, setQuantity] = useState("1");
   const [purpose, setPurpose] = useState("");
+  const [page, setPage] = useState(0);
+  const [requestPageInfo, setRequestPageInfo] = useState({ number: 0, totalPages: 1 });
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState(null);
   const [error, setError] = useState("");
+  const latestRequestIdRef = useRef(null);
 
   const loadRequests = useCallback(() => {
     if (!eventId) {
@@ -169,26 +176,30 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
     }
     setLoading(true);
     setError("");
-    return exchangeCodeApi.getEventExchangeCodeRequests(eventId, { page: 0, size: 20 })
-      .then((result) => setRequests(normalizePageContent(result)))
+    return exchangeCodeApi.getEventExchangeCodeRequests(eventId, { page, size: 20 })
+      .then((result) => {
+        setRequests(normalizePageContent(result));
+        setRequestPageInfo(pageInfo(result));
+      })
       .catch((requestError) => setError(requestError.message || "교환 코드 요청 목록을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
-  }, [eventId]);
+  }, [eventId, page]);
 
   useEffect(() => {
     loadRequests();
   }, [loadRequests]);
 
   const selectRequest = async (requestId) => {
+    latestRequestIdRef.current = requestId;
     setDetailLoading(true);
     setError("");
     try {
       const result = await exchangeCodeApi.getExchangeCodeRequest(requestId);
-      setSelectedRequest(result?.data || null);
+      if (latestRequestIdRef.current === requestId) setSelectedRequest(result?.data || null);
     } catch (requestError) {
-      setError(requestError.message || "교환 코드 요청 상세를 불러오지 못했습니다.");
+      if (latestRequestIdRef.current === requestId) setError(requestError.message || "교환 코드 요청 상세를 불러오지 못했습니다.");
     } finally {
-      setDetailLoading(false);
+      if (latestRequestIdRef.current === requestId) setDetailLoading(false);
     }
   };
 
@@ -272,6 +283,14 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
           {!loading && requests.map((request) => (
             <RequestRow key={request.requestId} request={request} onSelect={selectRequest} />
           ))}
+          {!error && (
+            <Pagination
+              pageInfo={requestPageInfo}
+              loading={loading}
+              onPrev={() => setPage((current) => Math.max(0, current - 1))}
+              onNext={() => setPage((current) => Math.min(requestPageInfo.totalPages - 1, current + 1))}
+            />
+          )}
         </div>
         <div>
           {detailLoading ? (
@@ -291,38 +310,55 @@ export function AdminExchangeCodeRequestPanel() {
   const [status, setStatus] = useState("REQUESTED");
   const [requests, setRequests] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [page, setPage] = useState(0);
+  const [requestPageInfo, setRequestPageInfo] = useState({ number: 0, totalPages: 1 });
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [message, setMessage] = useState(null);
   const [error, setError] = useState("");
+  const latestRequestIdRef = useRef(null);
 
   const loadRequests = useCallback(() => {
     setLoading(true);
     setError("");
-    return exchangeCodeApi.getAdminExchangeCodeRequests({ status, page: 0, size: 20 })
-      .then((result) => setRequests(normalizePageContent(result)))
+    return exchangeCodeApi.getAdminExchangeCodeRequests({ status, page, size: 20 })
+      .then((result) => {
+        setRequests(normalizePageContent(result));
+        setRequestPageInfo(pageInfo(result));
+      })
       .catch((requestError) => setError(requestError.message || "교환 코드 요청 목록을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
-  }, [status]);
+  }, [page, status]);
 
   const loadDetail = useCallback((requestId) => {
+    latestRequestIdRef.current = requestId;
     setDetailLoading(true);
     setError("");
     return exchangeCodeApi.getExchangeCodeRequest(requestId)
       .then((result) => {
-        setSelectedRequest(result?.data || null);
-        setRejectionReason("");
+        if (latestRequestIdRef.current === requestId) {
+          setSelectedRequest(result?.data || null);
+          setRejectionReason("");
+        }
       })
-      .catch((requestError) => setError(requestError.message || "교환 코드 요청 상세를 불러오지 못했습니다."))
-      .finally(() => setDetailLoading(false));
+      .catch((requestError) => {
+        if (latestRequestIdRef.current === requestId) setError(requestError.message || "교환 코드 요청 상세를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (latestRequestIdRef.current === requestId) setDetailLoading(false);
+      });
   }, []);
 
   useEffect(() => {
     setSelectedRequest(null);
     loadRequests();
   }, [loadRequests]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [status]);
 
   const refreshAfterAction = async (requestId) => {
     await Promise.all([loadRequests(), loadDetail(requestId)]);
@@ -406,7 +442,10 @@ export function AdminExchangeCodeRequestPanel() {
         </div>
         <select
           value={status}
-          onChange={(event) => setStatus(event.target.value)}
+          onChange={(event) => {
+            setPage(0);
+            setStatus(event.target.value);
+          }}
           className="rounded-lg border border-hairline bg-white px-md py-sm text-caption"
         >
           {statusOptions.map((option) => (
@@ -424,6 +463,14 @@ export function AdminExchangeCodeRequestPanel() {
           {!loading && requests.map((request) => (
             <RequestRow key={request.requestId} request={request} onSelect={loadDetail} />
           ))}
+          {!error && (
+            <Pagination
+              pageInfo={requestPageInfo}
+              loading={loading}
+              onPrev={() => setPage((current) => Math.max(0, current - 1))}
+              onNext={() => setPage((current) => Math.min(requestPageInfo.totalPages - 1, current + 1))}
+            />
+          )}
         </div>
         <div>
           {detailLoading ? (
@@ -446,5 +493,31 @@ export function AdminExchangeCodeRequestPanel() {
         </div>
       </div>
     </section>
+  );
+}
+
+function Pagination({ pageInfo, loading, onPrev, onNext }) {
+  const current = pageInfo.number + 1;
+  const total = Math.max(1, pageInfo.totalPages);
+  return (
+    <div className="flex items-center justify-center gap-sm border-t border-divider-soft p-md text-caption">
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={loading || pageInfo.number <= 0}
+        className="rounded-full border border-hairline px-md py-1 disabled:opacity-40"
+      >
+        이전
+      </button>
+      <span className="text-ink-muted">{current} / {total}</span>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={loading || current >= total}
+        className="rounded-full border border-hairline px-md py-1 disabled:opacity-40"
+      >
+        다음
+      </button>
+    </div>
   );
 }

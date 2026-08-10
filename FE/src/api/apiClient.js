@@ -84,9 +84,10 @@ const parseResponse = async (response) => {
     return result;
 };
 
-const apiRequest = async (
+const requestWithReissue = async (
     path,
-    options = {}
+    options = {},
+    parser
 ) => {
     let response = await sendRequest(
         path,
@@ -111,8 +112,13 @@ const apiRequest = async (
         }
     }
 
-    return parseResponse(response);
+    return parser(response);
 };
+
+const apiRequest = async (
+    path,
+    options = {}
+) => requestWithReissue(path, options, parseResponse);
 
 const parseBlobResponse = async (response) => {
     if (!response.ok) {
@@ -141,26 +147,7 @@ const parseBlobResponse = async (response) => {
 const apiBlobRequest = async (
     path,
     options = {}
-) => {
-    let response = await sendRequest(
-        path,
-        options
-    );
-
-    if (response.status === 401) {
-        const reissueSucceeded =
-            await reissueAccessToken();
-
-        if (reissueSucceeded) {
-            response = await sendRequest(
-                path,
-                options
-            );
-        }
-    }
-
-    return parseBlobResponse(response);
-};
+) => requestWithReissue(path, options, parseBlobResponse);
 
 export {
     API_BASE_URL,

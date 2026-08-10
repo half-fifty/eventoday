@@ -28,6 +28,10 @@ const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
 
 const pageContent = (result) => result?.data?.content || [];
+const pageInfo = (result) => ({
+  number: result?.data?.number || 0,
+  totalPages: result?.data?.totalPages || 1,
+});
 
 const checkInMessage = (error) => {
   const byCode = {
@@ -53,8 +57,15 @@ function CameraScanner({ active, disabled, onDetected }) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const timerRef = useRef(null);
+  const disabledRef = useRef(disabled);
+  const onDetectedRef = useRef(onDetected);
   const [cameraState, setCameraState] = useState("idle");
   const [cameraError, setCameraError] = useState("");
+
+  useEffect(() => {
+    disabledRef.current = disabled;
+    onDetectedRef.current = onDetected;
+  }, [disabled, onDetected]);
 
   useEffect(() => {
     if (!active) return undefined;
@@ -97,12 +108,16 @@ function CameraScanner({ active, disabled, onDetected }) {
         }
         setCameraState("scanning");
         timerRef.current = window.setInterval(async () => {
-          if (disabled || !videoRef.current || videoRef.current.readyState < 2) return;
+          if (disabledRef.current || !videoRef.current || videoRef.current.readyState < 2) return;
           try {
             const codes = await detector.detect(videoRef.current);
             const value = codes?.[0]?.rawValue?.trim();
-            if (value) onDetected(value);
+            if (value) onDetectedRef.current(value);
           } catch {
+            if (timerRef.current) {
+              window.clearInterval(timerRef.current);
+              timerRef.current = null;
+            }
             setCameraState("error");
             setCameraError("QR을 읽는 중 오류가 발생했습니다. 직접 입력을 사용할 수 있습니다.");
           }
@@ -122,7 +137,7 @@ function CameraScanner({ active, disabled, onDetected }) {
       stopped = true;
       stopCamera();
     };
-  }, [active, disabled, onDetected]);
+  }, [active]);
 
   return (
     <div className="rounded-xl border border-hairline bg-black p-sm text-white">
@@ -148,11 +163,15 @@ export default function AdmissionManagementPanel({ eventId }) {
   const [checkInError, setCheckInError] = useState("");
   const [tickets, setTickets] = useState([]);
   const [ticketStatus, setTicketStatus] = useState("");
+  const [ticketPage, setTicketPage] = useState(0);
+  const [ticketPageInfo, setTicketPageInfo] = useState({ number: 0, totalPages: 1 });
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [ticketsError, setTicketsError] = useState("");
   const [logs, setLogs] = useState([]);
   const [logAction, setLogAction] = useState("");
   const [logResult, setLogResult] = useState("");
+  const [logPage, setLogPage] = useState(0);
+  const [logPageInfo, setLogPageInfo] = useState({ number: 0, totalPages: 1 });
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState("");
   const [cancellingId, setCancellingId] = useState(null);
@@ -162,10 +181,13 @@ export default function AdmissionManagementPanel({ eventId }) {
     if (!eventId) return Promise.resolve();
     setTicketsLoading(true);
     setTicketsError("");
-    const params = { page: 0, size: 20 };
+    const params = { page: ticketPage, size: 20 };
     if (ticketStatus) params.status = ticketStatus;
     return admissionApi.getEventAdmissionTickets(eventId, params)
-      .then((result) => setTickets(pageContent(result)))
+      .then((result) => {
+        setTickets(pageContent(result));
+        setTicketPageInfo(pageInfo(result));
+      })
       .catch((error) => {
         setTickets([]);
         setTicketsError(error.status === 403
@@ -173,17 +195,20 @@ export default function AdmissionManagementPanel({ eventId }) {
           : error.message || "입장 티켓 목록을 불러오지 못했습니다.");
       })
       .finally(() => setTicketsLoading(false));
-  }, [eventId, ticketStatus]);
+  }, [eventId, ticketPage, ticketStatus]);
 
   const loadLogs = useCallback(() => {
     if (!eventId) return Promise.resolve();
     setLogsLoading(true);
     setLogsError("");
-    const params = { page: 0, size: 20 };
+    const params = { page: logPage, size: 20 };
     if (logAction) params.action = logAction;
     if (logResult) params.result = logResult;
     return admissionApi.getAdmissionLogs(eventId, params)
-      .then((result) => setLogs(pageContent(result)))
+      .then((result) => {
+        setLogs(pageContent(result));
+        setLogPageInfo(pageInfo(result));
+      })
       .catch((error) => {
         setLogs([]);
         setLogsError(error.status === 403
@@ -191,7 +216,15 @@ export default function AdmissionManagementPanel({ eventId }) {
           : error.message || "입장 로그를 불러오지 못했습니다.");
       })
       .finally(() => setLogsLoading(false));
-  }, [eventId, logAction, logResult]);
+  }, [eventId, logAction, logPage, logResult]);
+
+  useEffect(() => {
+    setTicketPage(0);
+  }, [ticketStatus]);
+
+  useEffect(() => {
+    setLogPage(0);
+  }, [logAction, logResult]);
 
   useEffect(() => {
     loadTickets();
@@ -206,7 +239,6 @@ export default function AdmissionManagementPanel({ eventId }) {
     setCheckInError("");
     setManualToken("");
     scanLockRef.current = false;
-    setScannerActive(true);
   };
 
   const submitCheckIn = useCallback(async (rawToken) => {
@@ -351,7 +383,10 @@ export default function AdmissionManagementPanel({ eventId }) {
               <h2 className="font-body-strong">행사 입장 티켓</h2>
               <select
                 value={ticketStatus}
-                onChange={(event) => setTicketStatus(event.target.value)}
+                onChange={(event) => {
+                  setTicketPage(0);
+                  setTicketStatus(event.target.value);
+                }}
                 className="rounded-lg border border-hairline bg-white px-sm py-1.5 text-caption"
               >
                 {ticketStatuses.map((status) => (
@@ -389,6 +424,14 @@ export default function AdmissionManagementPanel({ eventId }) {
                 )}
               </div>
             ))}
+            {!ticketsError && (
+              <Pagination
+                pageInfo={ticketPageInfo}
+                loading={ticketsLoading}
+                onPrev={() => setTicketPage((page) => Math.max(0, page - 1))}
+                onNext={() => setTicketPage((page) => Math.min(ticketPageInfo.totalPages - 1, page + 1))}
+              />
+            )}
           </div>
 
           <div className="rounded-xl border border-hairline bg-white">
@@ -397,7 +440,10 @@ export default function AdmissionManagementPanel({ eventId }) {
               <div className="flex gap-xs">
                 <select
                   value={logAction}
-                  onChange={(event) => setLogAction(event.target.value)}
+                  onChange={(event) => {
+                    setLogPage(0);
+                    setLogAction(event.target.value);
+                  }}
                   className="rounded-lg border border-hairline bg-white px-sm py-1.5 text-caption"
                 >
                   {actions.map((action) => (
@@ -406,7 +452,10 @@ export default function AdmissionManagementPanel({ eventId }) {
                 </select>
                 <select
                   value={logResult}
-                  onChange={(event) => setLogResult(event.target.value)}
+                  onChange={(event) => {
+                    setLogPage(0);
+                    setLogResult(event.target.value);
+                  }}
                   className="rounded-lg border border-hairline bg-white px-sm py-1.5 text-caption"
                 >
                   {results.map((result) => (
@@ -436,9 +485,43 @@ export default function AdmissionManagementPanel({ eventId }) {
                 </span>
               </div>
             ))}
+            {!logsError && (
+              <Pagination
+                pageInfo={logPageInfo}
+                loading={logsLoading}
+                onPrev={() => setLogPage((page) => Math.max(0, page - 1))}
+                onNext={() => setLogPage((page) => Math.min(logPageInfo.totalPages - 1, page + 1))}
+              />
+            )}
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function Pagination({ pageInfo, loading, onPrev, onNext }) {
+  const current = pageInfo.number + 1;
+  const total = Math.max(1, pageInfo.totalPages);
+  return (
+    <div className="flex items-center justify-center gap-sm border-t border-divider-soft p-md text-caption">
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={loading || pageInfo.number <= 0}
+        className="rounded-full border border-hairline px-md py-1 disabled:opacity-40"
+      >
+        이전
+      </button>
+      <span className="text-ink-muted">{current} / {total}</span>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={loading || current >= total}
+        className="rounded-full border border-hairline px-md py-1 disabled:opacity-40"
+      >
+        다음
+      </button>
+    </div>
   );
 }

@@ -54,6 +54,10 @@ export default function PaymentDetail() {
     let cancelled = false;
     setLoading(true);
     setError("");
+    setPayment(null);
+    setCreatedRefund(null);
+    setRefundMessage("");
+    setRefundError("");
     paymentApi.getPayment(paymentId, orderAccessToken)
       .then((result) => {
         if (!cancelled) setPayment(result?.data || null);
