@@ -8,6 +8,7 @@ import { useNotifications } from "../notifications/NotificationContext.jsx";
 
 const tabs = [
   { key: "tickets", label: "예매내역", icon: "confirmation_number" },
+  { key: "refunds", label: "환불내역", icon: "payments" },
   { key: "qr", label: "입장 QR", icon: "qr_code_2" },
   { key: "booths", label: "부스 활동", icon: "favorite" },
   { key: "notif", label: "알림", icon: "notifications" },
@@ -30,6 +31,12 @@ const orderStatusLabel = {
   EXPIRED: "만료",
   FAILED: "실패",
   REFUNDED: "환불 완료",
+};
+const refundStatusLabel = {
+  REQUESTED: "환불 요청",
+  COMPLETED: "환불 완료",
+  FAILED: "환불 실패",
+  REJECTED: "환불 거절",
 };
 
 export default function MyPage() {
@@ -72,6 +79,9 @@ export default function MyPage() {
   const [ticketOrders, setTicketOrders] = useState([]);
   const [ticketOrdersLoading, setTicketOrdersLoading] = useState(false);
   const [ticketOrdersError, setTicketOrdersError] = useState("");
+  const [refunds, setRefunds] = useState([]);
+  const [refundsLoading, setRefundsLoading] = useState(false);
+  const [refundsError, setRefundsError] = useState("");
   const loginDescription = isBusinessMember
     ? `${member.organization?.name || "사업자"} · 사업자 계정`
     : "일반 회원";
@@ -114,6 +124,26 @@ export default function MyPage() {
       })
       .finally(() => {
         if (!cancelled) setTicketOrdersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusinessMember, tab]);
+
+  useEffect(() => {
+    if (isBusinessMember || tab !== "refunds") return;
+    let cancelled = false;
+    setRefundsLoading(true);
+    setRefundsError("");
+    paymentApi.getMyRefunds({ page: 0, size: 20 })
+      .then((result) => {
+        if (!cancelled) setRefunds(result?.data?.content || []);
+      })
+      .catch((requestError) => {
+        if (!cancelled) setRefundsError(requestError.message || "환불 내역을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setRefundsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -281,6 +311,38 @@ export default function MyPage() {
                   </Link>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* REFUNDS */}
+          {tab === "refunds" && (
+            <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
+              <div className="p-lg font-body-strong">환불 내역</div>
+              {refundsLoading && (
+                <p className="p-lg text-caption text-ink-muted">환불 내역을 불러오는 중입니다.</p>
+              )}
+              {refundsError && (
+                <p className="p-lg text-caption text-error">{refundsError}</p>
+              )}
+              {!refundsLoading && !refundsError && refunds.length === 0 && (
+                <p className="p-lg text-caption text-ink-muted">환불 내역이 없습니다.</p>
+              )}
+              {!refundsLoading && !refundsError && refunds.map((refund) => (
+                <Link key={refund.refundId} to={`/refunds/${refund.refundId}`} className="flex items-center gap-md p-lg transition-colors hover:bg-surface-container-low">
+                  <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#667eea,#764ba2)" }}><Icon name="payments" className="text-[18px]" /></div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-body-strong truncate">{refund.eventName}</p>
+                    <p className="text-caption text-ink-muted">환불 #{refund.refundId} · 주문 {refund.orderNo} · {formatMoney(refund.refundAmount)}</p>
+                    <p className="text-[11px] text-ink-muted">
+                      신청 {formatDateTime(refund.requestedAt)}
+                      {refund.completedAt ? ` · 처리 ${formatDateTime(refund.completedAt)}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-primary-container/10 text-primary-focus">
+                    {refundStatusLabel[refund.refundStatus] || refund.refundStatus}
+                  </span>
+                </Link>
+              ))}
             </div>
           )}
 

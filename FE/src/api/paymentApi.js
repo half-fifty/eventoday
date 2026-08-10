@@ -21,4 +21,19 @@ export const paymentApi = {
       ...(orderAccessToken ? { "X-Order-Access-Token": orderAccessToken } : {}),
     },
   }),
+  requestRefund: (paymentId, payload, orderAccessToken = null) => apiRequest(`/payments/${paymentId}/refunds`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(orderAccessToken ? { "X-Order-Access-Token": orderAccessToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  }),
+  getMyRefunds: (params = {}) =>
+    apiRequest(`/members/me/refunds?${new URLSearchParams(params)}`),
+  getRefund: (refundId, orderAccessToken = null) => apiRequest(`/refunds/${refundId}`, {
+    headers: {
+      ...(orderAccessToken ? { "X-Order-Access-Token": orderAccessToken } : {}),
+    },
+  }),
 };

@@ -25,6 +25,7 @@ import AdvertisementPaymentResult from "./pages/AdvertisementPaymentResult.jsx";
 import TicketPaymentResult from "./pages/TicketPaymentResult.jsx";
 import TicketOrderDetail from "./pages/TicketOrderDetail.jsx";
 import PaymentDetail from "./pages/PaymentDetail.jsx";
+import RefundDetail from "./pages/RefundDetail.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import VenueGuide from "./pages/VenueGuide.jsx";
 import { AuthProvider } from "./auth/AuthProvider.jsx";
@@ -64,6 +65,7 @@ const router = createBrowserRouter([
   { path: "/tickets/payment/fail", element: <TicketPaymentResult failed /> },
   { path: "/tickets/orders/:orderNo", element: <TicketOrderDetail /> },
   { path: "/payments/:paymentId", element: <PaymentDetail /> },
+  { path: "/refunds/:refundId", element: <RefundDetail /> },
   {
     path: "/platform-admin",
     element: (
