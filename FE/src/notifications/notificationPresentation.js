@@ -29,6 +29,18 @@ const NOTIFICATION_META = {
     iconClass: "bg-error/10 text-error",
     accentClass: "bg-error",
   },
+  BOOTH_APPLICATION_APPROVED: {
+    icon: "task_alt",
+    label: "부스 신청 승인",
+    iconClass: "bg-[#e8f8ed] text-[#137b3a]",
+    accentClass: "bg-[#34c759]",
+  },
+  BOOTH_APPLICATION_REJECTED: {
+    icon: "error_outline",
+    label: "부스 신청 반려",
+    iconClass: "bg-error/10 text-error",
+    accentClass: "bg-error",
+  },
 };
 
 const DEFAULT_NOTIFICATION_META = {
@@ -97,6 +109,8 @@ const getNotificationTarget = (notification) => {
       return `/recruitments/${notification.referenceId}`;
     case "BOOTH":
       return `/booth-detail?booth=${notification.referenceId}`;
+    case "BOOTH_APPLICATION":
+      return "/my-applications"; // 부스 신청 승인/반려 알림 → 내 신청 목록으로 이동
     default:
       return null;
   }
