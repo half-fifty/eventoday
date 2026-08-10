@@ -166,23 +166,55 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState(null);
   const [error, setError] = useState("");
+  const listRequestSeqRef = useRef(0);
+  const previousEventIdRef = useRef(eventId);
   const latestRequestIdRef = useRef(null);
 
   const loadRequests = useCallback(() => {
+    const requestSeq = listRequestSeqRef.current + 1;
+    listRequestSeqRef.current = requestSeq;
+    const eventChanged = previousEventIdRef.current !== eventId;
+    previousEventIdRef.current = eventId;
+
+    if (eventChanged) {
+      setPage(0);
+      setRequests([]);
+      setSelectedRequest(null);
+      setRequestPageInfo({ number: 0, totalPages: 1 });
+      setError("");
+      setDetailLoading(false);
+      latestRequestIdRef.current = null;
+    }
+
     if (!eventId) {
       setRequests([]);
       setSelectedRequest(null);
+      setRequestPageInfo({ number: 0, totalPages: 1 });
+      setError("");
+      setLoading(false);
       return Promise.resolve();
     }
+
+    if (eventChanged && page !== 0) {
+      setLoading(false);
+      return Promise.resolve();
+    }
+
     setLoading(true);
     setError("");
     return exchangeCodeApi.getEventExchangeCodeRequests(eventId, { page, size: 20 })
       .then((result) => {
+        if (requestSeq !== listRequestSeqRef.current) return;
         setRequests(normalizePageContent(result));
         setRequestPageInfo(pageInfo(result));
       })
-      .catch((requestError) => setError(requestError.message || "교환 코드 요청 목록을 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .catch((requestError) => {
+        if (requestSeq !== listRequestSeqRef.current) return;
+        setError(requestError.message || "교환 코드 요청 목록을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (requestSeq === listRequestSeqRef.current) setLoading(false);
+      });
   }, [eventId, page]);
 
   useEffect(() => {
@@ -318,18 +350,27 @@ export function AdminExchangeCodeRequestPanel() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [message, setMessage] = useState(null);
   const [error, setError] = useState("");
+  const listRequestSeqRef = useRef(0);
   const latestRequestIdRef = useRef(null);
 
   const loadRequests = useCallback(() => {
+    const requestSeq = listRequestSeqRef.current + 1;
+    listRequestSeqRef.current = requestSeq;
     setLoading(true);
     setError("");
     return exchangeCodeApi.getAdminExchangeCodeRequests({ status, page, size: 20 })
       .then((result) => {
+        if (requestSeq !== listRequestSeqRef.current) return;
         setRequests(normalizePageContent(result));
         setRequestPageInfo(pageInfo(result));
       })
-      .catch((requestError) => setError(requestError.message || "교환 코드 요청 목록을 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .catch((requestError) => {
+        if (requestSeq !== listRequestSeqRef.current) return;
+        setError(requestError.message || "교환 코드 요청 목록을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (requestSeq === listRequestSeqRef.current) setLoading(false);
+      });
   }, [page, status]);
 
   const loadDetail = useCallback((requestId) => {
