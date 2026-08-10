@@ -49,7 +49,10 @@ public class BoothReview {
     private OffsetDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt;  // ← 추가!
+    private OffsetDateTime updatedAt;
+
+    @Column(name = "member_name")
+    private String memberName;
 
     // 1) 별점 수정 (기존 - Short)
     public void updateRating(Short rating) {

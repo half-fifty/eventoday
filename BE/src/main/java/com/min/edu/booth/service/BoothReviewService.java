@@ -9,6 +9,7 @@ import com.min.edu.booth.dto.UpdateBoothReviewRequest;
 import com.min.edu.booth.repository.BoothReviewRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.apache.coyote.BadRequestException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -26,6 +27,7 @@ import java.time.OffsetDateTime;
 public class BoothReviewService {
 
     private final BoothReviewRepository boothReviewRepository;
+
 
     /**
      * 1. 리뷰 작성
@@ -169,10 +171,11 @@ public class BoothReviewService {
      * BoothReview → BoothReviewResponse 변환
      */
     private BoothReviewResponse toResponse(BoothReview review) {
+
         return BoothReviewResponse.builder()
                 .id(review.getId())
                 .boothId(review.getBoothId())
-                .memberId(review.getMemberId())
+                .memberName(review.getMemberName())
                 .rating(review.getRating())
                 .comment(review.getComment())
                 .createdAt(review.getCreatedAt())
