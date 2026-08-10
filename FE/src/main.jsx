@@ -13,6 +13,7 @@ import RecruitmentDetail from "./pages/RecruitmentDetail.jsx";
 import RecruitmentCheck from "./pages/RecruitmentCheck.jsx";
 import BoothDetail from "./pages/BoothDetail.jsx";
 import BoothApply from "./pages/BoothApply.jsx";
+import BoothApplicationList from "./pages/BoothApplicationList.jsx";
 import MyPage from "./pages/MyPage.jsx";
 import OrganizerAdmin from "./pages/OrganizerAdmin.jsx";
 import PlatformAdmin from "./pages/PlatformAdmin.jsx";
@@ -23,6 +24,7 @@ import EventMembers from "./pages/EventMembers.jsx";
 import OrganizerAdvertisements from "./pages/OrganizerAdvertisements.jsx";
 import AdvertisementPaymentResult from "./pages/AdvertisementPaymentResult.jsx";
 import TicketPaymentResult from "./pages/TicketPaymentResult.jsx";
+import Notices from "./pages/Notices.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import VenueGuide from "./pages/VenueGuide.jsx";
 import { AuthProvider } from "./auth/AuthProvider.jsx";
@@ -41,8 +43,17 @@ const router = createBrowserRouter([
   { path: "/events/:eventId", element: <EventDetail /> },
   { path: "/events", element: <EventList /> },
   { path: "/venues", element: <VenueGuide /> },
+  { path: "/notices", element: <Notices /> },
   { path: "/booth-detail", element: <BoothDetail /> },
   { path: "/booth-apply", element: <BoothApply /> },
+  {
+    path: "/my-applications",
+    element: (
+      <ProtectedRoute>
+        <BoothApplicationList />
+      </ProtectedRoute>
+    ),
+  },
   {
     path: "/mypage",
     element: (

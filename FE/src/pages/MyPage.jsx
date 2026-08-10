@@ -192,8 +192,26 @@ export default function MyPage() {
                 {isExhibitor ? "부스 신청 현황" : businessActivityLabel}
               </h2>
               <p className="mt-xs text-caption text-ink-muted">
-                {isOrganizer ? "행사 조회 API 연결 후 등록한 행사가 표시됩니다." : isExhibitor ? "부스 신청 조회 API 연결 후 신청 내역이 표시됩니다." : "조직 정보를 확인한 후 이용해 주세요."}
+                {isOrganizer ? "개최자센터에서 등록한 행사를 관리할 수 있습니다." : isExhibitor ? "부스 신청 내역과 검토 상태를 확인할 수 있습니다." : "조직 정보를 확인한 후 이용해 주세요."}
               </p>
+              {/* 참가기업: 내 부스 신청 현황 페이지로 연결 (WBS-196) */}
+              {isExhibitor && (
+                <Link
+                  to="/my-applications"
+                  className="mt-md inline-flex items-center gap-xs px-lg py-sm bg-primary text-white rounded-full text-caption font-body-strong"
+                >
+                  <Icon name="storefront" className="text-[16px]" /> 내 부스 신청 현황 보기
+                </Link>
+              )}
+              {/* 개최자: 개최자센터로 연결 */}
+              {isOrganizer && (
+                <Link
+                  to="/organizer-admin"
+                  className="mt-md inline-flex items-center gap-xs px-lg py-sm bg-primary text-white rounded-full text-caption font-body-strong"
+                >
+                  <Icon name="event" className="text-[16px]" /> 개최자센터로 이동
+                </Link>
+              )}
             </div>
           )}
 
