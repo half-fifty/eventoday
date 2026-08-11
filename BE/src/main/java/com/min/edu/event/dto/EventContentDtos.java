@@ -5,6 +5,7 @@ import com.min.edu.event.domain.EventContentAudience;
 import com.min.edu.event.domain.EventContentType;
 import com.min.edu.file.domain.FileAsset;
 import java.time.OffsetDateTime;
+import java.util.List;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -60,6 +61,21 @@ public final class EventContentDtos {
      * 공지사항 페이지에서 행사 이름을 함께 표시하기 위해 Summary에 eventName을 얹은 형태
      */
     public record BoardItem(String eventName, Summary content) {}
+
+    /**
+     * 전체 공지·자료 목록 페이징 응답 (CONTENT-API-006)
+     * BoothApplicationPageResponse와 동일한 필드 구성
+     */
+    public record BoardPageResponse(
+            List<BoardItem> content,
+            int page,
+            int size,
+            long totalElements,
+            int totalPages,
+            boolean first,
+            boolean last,
+            boolean empty
+    ) {}
 
     /** 공지·자료 등록 요청 DTO */
     public record CreateRequest(

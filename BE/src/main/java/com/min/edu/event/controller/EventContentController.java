@@ -39,12 +39,15 @@ public class EventContentController {
 
     // CONTENT-API-006: 전체 공지·자료 목록 (공개 행사 대상, 행사 이름 포함)
     // 공지사항 페이지가 행사별로 N번 호출하던 것을 1회로 대체
+    // 공개 API이므로 페이지네이션 필수 (size 최대 100)
     @GetMapping("/contents")
-    public ApiResponse<List<EventContentDtos.BoardItem>> listAllContents(
+    public ApiResponse<EventContentDtos.BoardPageResponse> listAllContents(
             @RequestParam(required = false) EventContentType contentType,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             @AuthenticationPrincipal AuthenticatedMemberDto member) {
         return ApiResponse.success(
-                eventContentService.listAllContents(contentType, member)
+                eventContentService.listAllContents(contentType, page, size, member)
         );
     }
 
