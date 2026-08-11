@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.OffsetDateTime;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -15,11 +16,15 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// member_id + booth_id 유일성은 status = 'RESERVED'인 행에만 적용되는 부분 유니크 인덱스
-// (uk_booth_reservations_active, V18)로 관리된다. JPA @UniqueConstraint로는 조건부 인덱스를
-// 표현할 수 없어 여기서는 선언하지 않는다.
+// 한 회원은 같은 부스를 한 번만 예약할 수 있다(취소된 예약 포함, V21).
 @Entity
-@Table(name = "booth_reservations")
+@Table(
+        name = "booth_reservations",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_booth_reservations",
+                columnNames = {"member_id", "booth_id"}
+        )
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
