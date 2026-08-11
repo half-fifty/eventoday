@@ -15,6 +15,9 @@ public class InterestBoothResponse {
     @JsonProperty("boothId")
     private Long boothId;
 
+    @JsonProperty("eventId")
+    private Long eventId;
+
     @JsonProperty("displayName")
     private String displayName;
 

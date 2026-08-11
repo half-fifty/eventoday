@@ -44,9 +44,11 @@ public class BoothReservationWithRedisService {
     private final RedisReservationService redisReservationService;
     private final ApplicationEventPublisher eventPublisher;
 
+    // 상태 무관 조회: 한 번이라도 예약한 적이 있으면(취소 포함) 그 부스는 재예약이 불가능하므로,
+    // 프론트에서 "이미 예약했던 부스" 상태를 구분해서 보여줄 수 있도록 상태와 무관하게 반환한다.
     @Transactional(readOnly = true)
     public BoothReservationResponse getMyReservation(Long boothId, Long memberId) {
-        return reservationRepository.findByMemberIdAndBoothIdAndStatus(memberId, boothId, BoothReservationStatus.RESERVED)
+        return reservationRepository.findByMemberIdAndBoothId(memberId, boothId)
                 .map(this::toResponse)
                 .orElse(null);
     }
@@ -196,8 +198,8 @@ public class BoothReservationWithRedisService {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
-        // 중복 예약 확인 (취소된 예약은 재예약 허용)
-        if (reservationRepository.existsByMemberIdAndBoothIdAndStatus(memberId, boothId, BoothReservationStatus.RESERVED)) {
+        // 한 번이라도 예약한 적이 있는 부스는(취소된 예약 포함) 재예약을 허용하지 않는다.
+        if (reservationRepository.existsByMemberIdAndBoothId(memberId, boothId)) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 

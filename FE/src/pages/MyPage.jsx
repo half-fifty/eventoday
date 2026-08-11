@@ -12,14 +12,8 @@ const tabs = [
   { key: "tickets", label: "예매내역", icon: "confirmation_number" },
   { key: "refunds", label: "환불내역", icon: "payments" },
   { key: "qr", label: "입장 QR", icon: "qr_code_2" },
-  { key: "booths", label: "부스 활동", icon: "favorite" },
   { key: "notif", label: "알림", icon: "notifications" },
   { key: "profile", label: "회원정보", icon: "person" },
-];
-const subtabs = [
-  { key: "interest", label: "관심 부스" },
-  { key: "reserved", label: "예약 내역" },
-  { key: "visited", label: "방문한 부스" },
 ];
 const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
@@ -93,7 +87,6 @@ export default function MyPage() {
   const [tab, setTab] = useState(
     isBusinessMember ? "business-overview" : "tickets"
   );
-  const [sub, setSub] = useState("interest");
   const [code, setCode] = useState("");
   const [redeemMsg, setRedeemMsg] = useState(null); // { ok, text }
   const [rating, setRating] = useState(0);
@@ -348,10 +341,6 @@ export default function MyPage() {
   const tabBtnCls = (active) =>
     `flex-shrink-0 px-md py-sm rounded-full text-caption font-body-strong flex items-center gap-1 transition-colors ${
       active ? "bg-white text-on-surface" : "text-white/60"
-    }`;
-  const subBtnCls = (active) =>
-    `px-md py-1.5 rounded-full text-caption font-body-strong ${
-      active ? "bg-black text-white" : "bg-white border border-hairline text-on-surface-variant"
     }`;
 
   if (member.platformRole === "PLATFORM_ADMIN") {
@@ -680,42 +669,6 @@ export default function MyPage() {
               )}
             </div>
           )}
-          {/* BOOTHS */}
-          {tab === "booths" && (
-            <div>
-              <div className="flex gap-sm mb-md">
-                {subtabs.map((s) => (
-                  <button key={s.key} onClick={() => setSub(s.key)} className={subBtnCls(sub === s.key)}>{s.label}</button>
-                ))}
-              </div>
-              {sub === "interest" && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-md">
-                  <div className="bg-white border border-hairline rounded-xl p-md flex items-center gap-sm">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white" style={{ background: "#2b5876" }}><Icon name="smart_toy" className="text-[16px]" /></div>
-                    <div className="flex-1"><p className="text-caption font-body-strong">스마트키친 로보틱스</p></div>
-                    <button className="text-ink-muted"><Icon name="close" className="text-[18px]" /></button>
-                  </div>
-                </div>
-              )}
-              {sub === "reserved" && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-md">
-                  <div className="bg-white border border-hairline rounded-xl p-md flex items-center gap-sm">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white" style={{ background: "#ff5e62" }}><Icon name="bakery_dining" className="text-[16px]" /></div>
-                    <div className="flex-1"><p className="text-caption font-body-strong">베이크하우스</p><p className="text-[11px] text-ink-muted">14:00 · 2명</p></div>
-                  </div>
-                </div>
-              )}
-              {sub === "visited" && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-md">
-                  <div className="bg-white border border-hairline rounded-xl p-md flex items-center gap-sm">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white" style={{ background: "#5f2c82" }}><Icon name="delivery_dining" className="text-[16px]" /></div>
-                    <div className="flex-1"><p className="text-caption font-body-strong">푸드 딜리버리 테크</p></div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* PROFILE */}
           {tab === "profile" && (
             <div className="space-y-lg">

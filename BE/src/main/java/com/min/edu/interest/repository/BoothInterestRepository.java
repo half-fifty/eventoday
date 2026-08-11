@@ -33,7 +33,7 @@ public interface BoothInterestRepository extends JpaRepository<BoothInterest, Lo
      * @return 사용자가 관심 표시한 부스 정보 목록
      */
     @Query("SELECT new com.min.edu.interest.dto.InterestBoothResponse(" +
-            "bi.boothId, b.displayName, b.shortIntro, bi.vacancyNotificationEnabled) " +
+            "bi.boothId, b.eventId, b.displayName, b.shortIntro, bi.vacancyNotificationEnabled) " +
             "FROM BoothInterest bi " +
             "JOIN Booth b ON bi.boothId = b.id " +
             "WHERE bi.memberId = :memberId")
