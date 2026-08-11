@@ -21,16 +21,18 @@ public class BoothReviewResponse {
     private Short rating;
     private String comment;
     private OffsetDateTime createdAt;
+    private OffsetDateTime updatedAt;  // ⭐ 추가!
 
     public static BoothReviewResponse from(BoothReview review) {
         return BoothReviewResponse.builder()
                 .id(review.getId())
                 .boothId(review.getBoothId())
-                .memberName(review.getMemberName())  // ✅ 이름 추가
+                .memberName(review.getMemberName())
+                .memberProfile(review.getMemberProfile())  // ⭐ 추가 (빠진 것)
                 .rating(review.getRating())
                 .comment(review.getComment())
                 .createdAt(review.getCreatedAt())
+                .updatedAt(review.getUpdatedAt())  // ⭐ 추가!
                 .build();
     }
 }
-

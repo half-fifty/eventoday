@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
+import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/booths/{boothId}/reservations")
@@ -33,6 +33,7 @@ public class BoothReservationController {
      *
      * Controller는 Service 메서드만 호출
      */
+    @PreAuthorize("isAuthenticated()")
     @PostMapping
     public ResponseEntity<BoothReservationResponse> createReservation(
             @PathVariable Long boothId,
@@ -51,6 +52,7 @@ public class BoothReservationController {
     /**
      * 예약 취소
      */
+    @PreAuthorize("isAuthenticated()")
     @DeleteMapping("/{reservationId}")
     public ResponseEntity<Void> cancelReservation(
             @PathVariable Long boothId,

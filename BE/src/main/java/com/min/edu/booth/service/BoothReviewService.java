@@ -1,24 +1,19 @@
 package com.min.edu.booth.service;
 
-import com.google.zxing.NotFoundException;
 import com.min.edu.booth.domain.BoothReview;
-import com.min.edu.booth.dto.BoothAverageRatingResponse;
 import com.min.edu.booth.dto.BoothReviewResponse;
 import com.min.edu.booth.dto.CreateBoothReviewRequest;
 import com.min.edu.booth.dto.UpdateBoothReviewRequest;
 import com.min.edu.booth.repository.BoothReviewRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
-import com.min.edu.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
-import org.apache.coyote.BadRequestException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 
 @Service
@@ -140,11 +135,11 @@ public class BoothReviewService {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
 
-        Short ratingShort = request.getRating().shortValue();
+
 
 
         // 4) 리뷰 정보 업데이트
-        review.updateRating(ratingShort);
+        review.updateRating(request.getRating());
         review.updateComment(request.getContent());
         review.updateUpdatedAt(OffsetDateTime.now());
 
@@ -183,6 +178,8 @@ public class BoothReviewService {
                 .rating(review.getRating())
                 .comment(review.getComment())
                 .createdAt(review.getCreatedAt())
+                .memberProfile(review.getMemberProfile())
+                .updatedAt(review.getUpdatedAt())
                 .build();
     }
 }

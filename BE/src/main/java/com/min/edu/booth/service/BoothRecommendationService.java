@@ -28,7 +28,8 @@ public class BoothRecommendationService {
      * 1. 혼잡한 부스 파악 (상위 3개, INNER JOIN)
      * 2. 추천 부스 조회 (LEFT JOIN, 혼잡 부수는 DB에서 제외)
      * 3. in-memory 필터링 제거 → DB에서 직접 제외
-     * 4. 추천 이유 포함
+     * 4. 중복 쿼리 최적화: page=0 & size>=3이면 쿼리 1개로 처리
+     * 5. 추천 이유 포함
      */
     public RecommendedBoothsResponse getRecommendedBooths(Long eventId, Pageable pageable) {
         OffsetDateTime since = OffsetDateTime.now().minusMinutes(10);
@@ -52,34 +53,48 @@ public class BoothRecommendationService {
             congestedBoothIds.add(boothId);
         }
 
-        // 2️⃣ 추천 부스 조회 (LEFT JOIN, 혼잡 부수는 DB에서 제외)
-        // ⭐ 변경: findAllBoothsWithCongestion → findRecommendedBooths(excludedIds)
-        // 효과: DB에서 직접 제외, in-memory 필터링 제거
-        var recommendedPage = qrScanRepository.findRecommendedBooths(
-                eventId,
-                since,
-                congestedBoothIds,  // ← DB NOT IN 절에서 제외
-                pageable
-        );
-
+        // 2️⃣ 추천 부스 조회
         List<RecommendedBoothsResponse.RecommendedBooth> recommendedBooths = new ArrayList<>();
         int rank = 1;
 
-        // 3️⃣ 추천 부스 (in-memory 필터링 제거!)
-        // ⭐ 이미 DB에서 congestedBoothIds 제외되었으므로
-        //   모든 row는 추천 가능한 부수
-        for (Object[] row : recommendedPage.getContent()) {
-            Long boothId = ((Number) row[0]).longValue();
-            long congestionCount = ((Number) row[1]).longValue();
+        // ⭐ 최적화: page가 0이고 size >= 3이면 findPopularBooths 결과 재사용
+        if (pageable.getPageNumber() == 0 && pageable.getPageSize() >= CONGESTION_THRESHOLD) {
+            // congestedPage 결과를 바로 사용 (추가 쿼리 스킵!)
+            for (Object[] row : congestedPage.getContent()) {
+                Long boothId = ((Number) row[0]).longValue();
+                long congestionCount = ((Number) row[1]).longValue();
 
-            // ⭐ 제거됨: if (!congestedBoothIds.contains(boothId))
-            // → 이미 DB에서 제외됨!
+                recommendedBooths.add(RecommendedBoothsResponse.RecommendedBooth.builder()
+                        .boothId(boothId)
+                        .congestionCount(congestionCount)
+                        .rank(rank++)
+                        .build());
+            }
+        } else {
+            // 일반적인 경우: findRecommendedBooths 쿼리 실행
+            var recommendedPage = qrScanRepository.findRecommendedBooths(
+                    eventId,
+                    since,
+                    congestedBoothIds,  // ← DB NOT IN 절에서 제외
+                    pageable
+            );
 
-            recommendedBooths.add(RecommendedBoothsResponse.RecommendedBooth.builder()
-                    .boothId(boothId)
-                    .congestionCount(congestionCount)
-                    .rank(rank++)  // ← 가장 한산한 부스부터 rank 1
-                    .build());
+            // 3️⃣ 추천 부스 (in-memory 필터링 제거!)
+            // ⭐ 이미 DB에서 congestedBoothIds 제외되었으므로
+            //   모든 row는 추천 가능한 부수
+            for (Object[] row : recommendedPage.getContent()) {
+                Long boothId = ((Number) row[0]).longValue();
+                long congestionCount = ((Number) row[1]).longValue();
+
+                // ⭐ 제거됨: if (!congestedBoothIds.contains(boothId))
+                // → 이미 DB에서 제외됨!
+
+                recommendedBooths.add(RecommendedBoothsResponse.RecommendedBooth.builder()
+                        .boothId(boothId)
+                        .congestionCount(congestionCount)
+                        .rank(rank++)  // ← 가장 한산한 부스부터 rank 1
+                        .build());
+            }
         }
 
         // 4️⃣ 추천 메시지 생성

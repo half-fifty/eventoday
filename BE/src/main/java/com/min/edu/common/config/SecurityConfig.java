@@ -13,7 +13,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,6 +25,9 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+
+@EnableWebSecurity
+@EnableMethodSecurity
 @Configuration
 public class SecurityConfig {
     @Bean
@@ -71,6 +76,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/events/*/booth-recruitment").authenticated()
                         .requestMatchers(HttpMethod.GET, "/events/*/booths/public").permitAll()
                         .requestMatchers("/events/*/booths/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/booths/*/reservations").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/booths/*/reservations/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/booths/*/reviews").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/booths/*/reviews/**").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/booths/*/reviews/**").authenticated()
+
                         .requestMatchers(HttpMethod.GET, "/events/*/venue-maps/public").permitAll()
                         .requestMatchers("/events/*/venue-maps/**").authenticated()
                         .requestMatchers("/events/*/exchange-code-requests").authenticated()
