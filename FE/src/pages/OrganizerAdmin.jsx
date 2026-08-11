@@ -3,7 +3,13 @@ import { Link, useSearchParams } from "react-router-dom";
 import { eventApi } from "../api/eventApi.js";
 import { getEventApplications } from "../api/boothApplicationApi.js";
 import { listBooths } from "../api/boothApi.js";
-import { getEventOverview } from "../api/boothStatisticsApi.js";
+// STAT-API-001~004를 모두 제공하는 statisticsApi로 통일 (boothStatisticsApi는 overview만 보유)
+import {
+  getEventOverview,
+  getPopularBooths,
+  getHourlyStatistics,
+  getPreviousDayStatistics,
+} from "../api/statisticsApi.js";
 import { getManagementRecruitment } from "../api/recruitmentApi.js";
 import { listVenueMaps } from "../api/venueMapApi.js";
 import BoothManagementPanel from "../components/BoothManagementPanel.jsx";
@@ -85,6 +91,20 @@ export default function OrganizerAdmin() {
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState("");
   const [dashboardVersion, setDashboardVersion] = useState(0);
+
+  // 운영 통계 (STAT-API-001~004) - 최근 30일 기준
+  const [overview, setOverview] = useState(null);          // STAT-API-004 행사 운영 요약
+  const [popularBooths, setPopularBooths] = useState([]);  // STAT-API-003 기간별 인기 부스
+  const [statError, setStatError] = useState("");
+  const [statLoading, setStatLoading] = useState(false);
+
+  // 부스 단위 통계 - 부스를 선택해야 조회한다
+  const [statBoothId, setStatBoothId] = useState("");
+  const [hourlyDate, setHourlyDate] = useState(localDateString());
+  const [hourlyStats, setHourlyStats] = useState([]);       // STAT-API-001 시간대별
+  const [prevDayStat, setPrevDayStat] = useState(null);     // STAT-API-002 전날
+  const [boothStatLoading, setBoothStatLoading] = useState(false);
+  const [boothStatError, setBoothStatError] = useState("");
 
   const [submittingEvent, setSubmittingEvent] = useState(false);
   const [publishingEvent, setPublishingEvent] = useState(false);
@@ -237,6 +257,68 @@ export default function OrganizerAdmin() {
     load();
     return () => { active = false; };
   }, [organizationId, selectedEventId, dashboardVersion]);
+
+  // STAT-API-003/004: 최근 30일 운영 통계 요약 + 인기 부스
+  // 대시보드 카드(오늘 기준)와 별개로 기간 추이를 보기 위한 조회
+  useEffect(() => {
+    if (!selectedEventId) {
+      setOverview(null);
+      setPopularBooths([]);
+      setStatError("");
+      return;
+    }
+    let active = true;
+    const to = localDateString();
+    const from = localDateString(new Date(Date.now() - 29 * 24 * 60 * 60 * 1000));
+    setStatLoading(true);
+    setStatError("");
+    Promise.allSettled([
+      getEventOverview(selectedEventId, from, to),
+      getPopularBooths(selectedEventId, from, to),
+    ]).then(([overviewResult, popularResult]) => {
+      if (!active) return;
+      setOverview(overviewResult.status === "fulfilled" ? overviewResult.value : null);
+      setPopularBooths(popularResult.status === "fulfilled" ? (popularResult.value?.booths || []) : []);
+      if (overviewResult.status === "rejected" || popularResult.status === "rejected") {
+        setStatError("일부 통계를 불러오지 못했습니다.");
+      }
+      setStatLoading(false);
+    });
+    return () => { active = false; };
+  }, [selectedEventId, dashboardVersion]);
+
+  // 행사가 바뀌면 부스 선택을 초기화한다 (이전 행사 부스 ID가 남지 않도록)
+  useEffect(() => {
+    setStatBoothId("");
+    setHourlyStats([]);
+    setPrevDayStat(null);
+  }, [selectedEventId]);
+
+  // STAT-API-001/002: 선택한 부스의 시간대별 통계 + 전날 통계
+  useEffect(() => {
+    if (!statBoothId) {
+      setHourlyStats([]);
+      setPrevDayStat(null);
+      setBoothStatError("");
+      return;
+    }
+    let active = true;
+    setBoothStatLoading(true);
+    setBoothStatError("");
+    Promise.allSettled([
+      getHourlyStatistics(statBoothId, hourlyDate),
+      getPreviousDayStatistics(statBoothId),
+    ]).then(([hourlyResult, prevResult]) => {
+      if (!active) return;
+      setHourlyStats(hourlyResult.status === "fulfilled" ? (hourlyResult.value?.hourlyStats || []) : []);
+      setPrevDayStat(prevResult.status === "fulfilled" ? prevResult.value : null);
+      if (hourlyResult.status === "rejected" && prevResult.status === "rejected") {
+        setBoothStatError("부스 통계를 불러오지 못했습니다.");
+      }
+      setBoothStatLoading(false);
+    });
+    return () => { active = false; };
+  }, [statBoothId, hourlyDate]);
 
   useEffect(() => {
     if (!selectedEvent) {
@@ -545,6 +627,121 @@ export default function OrganizerAdmin() {
                       ))}
                     </div>
                   </div>
+
+                  {/* STAT-API-004: 행사 운영 통계 요약 (최근 30일) */}
+                  <div className="overflow-hidden rounded-xl border border-hairline bg-white">
+                    <div className="flex items-center justify-between border-b border-hairline px-lg py-md">
+                      <h3 className="font-body-strong">행사 운영 통계 요약</h3>
+                      <span className="text-caption text-ink-muted">최근 30일</span>
+                    </div>
+                    {statError && <p className="px-lg pt-md text-caption text-error">{statError}</p>}
+                    <div className="grid grid-cols-1 gap-lg p-lg sm:grid-cols-3">
+                      {[
+                        ["누적 예약", overview?.totalReservationCount, "event_available", "text-status-available"],
+                        ["누적 QR 스캔", overview?.totalQrScanCount, "qr_code_scanner", "text-status-visited"],
+                        ["누적 노쇼", overview?.totalNoShowCount, "person_off", "text-status-pending"],
+                      ].map(([label, value, icon, color]) => (
+                        <div key={label} className="rounded-xl border border-hairline bg-surface-pearl p-lg">
+                          <div className="mb-md flex items-start justify-between"><span className="text-caption text-on-surface-variant">{label}</span><Icon name={icon} className={color} /></div>
+                          <span className="font-display-md text-[26px]">{displayCount(value, statLoading)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* STAT-API-003: 기간별 인기 부스 (예약 확정 수 기준) */}
+                  <div className="overflow-hidden rounded-xl border border-hairline bg-white">
+                    <div className="flex items-center justify-between border-b border-hairline px-lg py-md">
+                      <h3 className="font-body-strong">인기 부스 TOP 5</h3>
+                      <span className="text-caption text-ink-muted">최근 30일 예약 수 기준</span>
+                    </div>
+                    <div className="divide-y divide-divider-soft">
+                      {statLoading ? (
+                        <p className="p-lg text-caption text-ink-muted">통계를 불러오는 중입니다.</p>
+                      ) : popularBooths.length === 0 ? (
+                        <p className="p-lg text-caption text-ink-muted">집계된 부스 통계가 없습니다.</p>
+                      ) : popularBooths.slice(0, 5).map((booth) => (
+                        <div key={booth.boothId} className="flex items-center gap-md p-lg">
+                          <span className={`grid h-7 w-7 place-items-center rounded-full text-[12px] font-bold ${booth.rank <= 3 ? "bg-primary text-white" : "bg-surface-container text-ink-muted"}`}>
+                            {booth.rank}
+                          </span>
+                          <span className="flex-1 font-body-strong text-[14px]">{booth.boothCode} 부스</span>
+                          <span className="text-caption text-ink-muted">예약 {Number(booth.totalReservationCount || 0).toLocaleString()}건</span>
+                          <span className="text-caption text-ink-muted">방문 {Number(booth.totalQrScanCount || 0).toLocaleString()}건</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* STAT-API-001/002: 부스별 시간대 통계 + 전날 통계 */}
+                  <div className="overflow-hidden rounded-xl border border-hairline bg-white">
+                    <div className="flex flex-wrap items-center justify-between gap-sm border-b border-hairline px-lg py-md">
+                      <h3 className="font-body-strong">부스별 상세 통계</h3>
+                      <div className="flex items-center gap-sm">
+                        {/* 부스 목록은 overview 응답의 boothSummaries 재사용 (추가 API 호출 없음) */}
+                        <select
+                          value={statBoothId}
+                          onChange={(event) => setStatBoothId(event.target.value)}
+                          className="h-[36px] rounded-lg border border-hairline bg-white px-sm text-caption"
+                        >
+                          <option value="">부스 선택</option>
+                          {(overview?.boothSummaries || []).map((booth) => (
+                            <option key={booth.boothId} value={booth.boothId}>{booth.boothCode} 부스</option>
+                          ))}
+                        </select>
+                        <input
+                          type="date"
+                          value={hourlyDate}
+                          onChange={(event) => setHourlyDate(event.target.value)}
+                          className="h-[36px] rounded-lg border border-hairline bg-white px-sm text-caption"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-lg p-lg">
+                      {!statBoothId ? (
+                        <p className="text-caption text-ink-muted">부스를 선택하면 전날 통계와 시간대별 추이가 표시됩니다.</p>
+                      ) : boothStatLoading ? (
+                        <p className="text-caption text-ink-muted">통계를 불러오는 중입니다.</p>
+                      ) : boothStatError ? (
+                        <p className="text-caption text-error">{boothStatError}</p>
+                      ) : (
+                        <>
+                          {/* STAT-API-002 전날 통계 */}
+                          <div>
+                            <p className="mb-sm text-caption font-bold tracking-wider text-primary">
+                              전날 통계{prevDayStat?.statDate ? ` · ${prevDayStat.statDate}` : ""}
+                            </p>
+                            {prevDayStat ? (
+                              <div className="grid grid-cols-3 gap-md">
+                                {[
+                                  ["예약", prevDayStat.totalReservationCount],
+                                  ["QR 스캔", prevDayStat.totalQrScanCount],
+                                  ["노쇼", prevDayStat.totalNoShowCount],
+                                ].map(([label, value]) => (
+                                  <div key={label} className="rounded-lg border border-hairline bg-surface-pearl p-md text-center">
+                                    <span className="block text-caption text-ink-muted">{label}</span>
+                                    <span className="font-display-md text-[20px]">{Number(value ?? 0).toLocaleString()}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-caption text-ink-muted">전날 집계된 통계가 없습니다.</p>
+                            )}
+                          </div>
+
+                          {/* STAT-API-001 시간대별 통계 */}
+                          <div>
+                            <p className="mb-sm text-caption font-bold tracking-wider text-primary">시간대별 추이 · {hourlyDate}</p>
+                            {hourlyStats.length === 0 ? (
+                              <p className="text-caption text-ink-muted">해당 날짜에 집계된 통계가 없습니다.</p>
+                            ) : (
+                              <HourlyBarChart stats={hourlyStats} />
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </section>
               )}
 
@@ -603,6 +800,77 @@ export default function OrganizerAdmin() {
           )}
         </div>
       </main>
+    </div>
+  );
+}
+// 시간대별 통계 막대 차트 (STAT-API-001)
+// 별도 차트 라이브러리 없이 CSS 높이 비율로 표현 (예약=파랑, QR 방문=초록)
+function HourlyBarChart({ stats }) {
+  // 마우스를 올린 시간대 (커스텀 툴팁 표시용)
+  const [hoveredHour, setHoveredHour] = useState(null);
+  // 0~23시 전체 축을 만들고 데이터가 있는 시간대만 값 채움
+  const byHour = new Map(stats.map((s) => [s.statHour, s]));
+  const hours = Array.from({ length: 24 }, (_, h) => byHour.get(h) || { statHour: h, reservationCount: 0, noShowCount: 0, qrScanCount: 0 });
+  const max = Math.max(1, ...hours.map((s) => Math.max(s.reservationCount, s.qrScanCount, s.noShowCount)));
+  // 하루 합산 (예약·QR 방문·노쇼)
+  const totals = stats.reduce(
+    (acc, s) => ({
+      reservation: acc.reservation + s.reservationCount,
+      qrScan: acc.qrScan + s.qrScanCount,
+      noShow: acc.noShow + s.noShowCount,
+    }),
+    { reservation: 0, qrScan: 0, noShow: 0 }
+  );
+  return (
+    <div className="space-y-md">
+      {/* 합산 카드: 선택한 날짜의 예약·방문·노쇼 총합 */}
+      <div className="grid grid-cols-3 gap-sm">
+        <div className="bg-surface-pearl rounded-lg p-md text-center">
+          <p className="text-caption text-ink-muted">예약</p>
+          <p className="font-display-md text-[20px] text-primary">{totals.reservation.toLocaleString()}</p>
+        </div>
+        <div className="bg-surface-pearl rounded-lg p-md text-center">
+          <p className="text-caption text-ink-muted">QR 방문</p>
+          <p className="font-display-md text-[20px] text-status-available">{totals.qrScan.toLocaleString()}</p>
+        </div>
+        <div className="bg-surface-pearl rounded-lg p-md text-center">
+          <p className="text-caption text-ink-muted">노쇼</p>
+          <p className="font-display-md text-[20px] text-status-visited">{totals.noShow.toLocaleString()}</p>
+        </div>
+      </div>
+      {/* 범례 */}
+      <div className="flex gap-lg text-caption text-ink-muted">
+        <span className="flex items-center gap-xs"><span className="w-3 h-3 rounded-sm bg-primary inline-block" /> 예약</span>
+        <span className="flex items-center gap-xs"><span className="w-3 h-3 rounded-sm bg-status-available inline-block" /> QR 방문</span>
+        <span className="flex items-center gap-xs"><span className="w-3 h-3 rounded-sm bg-status-visited inline-block" /> 노쇼</span>
+      </div>
+      {/* 막대 차트: 시간대별 예약·방문 2개 막대
+          %높이는 flex 안에서 계산이 불안정해 막대가 기준선을 벗어나는 문제가 있어
+          픽셀 단위로 직접 계산한다 (최대값 = 120px) */}
+      <div className="flex gap-[3px] pt-[36px]">
+        {hours.map((s) => (
+          <div
+            key={s.statHour}
+            className="flex-1 min-w-0 relative"
+            onMouseEnter={() => setHoveredHour(s.statHour)}
+            onMouseLeave={() => setHoveredHour(null)}
+          >
+            {/* 마우스 오버 시 해당 시간대 숫자 툴팁 표시 */}
+            {hoveredHour === s.statHour && (
+              <div className="absolute -top-[34px] left-1/2 -translate-x-1/2 z-10 bg-on-surface text-white text-[11px] rounded-lg px-sm py-xs whitespace-nowrap pointer-events-none shadow-md">
+                {s.statHour}시 · 예약 {s.reservationCount} · 방문 {s.qrScanCount} · 노쇼 {s.noShowCount}
+              </div>
+            )}
+            <div className={`flex items-end justify-center gap-[2px] h-[120px] border-b border-hairline transition-colors ${hoveredHour === s.statHour ? "bg-surface-pearl" : ""}`}>
+              <div className="w-1/3 max-w-[8px] bg-primary rounded-t-sm" style={{ height: `${Math.round((s.reservationCount / max) * 120)}px` }} />
+              <div className="w-1/3 max-w-[8px] bg-status-available rounded-t-sm" style={{ height: `${Math.round((s.qrScanCount / max) * 120)}px` }} />
+              <div className="w-1/3 max-w-[8px] bg-status-visited rounded-t-sm" style={{ height: `${Math.round((s.noShowCount / max) * 120)}px` }} />
+            </div>
+            {/* 3시간 간격으로만 라벨 표시 (24개 전부 표시하면 좁아서 겹침) */}
+            <p className="text-[9px] text-ink-muted text-center mt-[2px] h-[12px]">{s.statHour % 3 === 0 ? s.statHour : ""}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
