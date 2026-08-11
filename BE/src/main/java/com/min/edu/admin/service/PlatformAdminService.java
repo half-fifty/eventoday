@@ -1,15 +1,11 @@
 package com.min.edu.admin.service;
 
 import com.min.edu.admin.dto.PlatformAdminDtos;
-import com.min.edu.advertisement.domain.Advertisement;
-import com.min.edu.advertisement.domain.AdvertisementStatus;
-import com.min.edu.advertisement.repository.AdvertisementRepository;
+import com.min.edu.admin.domain.PlatformAuditLog;
+import com.min.edu.admin.repository.PlatformAuditLogRepository;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
-import com.min.edu.event.domain.Event;
-import com.min.edu.event.domain.EventStatus;
-import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.Member;
 import com.min.edu.member.domain.MemberStatus;
 import com.min.edu.member.domain.PlatformRole;
@@ -17,16 +13,8 @@ import com.min.edu.member.repository.MemberRepository;
 import com.min.edu.organization.domain.OrganizationMember;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.repository.OrganizationMemberRepository;
-import com.min.edu.payment.domain.PaymentOrder;
-import com.min.edu.payment.domain.PaymentOrderStatus;
-import com.min.edu.payment.domain.PaymentOrderType;
-import com.min.edu.payment.domain.TicketOrder;
-import com.min.edu.payment.domain.TicketOrderStatus;
-import com.min.edu.payment.repository.PaymentOrderRepository;
-import com.min.edu.payment.repository.TicketOrderRepository;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +22,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -42,23 +31,18 @@ public class PlatformAdminService {
     private final MemberRepository memberRepository;
     private final OrganizationMemberRepository organizationMemberRepository;
     private final JdbcTemplate jdbcTemplate;
-    private final EventRepository eventRepository;
-    private final AdvertisementRepository advertisementRepository;
-    private final TicketOrderRepository ticketOrderRepository;
-    private final PaymentOrderRepository paymentOrderRepository;
+    private final PlatformAuditLogRepository auditLogRepository;
+    private final PlatformAuditService auditService;
 
     public PlatformAdminService(MemberRepository memberRepository,
             OrganizationMemberRepository organizationMemberRepository,
-            JdbcTemplate jdbcTemplate, EventRepository eventRepository,
-            AdvertisementRepository advertisementRepository, TicketOrderRepository ticketOrderRepository,
-            PaymentOrderRepository paymentOrderRepository) {
+            JdbcTemplate jdbcTemplate, PlatformAuditLogRepository auditLogRepository,
+            PlatformAuditService auditService) {
         this.memberRepository = memberRepository;
         this.organizationMemberRepository = organizationMemberRepository;
         this.jdbcTemplate = jdbcTemplate;
-        this.eventRepository = eventRepository;
-        this.advertisementRepository = advertisementRepository;
-        this.ticketOrderRepository = ticketOrderRepository;
-        this.paymentOrderRepository = paymentOrderRepository;
+        this.auditLogRepository = auditLogRepository;
+        this.auditService = auditService;
     }
 
     public List<PlatformAdminDtos.Account> accounts(AuthenticatedMemberDto actor) {
@@ -98,6 +82,8 @@ public class PlatformAdminService {
         Member member = memberRepository.findById(memberId)
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
         member.changeStatus(status, OffsetDateTime.now());
+        auditService.record(actor.getMemberId(), "ACCOUNT", "STATUS_" + status.name(),
+            member.getId(), member.getNickname(), null);
         return new PlatformAdminDtos.Account(member.getId(), member.getEmail(), member.getNickname(),
             member.getPlatformRole().name(), member.getStatus().name(), null, null,
             member.getCreatedAt(), member.getLastLoginAt());
@@ -105,58 +91,37 @@ public class PlatformAdminService {
 
     public PlatformAdminDtos.Statistics statistics(AuthenticatedMemberDto actor) {
         requireAdmin(actor);
-        List<Event> events = eventRepository.findAll();
-        long activeEvents = events.stream().filter(event -> event.getStatus() == EventStatus.PUBLISHED).count();
-        long tickets = ticketOrderRepository.findAll().stream()
-            .filter(order -> TicketOrderStatus.CONFIRMED.name().equals(order.getStatus()))
-            .mapToLong(TicketOrder::getTotalQuantity).sum();
-        Long exhibitorCount = jdbcTemplate.queryForObject(
+        Long activeEvents = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM events WHERE status = 'PUBLISHED'", Long.class);
+        Long tickets = jdbcTemplate.queryForObject(
+            "SELECT COALESCE(SUM(total_quantity), 0) FROM ticket_orders WHERE status = 'CONFIRMED'", Long.class);
+        Long exhibitors = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM organizations WHERE organization_type = 'EXHIBITOR'", Long.class);
-        long exhibitors = exhibitorCount == null ? 0L : exhibitorCount;
-        Map<Long, PaymentOrder> paymentOrders = paymentOrderRepository.findAll().stream()
-            .collect(Collectors.toMap(PaymentOrder::getId, Function.identity()));
-        BigDecimal revenue = advertisementRepository.findAll().stream()
-            .map(Advertisement::getPaymentOrderId).filter(id -> id != null)
-            .map(paymentOrders::get).filter(order -> order != null
-                && order.getOrderType() == PaymentOrderType.EVENT_AD
-                && PaymentOrderStatus.PAID.name().equals(order.getStatus()))
-            .map(PaymentOrder::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new PlatformAdminDtos.Statistics(activeEvents, tickets, exhibitors, revenue);
+        BigDecimal revenue = jdbcTemplate.queryForObject("""
+            SELECT COALESCE(SUM(po.total_amount), 0) FROM advertisements a
+            JOIN payment_orders po ON po.id = a.payment_order_id
+            WHERE po.order_type = 'EVENT_AD' AND po.status = 'PAID'
+            """, BigDecimal.class);
+        return new PlatformAdminDtos.Statistics(value(activeEvents), value(tickets), value(exhibitors),
+            revenue == null ? BigDecimal.ZERO : revenue);
     }
 
     public List<PlatformAdminDtos.AuditEntry> audit(AuthenticatedMemberDto actor) {
         requireAdmin(actor);
-        List<PlatformAdminDtos.AuditEntry> entries = new ArrayList<>();
-        for (Event event : eventRepository.findAll()) {
-            if (List.of(EventStatus.APPROVED, EventStatus.REJECTED, EventStatus.PUBLISHED,
-                    EventStatus.SUSPENDED, EventStatus.CANCELLED).contains(event.getStatus())) {
-                entries.add(new PlatformAdminDtos.AuditEntry("event-" + event.getId(), "EVENT",
-                    event.getStatus().name(), event.getName(), event.getRejectionReason(), event.getUpdatedAt()));
-            }
-        }
-        for (Advertisement ad : advertisementRepository.findAll()) {
-            if (ad.getReviewedBy() != null) {
-                entries.add(new PlatformAdminDtos.AuditEntry("advertisement-" + ad.getId(), "ADVERTISEMENT",
-                    ad.getStatus().name(), ad.getEventId() != null ? "행사 광고 #" + ad.getEventId() : "부스 광고 #" + ad.getBoothId(),
-                    ad.getRejectionReason(), ad.getUpdatedAt()));
-            }
-        }
-        return entries.stream().filter(entry -> entry.occurredAt() != null)
-            .sorted(Comparator.comparing(PlatformAdminDtos.AuditEntry::occurredAt).reversed())
-            .limit(100).toList();
+        return auditEntries(100);
     }
 
     public PlatformAdminDtos.Dashboard dashboard(AuthenticatedMemberDto actor) {
         requireAdmin(actor);
-        long pendingEvents = eventRepository.findAll().stream()
-            .filter(event -> event.getStatus() == EventStatus.SUBMITTED || event.getStatus() == EventStatus.UNDER_REVIEW).count();
-        long activeAccounts = memberRepository.findAll().stream().filter(member -> member.getStatus() == MemberStatus.ACTIVE).count();
-        long pendingAds = advertisementRepository.findAll().stream()
-            .filter(ad -> ad.getStatus() == AdvertisementStatus.REVIEW_PENDING
-                || ad.getStatus() == AdvertisementStatus.PAID).count();
-        PlatformAdminDtos.Statistics stats = statistics(actor);
-        return new PlatformAdminDtos.Dashboard(pendingEvents, activeAccounts, pendingAds,
-            stats.activeEventCount(), audit(actor).stream().limit(5).toList());
+        Long pendingEvents = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM events WHERE status IN ('SUBMITTED', 'UNDER_REVIEW')", Long.class);
+        Long activeAccounts = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM members WHERE status = 'ACTIVE'", Long.class);
+        Long pendingAds = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM advertisements WHERE status IN ('PAID', 'REVIEW_PENDING')", Long.class);
+        Long activeEvents = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM events WHERE status = 'PUBLISHED'", Long.class);
+        return new PlatformAdminDtos.Dashboard(value(pendingEvents), value(activeAccounts),
+            value(pendingAds), value(activeEvents), auditEntries(5));
     }
 
     private void requireAdmin(AuthenticatedMemberDto actor) {
@@ -164,6 +129,18 @@ public class PlatformAdminService {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
     }
+
+    private List<PlatformAdminDtos.AuditEntry> auditEntries(int size) {
+        return auditLogRepository.findAllByOrderByOccurredAtDescIdDesc(PageRequest.of(0, size)).stream()
+            .map(this::auditEntry).toList();
+    }
+
+    private PlatformAdminDtos.AuditEntry auditEntry(PlatformAuditLog log) {
+        return new PlatformAdminDtos.AuditEntry(String.valueOf(log.getId()), log.getCategory(),
+            log.getAction(), log.getTargetName(), log.getDetail(), log.getOccurredAt());
+    }
+
+    private long value(Long number) { return number == null ? 0L : number; }
 
     private record OrganizationInfo(Long id, String name, String type) {}
 }

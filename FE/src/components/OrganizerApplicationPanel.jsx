@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/apiClient.js";
 import {
   approveApplication,
@@ -43,14 +43,17 @@ export default function OrganizerApplicationPanel({ eventId, onDataChanged }) {
   const [rejectMode, setRejectMode] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [modalError, setModalError] = useState("");
+  const listRequestRef = useRef(0);
 
   const loadApplications = async (
     id = eventId,
     requestedPage = page,
     requestedFilters = filters
   ) => {
+    const requestId = ++listRequestRef.current;
     if (!id) {
       setPageResult(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -61,14 +64,16 @@ export default function OrganizerApplicationPanel({ eventId, onDataChanged }) {
         page: requestedPage,
         size: PAGE_SIZE,
       });
+      if (requestId !== listRequestRef.current) return;
       setPageResult(result);
     } catch (requestError) {
+      if (requestId !== listRequestRef.current) return;
       setPageResult(null);
       setError(requestError instanceof ApiError
         ? `${requestError.code}: ${requestError.message}`
         : "부스 신청서를 불러오지 못했습니다.");
     } finally {
-      setLoading(false);
+      if (requestId === listRequestRef.current) setLoading(false);
     }
   };
 

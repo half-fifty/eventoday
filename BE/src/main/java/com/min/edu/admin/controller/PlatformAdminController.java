@@ -4,6 +4,8 @@ import com.min.edu.admin.dto.PlatformAdminDtos;
 import com.min.edu.admin.service.PlatformAdminService;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.response.ApiResponse;
+import com.min.edu.common.exception.BusinessException;
+import com.min.edu.common.exception.GlobalErrorCode;
 import java.util.List;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,6 +33,7 @@ public class PlatformAdminController {
     public ApiResponse<PlatformAdminDtos.Account> changeStatus(@PathVariable Long memberId,
             @RequestBody PlatformAdminDtos.AccountStatusRequest request,
             @AuthenticationPrincipal AuthenticatedMemberDto actor) {
+        if (request == null) throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         return ApiResponse.success(service.changeAccountStatus(memberId, request.status(), actor));
     }
     @GetMapping("/statistics")

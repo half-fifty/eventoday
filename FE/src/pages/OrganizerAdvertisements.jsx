@@ -81,6 +81,7 @@ export default function OrganizerAdvertisements() {
 
   const submit = async (event) => {
     event.preventDefault();
+    setMessage("");
     if (!editingId && !form.eventId) { setError("광고할 행사를 선택해 주세요."); return; }
     if (!form.bannerFileId) { setError("광고 배너 이미지를 업로드해 주세요."); return; }
     if (new Date(form.startAt) >= new Date(form.endAt)) { setError("광고 종료일은 시작일 이후여야 합니다."); return; }
@@ -112,7 +113,7 @@ export default function OrganizerAdvertisements() {
   const cancel = async (id) => {
     if (!window.confirm("이 광고 신청을 취소할까요?")) return;
     setMessage("");
-    try { await advertisementApi.cancel(id); await loadAds(); setMessage("광고 신청을 취소했습니다."); }
+    try { await advertisementApi.cancel(id); await loadAds(); setError(""); setMessage("광고 신청을 취소했습니다."); }
     catch (e) { setError(e.message || "광고를 취소하지 못했습니다."); }
   };
   const pay = async (ad) => {

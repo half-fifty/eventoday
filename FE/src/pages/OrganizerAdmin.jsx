@@ -224,8 +224,8 @@ export default function OrganizerAdmin() {
         ticketSoldQuantity: detail?.ticketSoldQuantity ?? null,
         todayBoothQrScans: statistics?.totalQrScanCount ?? null,
         applications: [
-          ...(submitted?.content || []),
-          ...(reviewing?.content || []),
+          ...(reviewing?.content || []).slice(0, 2),
+          ...(submitted?.content || []).slice(0, 2),
         ].slice(0, 3),
       });
 

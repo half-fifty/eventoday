@@ -1,5 +1,6 @@
 package com.min.edu.event.service;
 
+import com.min.edu.admin.service.PlatformAuditService;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.BoothRecruitmentStatus;
 import com.min.edu.common.exception.BusinessException;
@@ -53,6 +54,7 @@ public class EventService {
     private final ExhibitCategoryRepository exhibitCategoryRepository;
     private final EventExhibitCategoryRepository eventExhibitCategoryRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final PlatformAuditService platformAuditService;
 
     public EventService(EventRepository eventRepository, EventMemberRepository eventMemberRepository,
             EventOrganizationMemberRepository organizationMemberRepository,
@@ -60,7 +62,8 @@ public class EventService {
             EventBoothRecruitmentRepository boothRecruitmentRepository,
             ExhibitCategoryRepository exhibitCategoryRepository,
             EventExhibitCategoryRepository eventExhibitCategoryRepository,
-            ApplicationEventPublisher applicationEventPublisher) {
+            ApplicationEventPublisher applicationEventPublisher,
+            PlatformAuditService platformAuditService) {
         this.eventRepository = eventRepository;
         this.eventMemberRepository = eventMemberRepository;
         this.organizationMemberRepository = organizationMemberRepository;
@@ -69,6 +72,7 @@ public class EventService {
         this.exhibitCategoryRepository = exhibitCategoryRepository;
         this.eventExhibitCategoryRepository = eventExhibitCategoryRepository;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.platformAuditService = platformAuditService;
     }
 
     public List<EventDtos.ManagedOrganization> findManagedOrganizations(AuthenticatedMemberDto actor) {
@@ -202,28 +206,40 @@ public class EventService {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
         transition(() -> event.submit(OffsetDateTime.now()));
+        platformAuditService.record(actor.getMemberId(), "EVENT", "SUBMITTED",
+                event.getId(), event.getName(), null);
     }
     @Transactional public void publish(Long eventId, AuthenticatedMemberDto actor) {
         Event event = getEvent(eventId); requireEventManager(event, actor);
         transition(() -> event.publish(OffsetDateTime.now()));
+        platformAuditService.record(actor.getMemberId(), "EVENT", "PUBLISHED",
+                event.getId(), event.getName(), null);
     }
     @Transactional public void cancel(Long eventId, AuthenticatedMemberDto actor) {
         Event event = getEvent(eventId); requireEventManager(event, actor);
         transition(() -> event.cancel(OffsetDateTime.now()));
+        platformAuditService.record(actor.getMemberId(), "EVENT", "CANCELLED",
+                event.getId(), event.getName(), null);
     }
     @Transactional public void approve(Long eventId, AuthenticatedMemberDto actor) {
         requireAdmin(actor); Event event = getEvent(eventId);
         transition(() -> event.approve(OffsetDateTime.now()));
+        platformAuditService.record(actor.getMemberId(), "EVENT", "APPROVED",
+                event.getId(), event.getName(), null);
         applicationEventPublisher.publishEvent(new EventReviewDecision(event.getId(), event.getOrganizerOrganizationId(), event.getName(), true, null));
     }
     @Transactional public void reject(Long eventId, String reason, AuthenticatedMemberDto actor) {
         requireAdmin(actor); Event event = getEvent(eventId);
         transition(() -> event.reject(reason, OffsetDateTime.now()));
+        platformAuditService.record(actor.getMemberId(), "EVENT", "REJECTED",
+                event.getId(), event.getName(), reason);
         applicationEventPublisher.publishEvent(new EventReviewDecision(event.getId(), event.getOrganizerOrganizationId(), event.getName(), false, reason));
     }
     @Transactional public void suspend(Long eventId, AuthenticatedMemberDto actor) {
         requireAdmin(actor); Event event = getEvent(eventId);
         transition(() -> event.suspend(OffsetDateTime.now()));
+        platformAuditService.record(actor.getMemberId(), "EVENT", "SUSPENDED",
+                event.getId(), event.getName(), null);
     }
 
     public Page<EventDtos.Summary> findAdminEvents(EventStatus status, AuthenticatedMemberDto actor,
