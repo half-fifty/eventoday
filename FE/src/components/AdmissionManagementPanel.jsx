@@ -154,6 +154,7 @@ export default function AdmissionManagementPanel({ eventId }) {
   const [logPageInfo, setLogPageInfo] = useState({ number: 0, totalPages: 1 });
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState("");
+  const [auxiliaryAccessDenied, setAuxiliaryAccessDenied] = useState(false);
   const [cancellingId, setCancellingId] = useState(null);
   const scanLockRef = useRef(false);
 
@@ -170,9 +171,12 @@ export default function AdmissionManagementPanel({ eventId }) {
       })
       .catch((error) => {
         setTickets([]);
-        setTicketsError(error.status === 403
-          ? "전체 입장 티켓 목록 조회 권한이 없습니다."
-          : error.message || "입장 티켓 목록을 불러오지 못했습니다.");
+        if (error.status === 403) {
+          setAuxiliaryAccessDenied(true);
+          setTicketsError("");
+          return;
+        }
+        setTicketsError(error.message || "입장 티켓 목록을 불러오지 못했습니다.");
       })
       .finally(() => setTicketsLoading(false));
   }, [eventId, ticketPage, ticketStatus]);
@@ -191,12 +195,19 @@ export default function AdmissionManagementPanel({ eventId }) {
       })
       .catch((error) => {
         setLogs([]);
-        setLogsError(error.status === 403
-          ? "입장 로그 조회 권한이 없습니다."
-          : error.message || "입장 로그를 불러오지 못했습니다.");
+        if (error.status === 403) {
+          setAuxiliaryAccessDenied(true);
+          setLogsError("");
+          return;
+        }
+        setLogsError(error.message || "입장 로그를 불러오지 못했습니다.");
       })
       .finally(() => setLogsLoading(false));
   }, [eventId, logAction, logPage, logResult]);
+
+  useEffect(() => {
+    setAuxiliaryAccessDenied(false);
+  }, [eventId]);
 
   useEffect(() => {
     setTicketPage(0);
@@ -358,6 +369,21 @@ export default function AdmissionManagementPanel({ eventId }) {
         </div>
 
         <div className="space-y-lg">
+          {auxiliaryAccessDenied ? (
+            <div className="rounded-xl border border-hairline bg-white p-lg">
+              <div className="flex items-start gap-sm">
+                <Icon name="badge" className="text-[20px] text-primary" />
+                <div>
+                  <h2 className="font-body-strong">입장 처리 전용 권한</h2>
+                  <p className="mt-xs text-caption text-ink-muted">
+                    현재 계정은 QR 스캔과 직접 입력을 통한 입장 처리를 사용할 수 있습니다.
+                    행사 입장 티켓 목록과 입장 로그는 행사 관리자 권한에서 확인할 수 있습니다.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
           <div className="rounded-xl border border-hairline bg-white">
             <div className="flex flex-wrap items-center justify-between gap-sm border-b border-hairline p-lg">
               <h2 className="font-body-strong">행사 입장 티켓</h2>
@@ -474,6 +500,8 @@ export default function AdmissionManagementPanel({ eventId }) {
               />
             )}
           </div>
+            </>
+          )}
         </div>
       </div>
     </section>

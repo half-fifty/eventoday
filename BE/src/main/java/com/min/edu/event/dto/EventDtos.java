@@ -4,6 +4,7 @@ import com.min.edu.event.domain.Event;
 import com.min.edu.event.domain.EventMember;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.domain.EventStatus;
+import com.min.edu.event.repository.AdmissionEventProjection;
 import com.min.edu.organization.domain.Organization;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.DecimalMax;
@@ -126,6 +127,13 @@ public final class EventDtos {
     public record ManagedOrganization(Long id, String name) {
         public static ManagedOrganization from(Organization organization) {
             return new ManagedOrganization(organization.getId(), organization.getName());
+        }
+    }
+    public record AdmissionEventResponse(
+            Long eventId, String eventName, OffsetDateTime startAt, OffsetDateTime endAt, EventRole role) {
+        public static AdmissionEventResponse from(AdmissionEventProjection event) {
+            return new AdmissionEventResponse(
+                    event.getEventId(), event.getEventName(), event.getStartAt(), event.getEndAt(), event.getRole());
         }
     }
     public record ExhibitCategoryResponse(String code, String name) {}

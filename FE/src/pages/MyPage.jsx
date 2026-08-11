@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
 import { admissionApi } from "../api/admissionApi.js";
+import { eventApi } from "../api/eventApi.js";
 import { exchangeCodeApi } from "../api/exchangeCodeApi.js";
 import { paymentApi } from "../api/paymentApi.js";
 import useAuth from "../hooks/useAuth.js";
@@ -65,6 +66,7 @@ export default function MyPage() {
   const { member, logout } = useAuth();
   const { openPanel, unreadCount } = useNotifications();
   const isBusinessMember = member.accountType === "BUSINESS";
+  const isPlatformAdmin = member.platformRole === "PLATFORM_ADMIN";
   const organizationType = member.organization?.organizationType;
   const isOrganizer = organizationType === "ORGANIZER";
   const isExhibitor = organizationType === "EXHIBITOR";
@@ -119,6 +121,8 @@ export default function MyPage() {
   const [admissionTicketsLoading, setAdmissionTicketsLoading] = useState(false);
   const [admissionTicketsError, setAdmissionTicketsError] = useState("");
   const [issuedAdmissionTicketId, setIssuedAdmissionTicketId] = useState(null);
+  const [admissionEvents, setAdmissionEvents] = useState([]);
+  const [admissionEventsLoading, setAdmissionEventsLoading] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [validatedCode, setValidatedCode] = useState("");
   const [validatingCode, setValidatingCode] = useState(false);
@@ -268,6 +272,25 @@ export default function MyPage() {
     };
   }, [admissionTicketsPage, isBusinessMember, tab]);
 
+  useEffect(() => {
+    if (isBusinessMember || isPlatformAdmin) return;
+    let cancelled = false;
+    setAdmissionEventsLoading(true);
+    eventApi.admissionEvents()
+      .then((result) => {
+        if (!cancelled) setAdmissionEvents(result?.data || []);
+      })
+      .catch(() => {
+        if (!cancelled) setAdmissionEvents([]);
+      })
+      .finally(() => {
+        if (!cancelled) setAdmissionEventsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusinessMember, isPlatformAdmin]);
+
   const handleLogout = async () => {
     setIsLoggingOut(true);
 
@@ -354,7 +377,7 @@ export default function MyPage() {
       active ? "bg-black text-white" : "bg-white border border-hairline text-on-surface-variant"
     }`;
 
-  if (member.platformRole === "PLATFORM_ADMIN") {
+  if (isPlatformAdmin) {
     return <Navigate to="/platform-admin" replace />;
   }
 
@@ -406,6 +429,26 @@ export default function MyPage() {
         </section>
 
         <div className="max-w-[900px] mx-auto px-lg py-xl">
+          {!admissionEventsLoading && admissionEvents.length > 0 && (
+            <div className="mb-lg rounded-2xl border border-hairline bg-white p-lg shadow-sm">
+              <div className="flex flex-col gap-md sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-caption font-body-strong">현장 입장 업무</p>
+                  <p className="mt-xs text-caption text-ink-muted">
+                    담당 행사 {admissionEvents.length}개
+                  </p>
+                </div>
+                <Link
+                  to="/staff/admission"
+                  className="inline-flex items-center justify-center gap-xs rounded-full bg-primary px-lg py-sm text-caption font-body-strong text-white"
+                >
+                  <Icon name="qr_code_scanner" className="text-[18px]" />
+                  담당 행사 보기
+                </Link>
+              </div>
+            </div>
+          )}
+
           {tab === "business-overview" && (
             <div className="space-y-lg">
               <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">

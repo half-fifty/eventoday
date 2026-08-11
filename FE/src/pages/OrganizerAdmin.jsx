@@ -504,6 +504,9 @@ export default function OrganizerAdmin() {
                         <p className="text-caption font-bold tracking-wider text-primary">SELECTED EVENT</p>
                         <h2 className="font-display-md text-[20px]">{selectedEvent.name}</h2>
                       </div>
+                      <Link to={`/events/${selectedEventId}/admission`} className="inline-flex items-center gap-xs rounded-full border border-primary/30 px-md py-xs text-caption font-body-strong text-primary-focus hover:bg-primary-container/10">
+                        <Icon name="qr_code_scanner" className="text-[16px]" /> 현장 입장 관리
+                      </Link>
                       <Link to={`/organizer-admin/events/${selectedEventId}/edit?organizationId=${organizationId}`} className="inline-flex items-center gap-xs rounded-full border border-hairline px-md py-xs text-caption hover:bg-surface-container">
                         <Icon name="edit" className="text-[16px]" /> 행사 정보 수정
                       </Link>

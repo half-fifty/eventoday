@@ -31,6 +31,7 @@ import PaymentDetail from "./pages/PaymentDetail.jsx";
 import RefundDetail from "./pages/RefundDetail.jsx";
 import AdmissionTicketDetail from "./pages/AdmissionTicketDetail.jsx";
 import EventAdmissionManagement from "./pages/EventAdmissionManagement.jsx";
+import StaffAdmissionEvents from "./pages/StaffAdmissionEvents.jsx";
 import GuestOrderAccess from "./pages/GuestOrderAccess.jsx";
 import GuestReservationManagement from "./pages/GuestReservationManagement.jsx";
 import NotFound from "./pages/NotFound.jsx";
@@ -111,6 +112,14 @@ const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <EventAdmissionManagement />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: "/staff/admission",
+    element: (
+      <ProtectedRoute>
+        <StaffAdmissionEvents />
       </ProtectedRoute>
     ),
   },
