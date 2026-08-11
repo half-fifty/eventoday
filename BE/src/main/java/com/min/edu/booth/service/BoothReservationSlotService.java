@@ -56,7 +56,7 @@ public class BoothReservationSlotService {
         }
 
         if (!request.getStartAt().isBefore(request.getEndAt())) {
-            throw new IllegalArgumentException("startAt은 endAt보다 작아야 합니다.");
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
         BoothReservationSlot slot = BoothReservationSlot.builder()

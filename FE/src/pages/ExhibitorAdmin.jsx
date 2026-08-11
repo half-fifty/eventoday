@@ -13,6 +13,20 @@ import { listReservationSlots, createReservationSlot, closeReservationSlot, reop
 import { uploadFile, fileDownloadUrl } from "../api/fileApi.js";
 import { toIsoOffset } from "../utils/datetime.js";
 
+const buildReservationSlotRange = (date, startTime, endTime) => {
+  const [year, month, day] = date.split("-").map(Number);
+  const [startHour, startMinute] = startTime.split(":").map(Number);
+  const [endHour, endMinute] = endTime.split(":").map(Number);
+
+  const start = new Date(year, month - 1, day, startHour, startMinute);
+  const end = new Date(year, month - 1, day, endHour, endMinute);
+
+  return {
+    startAt: start.toISOString(),
+    endAt: end.toISOString(),
+  };
+};
+
 const EMPTY_INTRO_FORM = { displayName: "", shortIntro: "", description: "", exhibitionContent: "" };
 // 예약 시간대는 요일을 따지지 않는 시간 블록으로만 설정한다(예: 11:00~11:30).
 // 백엔드는 실제 날짜시각으로 저장해야 해서, 오늘 날짜를 내부적으로만 붙여 만든다.
@@ -240,8 +254,7 @@ export default function ExhibitorAdmin() {
       return;
     }
     const today = todayValue();
-    const startAtIso = toIsoOffset(`${today}T${slotForm.startTime}`);
-    const endAtIso = toIsoOffset(`${today}T${slotForm.endTime}`);
+    const { startAt: startAtIso, endAt: endAtIso } = buildReservationSlotRange(today, slotForm.startTime, slotForm.endTime);
     setSavingSlot(true);
     setSlotError("");
     try {

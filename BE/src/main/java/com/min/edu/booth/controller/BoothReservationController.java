@@ -6,6 +6,8 @@ import com.min.edu.booth.dto.BoothReservationResponse;
 import com.min.edu.booth.dto.CreateBoothReservationRequest;
 import com.min.edu.booth.dto.MarkReservationAttendanceRequest;
 import com.min.edu.booth.service.BoothReservationWithRedisService;
+import com.min.edu.common.exception.BusinessException;
+import com.min.edu.common.exception.GlobalErrorCode;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -62,6 +64,10 @@ public class BoothReservationController {
             @PathVariable Long boothId,
             @RequestBody @Valid CreateBoothReservationRequest request,
             @AuthenticationPrincipal AuthenticatedMemberDto principal) {
+
+        if (principal == null) {
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+        }
 
         // Service에서 Redis + DB를 통합 처리
         BoothReservationResponse response = reservationService.createReservationWithRedis(

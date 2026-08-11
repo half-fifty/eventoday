@@ -127,6 +127,9 @@ public class BoothReservationWithRedisService {
             // 노쇼 처리 시 슬롯 자리 복원 (비관적 잠금)
             BoothReservationSlot slot = slotRepository.findByIdWithLock(reservation.getBoothReservationSlotId())
                     .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+            if (slot.getReservedCount() < reservation.getPartySize()) {
+                throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+            }
             slot.decrementReservedCount(reservation.getPartySize());
             slotRepository.saveAndFlush(slot);
         }
