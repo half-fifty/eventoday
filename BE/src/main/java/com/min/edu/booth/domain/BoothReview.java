@@ -65,8 +65,6 @@ public class BoothReview {
         this.rating = rating;
     }
 
-
-
     // 2) 댓글 수정
     public void updateComment(String comment) {
         this.comment = comment;
