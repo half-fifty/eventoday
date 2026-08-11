@@ -104,7 +104,10 @@ export default function OrganizerAdmin() {
   const [hourlyStats, setHourlyStats] = useState([]);       // STAT-API-001 시간대별
   const [prevDayStat, setPrevDayStat] = useState(null);     // STAT-API-002 전날
   const [boothStatLoading, setBoothStatLoading] = useState(false);
-  const [boothStatError, setBoothStatError] = useState("");
+  // 시간대·전날 통계는 서로 다른 API라 에러를 분리한다
+  // 하나로 합치면 한쪽만 실패했을 때 성공한 패널까지 숨겨지거나, 실패를 "데이터 없음"으로 오인하게 된다
+  const [hourlyError, setHourlyError] = useState("");
+  const [prevDayError, setPrevDayError] = useState("");
 
   const [submittingEvent, setSubmittingEvent] = useState(false);
   const [publishingEvent, setPublishingEvent] = useState(false);
@@ -299,21 +302,31 @@ export default function OrganizerAdmin() {
     if (!statBoothId) {
       setHourlyStats([]);
       setPrevDayStat(null);
-      setBoothStatError("");
+      setHourlyError("");
+      setPrevDayError("");
       return;
     }
     let active = true;
     setBoothStatLoading(true);
-    setBoothStatError("");
+    setHourlyError("");
+    setPrevDayError("");
     Promise.allSettled([
       getHourlyStatistics(statBoothId, hourlyDate),
       getPreviousDayStatistics(statBoothId),
     ]).then(([hourlyResult, prevResult]) => {
       if (!active) return;
-      setHourlyStats(hourlyResult.status === "fulfilled" ? (hourlyResult.value?.hourlyStats || []) : []);
-      setPrevDayStat(prevResult.status === "fulfilled" ? prevResult.value : null);
-      if (hourlyResult.status === "rejected" && prevResult.status === "rejected") {
-        setBoothStatError("부스 통계를 불러오지 못했습니다.");
+      // 각 통계의 성공·실패를 독립적으로 반영한다 (한쪽 실패가 다른 쪽 표시를 막지 않도록)
+      if (hourlyResult.status === "fulfilled") {
+        setHourlyStats(hourlyResult.value?.hourlyStats || []);
+      } else {
+        setHourlyStats([]);
+        setHourlyError(hourlyResult.reason?.message || "시간대별 통계를 불러오지 못했습니다.");
+      }
+      if (prevResult.status === "fulfilled") {
+        setPrevDayStat(prevResult.value);
+      } else {
+        setPrevDayStat(null);
+        setPrevDayError(prevResult.reason?.message || "전날 통계를 불러오지 못했습니다.");
       }
       setBoothStatLoading(false);
     });
@@ -679,7 +692,10 @@ export default function OrganizerAdmin() {
                       <h3 className="font-body-strong">부스별 상세 통계</h3>
                       <div className="flex items-center gap-sm">
                         {/* 부스 목록은 overview 응답의 boothSummaries 재사용 (추가 API 호출 없음) */}
+                        {/* 시각적 레이아웃을 유지하면서 스크린 리더에 컨트롤 목적을 알리기 위해 sr-only label 사용 */}
+                        <label htmlFor="stat-booth-select" className="sr-only">통계를 조회할 부스</label>
                         <select
+                          id="stat-booth-select"
                           value={statBoothId}
                           onChange={(event) => setStatBoothId(event.target.value)}
                           className="h-[36px] rounded-lg border border-hairline bg-white px-sm text-caption"
@@ -689,7 +705,9 @@ export default function OrganizerAdmin() {
                             <option key={booth.boothId} value={booth.boothId}>{booth.boothCode} 부스</option>
                           ))}
                         </select>
+                        <label htmlFor="stat-hourly-date" className="sr-only">시간대별 통계 조회 날짜</label>
                         <input
+                          id="stat-hourly-date"
                           type="date"
                           value={hourlyDate}
                           onChange={(event) => setHourlyDate(event.target.value)}
@@ -702,16 +720,16 @@ export default function OrganizerAdmin() {
                         <p className="text-caption text-ink-muted">부스를 선택하면 전날 통계와 시간대별 추이가 표시됩니다.</p>
                       ) : boothStatLoading ? (
                         <p className="text-caption text-ink-muted">통계를 불러오는 중입니다.</p>
-                      ) : boothStatError ? (
-                        <p className="text-caption text-error">{boothStatError}</p>
                       ) : (
                         <>
-                          {/* STAT-API-002 전날 통계 */}
+                          {/* STAT-API-002 전날 통계 - 조회 실패와 데이터 없음을 구분해 표시한다 */}
                           <div>
                             <p className="mb-sm text-caption font-bold tracking-wider text-primary">
                               전날 통계{prevDayStat?.statDate ? ` · ${prevDayStat.statDate}` : ""}
                             </p>
-                            {prevDayStat ? (
+                            {prevDayError ? (
+                              <p className="text-caption text-error">{prevDayError}</p>
+                            ) : prevDayStat ? (
                               <div className="grid grid-cols-3 gap-md">
                                 {[
                                   ["예약", prevDayStat.totalReservationCount],
@@ -729,13 +747,15 @@ export default function OrganizerAdmin() {
                             )}
                           </div>
 
-                          {/* STAT-API-001 시간대별 통계 */}
+                          {/* STAT-API-001 시간대별 통계 - 조회 실패와 데이터 없음을 구분해 표시한다 */}
                           <div>
                             <p className="mb-sm text-caption font-bold tracking-wider text-primary">시간대별 추이 · {hourlyDate}</p>
-                            {hourlyStats.length === 0 ? (
+                            {hourlyError ? (
+                              <p className="text-caption text-error">{hourlyError}</p>
+                            ) : hourlyStats.length === 0 ? (
                               <p className="text-caption text-ink-muted">해당 날짜에 집계된 통계가 없습니다.</p>
                             ) : (
-                              <HourlyBarChart stats={hourlyStats} />
+                              <HourlyBarChart stats={hourlyStats} date={hourlyDate} />
                             )}
                           </div>
                         </>
@@ -805,7 +825,7 @@ export default function OrganizerAdmin() {
 }
 // 시간대별 통계 막대 차트 (STAT-API-001)
 // 별도 차트 라이브러리 없이 CSS 높이 비율로 표현 (예약=파랑, QR 방문=초록)
-function HourlyBarChart({ stats }) {
+function HourlyBarChart({ stats, date }) {
   // 마우스를 올린 시간대 (커스텀 툴팁 표시용)
   const [hoveredHour, setHoveredHour] = useState(null);
   // 0~23시 전체 축을 만들고 데이터가 있는 시간대만 값 채움
@@ -846,31 +866,61 @@ function HourlyBarChart({ stats }) {
       </div>
       {/* 막대 차트: 시간대별 예약·방문 2개 막대
           %높이는 flex 안에서 계산이 불안정해 막대가 기준선을 벗어나는 문제가 있어
-          픽셀 단위로 직접 계산한다 (최대값 = 120px) */}
+          픽셀 단위로 직접 계산한다 (최대값 = 120px)
+          막대는 시각 표현이므로 aria-hidden 처리하고, 같은 수치를 아래 sr-only 표로 제공한다 */}
       <div className="flex gap-[3px] pt-[36px]">
         {hours.map((s) => (
           <div
             key={s.statHour}
-            className="flex-1 min-w-0 relative"
+            // 키보드 포커스와 터치에서도 툴팁 수치를 확인할 수 있도록 버튼처럼 포커스 가능하게 한다
+            tabIndex={0}
+            role="img"
+            aria-label={`${s.statHour}시 예약 ${s.reservationCount}건, QR 방문 ${s.qrScanCount}건, 노쇼 ${s.noShowCount}건`}
+            className="flex-1 min-w-0 relative focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-focus rounded-sm"
             onMouseEnter={() => setHoveredHour(s.statHour)}
             onMouseLeave={() => setHoveredHour(null)}
+            onFocus={() => setHoveredHour(s.statHour)}
+            onBlur={() => setHoveredHour(null)}
           >
-            {/* 마우스 오버 시 해당 시간대 숫자 툴팁 표시 */}
+            {/* 마우스 오버·포커스 시 해당 시간대 숫자 툴팁 표시 */}
             {hoveredHour === s.statHour && (
               <div className="absolute -top-[34px] left-1/2 -translate-x-1/2 z-10 bg-on-surface text-white text-[11px] rounded-lg px-sm py-xs whitespace-nowrap pointer-events-none shadow-md">
                 {s.statHour}시 · 예약 {s.reservationCount} · 방문 {s.qrScanCount} · 노쇼 {s.noShowCount}
               </div>
             )}
-            <div className={`flex items-end justify-center gap-[2px] h-[120px] border-b border-hairline transition-colors ${hoveredHour === s.statHour ? "bg-surface-pearl" : ""}`}>
+            <div aria-hidden="true" className={`flex items-end justify-center gap-[2px] h-[120px] border-b border-hairline transition-colors ${hoveredHour === s.statHour ? "bg-surface-pearl" : ""}`}>
               <div className="w-1/3 max-w-[8px] bg-primary rounded-t-sm" style={{ height: `${Math.round((s.reservationCount / max) * 120)}px` }} />
               <div className="w-1/3 max-w-[8px] bg-status-available rounded-t-sm" style={{ height: `${Math.round((s.qrScanCount / max) * 120)}px` }} />
               <div className="w-1/3 max-w-[8px] bg-status-visited rounded-t-sm" style={{ height: `${Math.round((s.noShowCount / max) * 120)}px` }} />
             </div>
             {/* 3시간 간격으로만 라벨 표시 (24개 전부 표시하면 좁아서 겹침) */}
-            <p className="text-[9px] text-ink-muted text-center mt-[2px] h-[12px]">{s.statHour % 3 === 0 ? s.statHour : ""}</p>
+            <p aria-hidden="true" className="text-[9px] text-ink-muted text-center mt-[2px] h-[12px]">{s.statHour % 3 === 0 ? s.statHour : ""}</p>
           </div>
         ))}
       </div>
+
+      {/* 스크린 리더용 데이터 표 - 막대 높이로는 전달되지 않는 수치를 동일하게 제공한다 */}
+      <table className="sr-only">
+        <caption>{date ? `${date} ` : ""}시간대별 예약·QR 방문·노쇼 수</caption>
+        <thead>
+          <tr>
+            <th scope="col">시간</th>
+            <th scope="col">예약</th>
+            <th scope="col">QR 방문</th>
+            <th scope="col">노쇼</th>
+          </tr>
+        </thead>
+        <tbody>
+          {hours.map((s) => (
+            <tr key={s.statHour}>
+              <th scope="row">{s.statHour}시</th>
+              <td>{s.reservationCount}</td>
+              <td>{s.qrScanCount}</td>
+              <td>{s.noShowCount}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

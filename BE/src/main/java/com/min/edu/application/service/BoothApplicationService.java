@@ -102,6 +102,12 @@ public class BoothApplicationService {
         Booth booth = boothRepository.findByIdWithLock(request.getBoothId())
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
+        // 부스가 모집 공고와 같은 행사에 속하는지 확인
+        // 검증이 없으면 조작된 boothId로 다른 행사의 부스를 APPLICATION_PENDING으로 만들 수 있다
+        if (!booth.getEventId().equals(recruitment.getEventId())) {
+            throw new BusinessException(GlobalErrorCode.BOOTH_EVENT_MISMATCH);
+        }
+
         // 부스 AVAILABLE 상태 확인
         if (booth.getStatus() != BoothStatus.AVAILABLE) {
             throw new BusinessException(GlobalErrorCode.BOOTH_NOT_AVAILABLE);
