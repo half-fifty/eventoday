@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BrowserQRCodeReader } from "@zxing/browser";
 import Icon from "./Icon.jsx";
 import { admissionApi } from "../api/admissionApi.js";
 
@@ -55,8 +56,7 @@ function statusPillClass(status) {
 
 function CameraScanner({ active, disabled, onDetected }) {
   const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const timerRef = useRef(null);
+  const controlsRef = useRef(null);
   const disabledRef = useRef(disabled);
   const onDetectedRef = useRef(onDetected);
   const [cameraState, setCameraState] = useState("idle");
@@ -70,58 +70,38 @@ function CameraScanner({ active, disabled, onDetected }) {
   useEffect(() => {
     if (!active) return undefined;
     let stopped = false;
-    let detector = null;
 
     const stopCamera = () => {
-      if (timerRef.current) {
-        window.clearInterval(timerRef.current);
-        timerRef.current = null;
+      if (controlsRef.current) {
+        controlsRef.current.stop();
+        controlsRef.current = null;
       }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-      }
+      if (videoRef.current) videoRef.current.srcObject = null;
     };
 
     const start = async () => {
       setCameraState("loading");
       setCameraError("");
-      if (!("BarcodeDetector" in window)) {
-        setCameraState("unsupported");
-        setCameraError("이 브라우저는 카메라 QR 스캔을 지원하지 않습니다. 직접 입력을 사용하세요.");
-        return;
-      }
       try {
-        detector = new window.BarcodeDetector({ formats: ["qr_code"] });
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false,
-        });
+        const reader = new BrowserQRCodeReader();
+        const controls = await reader.decodeFromConstraints(
+          {
+            video: { facingMode: { ideal: "environment" } },
+            audio: false,
+          },
+          videoRef.current,
+          (result) => {
+            if (stopped || disabledRef.current) return;
+            const value = result?.getText()?.trim();
+            if (value) onDetectedRef.current(value);
+          }
+        );
         if (stopped) {
-          stream.getTracks().forEach((track) => track.stop());
+          controls.stop();
           return;
         }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
+        controlsRef.current = controls;
         setCameraState("scanning");
-        timerRef.current = window.setInterval(async () => {
-          if (disabledRef.current || !videoRef.current || videoRef.current.readyState < 2) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            const value = codes?.[0]?.rawValue?.trim();
-            if (value) onDetectedRef.current(value);
-          } catch {
-            if (timerRef.current) {
-              window.clearInterval(timerRef.current);
-              timerRef.current = null;
-            }
-            setCameraState("error");
-            setCameraError("QR을 읽는 중 오류가 발생했습니다. 직접 입력을 사용할 수 있습니다.");
-          }
-        }, 700);
       } catch (error) {
         if (stopped) return;
         setCameraState("error");
