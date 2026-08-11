@@ -6,6 +6,8 @@ import VenueMapPins from "../components/VenueMapPins.jsx";
 import { ApiError } from "../api/apiClient.js";
 import { eventApi } from "../api/eventApi.js";
 import { listPublicVenueMaps } from "../api/venueMapApi.js";
+import { listAllPublicBooths } from "../api/boothApi.js";
+import { fileDownloadUrl } from "../api/fileApi.js";
 
 const formatEventPeriod = (event) => {
   if (!event) return "";
@@ -59,6 +61,11 @@ export default function EventOngoing() {
 
   const [booths, setBooths] = useState(initialBooths);
   const [tab, setTab] = useState("map");
+
+  // 실제 배정 완료(ASSIGNED)된 참가 부스 목록. 인기/관심 부스 탭은 아직 mock(booths)을 그대로 쓴다.
+  const [participatingBooths, setParticipatingBooths] = useState([]);
+  const [loadingParticipatingBooths, setLoadingParticipatingBooths] = useState(false);
+  const [participatingBoothsError, setParticipatingBoothsError] = useState("");
   const [activeBoothId, setActiveBoothId] = useState(null);
   const [boothSheetOpen, setBoothSheetOpen] = useState(false);
   const [qrSheetOpen, setQrSheetOpen] = useState(false);
@@ -152,6 +159,36 @@ export default function EventOngoing() {
       cancelled = true;
     };
   }, [selectedEventId, eventDetail]);
+
+  // 참가 부스: 공개 목록(AVAILABLE/ASSIGNED)에서 실제 배정 완료된 부스만 골라 보여준다.
+  useEffect(() => {
+    if (!selectedEventId) return;
+    let cancelled = false;
+
+    setParticipatingBooths([]);
+    setParticipatingBoothsError("");
+    setLoadingParticipatingBooths(true);
+    listAllPublicBooths(selectedEventId)
+      .then((content) => {
+        if (!cancelled) {
+          const assigned = content.filter((b) => b.status === "ASSIGNED");
+          setParticipatingBooths(assigned);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setParticipatingBooths([]);
+          setParticipatingBoothsError(error instanceof ApiError ? error.message : "참가 부스 목록을 불러오지 못했습니다.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingParticipatingBooths(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEventId]);
 
   const top3 = useMemo(
     () => [...booths].sort((a, b) => b.congestion - a.congestion).slice(0, 3),
@@ -305,23 +342,34 @@ export default function EventOngoing() {
         {/* TAB: Booth list */}
         {tab === "booths" && (
           <section className="py-lg px-lg max-w-[900px] mx-auto">
-            <h2 className="font-display-md text-[20px] mb-md">참가 부스 ({booths.length})</h2>
+            <h2 className="font-display-md text-[20px] mb-md">참가 부스 ({participatingBooths.length})</h2>
+            {loadingParticipatingBooths && <p className="text-caption text-ink-muted">부스 목록을 불러오는 중입니다.</p>}
+            {participatingBoothsError && <p className="text-caption text-error">{participatingBoothsError}</p>}
+            {!loadingParticipatingBooths && !participatingBoothsError && participatingBooths.length === 0 && (
+              <p className="text-caption text-ink-muted">아직 배정 완료된 참가 부스가 없습니다.</p>
+            )}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-md">
-              {booths.map((b) => (
-                <div
+              {participatingBooths.map((b) => (
+                <Link
                   key={b.id}
-                  onClick={() => openBoothSheet(b.id)}
-                  className="bg-white border border-hairline rounded-xl overflow-hidden cursor-pointer hover:shadow-md transition-all-custom"
+                  to={`/booth-detail?eventId=${selectedEventId}&boothId=${b.id}`}
+                  className="bg-white border border-hairline rounded-xl overflow-hidden hover:shadow-md transition-all-custom"
                 >
-                  <div className="h-20 flex items-center justify-center bg-surface-container-low relative">
-                    <Icon name={b.icon} className="text-[26px] text-primary" />
-                    <span className="absolute top-1 left-1 text-[10px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded-full">{b.id}</span>
+                  <div className="h-20 flex items-center justify-center bg-surface-container-low relative overflow-hidden">
+                    {b.representativeFileId ? (
+                      <img src={fileDownloadUrl(b.representativeFileId)} alt={b.displayName || b.boothCode} className="w-full h-full object-cover" />
+                    ) : (
+                      <Icon name="storefront" className="text-[26px] text-primary" />
+                    )}
+                    <span className="absolute top-1 left-1 text-[10px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded-full">{b.boothCode}</span>
                   </div>
                   <div className="p-sm">
-                    <p className="text-caption font-body-strong truncate">{b.name}</p>
-                    <p className="text-[11px] text-ink-muted">{b.zone}</p>
+                    <p className="text-caption font-body-strong truncate">{b.displayName || b.boothCode}</p>
+                    <p className="text-[11px] text-ink-muted truncate">
+                      {[b.floorName, b.zoneName].filter(Boolean).join(" · ") || b.shortIntro || " "}
+                    </p>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </section>
@@ -442,7 +490,12 @@ export default function EventOngoing() {
                     <><Icon name="favorite_border" /> 관심 등록</>
                   )}
                 </button>
-                <Link to={`/booth-detail?booth=${activeBooth.id}`} className="flex-1 bg-primary text-white rounded-xl py-md font-body-strong text-center active:scale-95 transition-transform">
+                <Link
+                  to={activeBooth.isMapBooth
+                    ? `/booth-detail?eventId=${selectedEventId}&boothId=${activeBooth.boothId}`
+                    : `/booth-detail?booth=${activeBooth.id}`}
+                  className="flex-1 bg-primary text-white rounded-xl py-md font-body-strong text-center active:scale-95 transition-transform"
+                >
                   부스 상세·예약
                 </Link>
               </div>

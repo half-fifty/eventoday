@@ -10,6 +10,7 @@ import {
   upsertPositions,
 } from "../api/venueMapApi.js";
 import { listBooths } from "../api/boothApi.js";
+import { pinFontSizeClass } from "../utils/venueMapPin.js";
 
 const MAP_TYPE_LABEL = { RECRUITMENT: "모집 공고용", VISITOR: "관람객용" };
 const MAP_TYPE_OPTIONS = Object.keys(MAP_TYPE_LABEL);
@@ -220,7 +221,27 @@ export default function FloorplanManagementPanel({ eventId }) {
     };
   }, [handleWindowMouseMove, handleWindowMouseUp]);
 
-  const unplacedBooths = booths.filter((b) => !positions.some((p) => p.boothId === b.id));
+  // 같은 용도(모집 공고용/관람객용)의 다른 층 평면도에 이미 배치된 부스는 중복 배치를 막는다.
+  // 서로 다른 용도끼리는 별개 배치판이라 중복을 허용한다(예: 모집 공고용과 관람객용에 각각 1번씩).
+  const elsewherePlacementByBoothId = new Map();
+  if (selectedMap) {
+    maps.forEach((m) => {
+      if (m.mapType === selectedMap.mapType && m.id !== selectedMap.id) {
+        (m.positions ?? []).forEach((p) => {
+          if (!elsewherePlacementByBoothId.has(p.boothId)) {
+            elsewherePlacementByBoothId.set(p.boothId, m.floorName);
+          }
+        });
+      }
+    });
+  }
+
+  const unplacedBooths = booths.filter(
+    (b) => !positions.some((p) => p.boothId === b.id) && !elsewherePlacementByBoothId.has(b.id)
+  );
+  const placedElsewhereBooths = booths.filter(
+    (b) => !positions.some((p) => p.boothId === b.id) && elsewherePlacementByBoothId.has(b.id)
+  );
 
   return (
     <section className="space-y-lg">
@@ -277,15 +298,21 @@ export default function FloorplanManagementPanel({ eventId }) {
               평면도 이미지가 아직 없습니다. 업로드하면 부스를 드래그해 좌표를 지정할 수 있어요.
             </div>
           ) : (
-            <div className="bg-white border border-hairline rounded-xl divide-y divide-divider-soft">
-              {maps.map((map) => (
+            MAP_TYPE_OPTIONS.map((type) => {
+              const mapsOfType = maps.filter((m) => m.mapType === type);
+              if (mapsOfType.length === 0) return null;
+              return (
+                <div key={type} className="space-y-sm">
+                  <p className="text-caption font-body-strong text-ink-muted">{MAP_TYPE_LABEL[type]}</p>
+                  <div className="bg-white border border-hairline rounded-xl divide-y divide-divider-soft">
+                    {mapsOfType.map((map) => (
                 <div key={map.id} className="p-lg space-y-sm">
                   <div className="flex items-center gap-sm flex-wrap">
                     <button
                       onClick={() => selectMap(map)}
                       className="font-body-strong text-left hover:text-primary"
                     >
-                      {map.floorName} · {MAP_TYPE_LABEL[map.mapType]} · v{map.version}
+                      {map.floorName} · v{map.version}
                     </button>
                     <span
                       className={`text-[11px] font-bold px-sm py-1 rounded-full ${
@@ -338,10 +365,10 @@ export default function FloorplanManagementPanel({ eventId }) {
                                 key={p.boothId}
                                 onMouseDown={handlePinMouseDown(p.boothId)}
                                 title={p.boothCode}
-                                className="absolute w-6 h-6 -ml-3 -mt-6 flex items-center justify-center bg-primary text-white text-[10px] font-bold rounded-full border-2 border-white shadow-md cursor-grab active:cursor-grabbing"
+                                className={`absolute -translate-x-1/2 -translate-y-full min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-primary text-white font-bold leading-none rounded-full border border-white shadow-md cursor-grab active:cursor-grabbing whitespace-nowrap ${pinFontSizeClass(p.boothCode)}`}
                                 style={{ left: `${p.xRatio * 100}%`, top: `${p.yRatio * 100}%` }}
                               >
-                                {p.boothCode?.slice(-2) ?? "?"}
+                                {p.boothCode || "?"}
                               </div>
                             ))}
                           </div>
@@ -371,7 +398,7 @@ export default function FloorplanManagementPanel({ eventId }) {
 
                           <p className="text-caption font-body-strong mt-md">미배치 부스</p>
                           {unplacedBooths.length === 0 ? (
-                            <p className="text-[11px] text-ink-muted">모든 부스가 배치되었습니다.</p>
+                            <p className="text-[11px] text-ink-muted">배치할 수 있는 부스가 없습니다.</p>
                           ) : (
                             <div className="flex flex-wrap gap-xs">
                               {unplacedBooths.map((b) => (
@@ -386,6 +413,25 @@ export default function FloorplanManagementPanel({ eventId }) {
                             </div>
                           )}
 
+                          {placedElsewhereBooths.length > 0 && (
+                            <>
+                              <p className="text-caption font-body-strong mt-md">
+                                다른 층에 이미 배치됨 ({MAP_TYPE_LABEL[selectedMap.mapType]})
+                              </p>
+                              <div className="flex flex-wrap gap-xs">
+                                {placedElsewhereBooths.map((b) => (
+                                  <span
+                                    key={b.id}
+                                    title={`${elsewherePlacementByBoothId.get(b.id)}에 배치됨`}
+                                    className="text-[11px] border border-dashed border-hairline text-ink-muted rounded-full px-sm py-1 cursor-not-allowed"
+                                  >
+                                    {b.boothCode} · {elsewherePlacementByBoothId.get(b.id)}
+                                  </span>
+                                ))}
+                              </div>
+                            </>
+                          )}
+
                           <button
                             onClick={handleSavePositions}
                             disabled={submitting}
@@ -398,8 +444,11 @@ export default function FloorplanManagementPanel({ eventId }) {
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })
           )}
         </>
       )}

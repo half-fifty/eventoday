@@ -1,10 +1,12 @@
 package com.min.edu.booth.service;
 
+import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.Booth;
 import com.min.edu.booth.domain.BoothReservation;
 import com.min.edu.booth.domain.BoothReservationSlot;
 import com.min.edu.booth.domain.BoothReservationStatus;
 import com.min.edu.booth.domain.BoothReservationSlotStatus;
+import com.min.edu.booth.dto.BoothReservationAdminResponse;
 import com.min.edu.booth.dto.BoothReservationResponse;
 import com.min.edu.booth.dto.CreateBoothReservationRequest;
 import com.min.edu.booth.event.BoothVacancyEvent;
@@ -13,8 +15,15 @@ import com.min.edu.booth.repository.BoothReservationRepository;
 import com.min.edu.booth.repository.BoothReservationSlotRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.member.domain.Member;
+import com.min.edu.member.repository.MemberRepository;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -30,8 +39,119 @@ public class BoothReservationWithRedisService {
     private final BoothReservationRepository reservationRepository;
     private final BoothReservationSlotRepository slotRepository;
     private final BoothRepository boothRepository;
+    private final BoothManagerPermissionChecker boothManagerPermissionChecker;
+    private final MemberRepository memberRepository;
     private final RedisReservationService redisReservationService;
     private final ApplicationEventPublisher eventPublisher;
+
+    @Transactional(readOnly = true)
+    public BoothReservationResponse getMyReservation(Long boothId, Long memberId) {
+        return reservationRepository.findByMemberIdAndBoothIdAndStatus(memberId, boothId, BoothReservationStatus.RESERVED)
+                .map(this::toResponse)
+                .orElse(null);
+    }
+
+    // 운영자: 부스 예약자 전체 목록 (누가, 언제, 몇 명) 조회
+    @Transactional(readOnly = true)
+    public List<BoothReservationAdminResponse> listReservationsForManager(
+            Long boothId, AuthenticatedMemberDto principal) {
+
+        boothManagerPermissionChecker.requireBoothManager(boothId, principal);
+
+        List<BoothReservation> reservations = reservationRepository.findAllByBoothIdOrderByReservedAtDesc(boothId);
+        if (reservations.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, BoothReservationSlot> slotsById = slotRepository
+                .findAllByBoothIdOrderByStartAtAsc(boothId).stream()
+                .collect(Collectors.toMap(BoothReservationSlot::getId, Function.identity()));
+
+        List<Long> memberIds = reservations.stream().map(BoothReservation::getMemberId).distinct().toList();
+        Map<Long, Member> membersById = memberRepository.findAllById(memberIds).stream()
+                .collect(Collectors.toMap(Member::getId, Function.identity()));
+
+        return reservations.stream()
+                .map(reservation -> toAdminResponse(
+                        reservation,
+                        slotsById.get(reservation.getBoothReservationSlotId()),
+                        membersById.get(reservation.getMemberId())))
+                .toList();
+    }
+
+    // 운영자: 예약자 출석 수동 체크 (true=방문 확인, false=노쇼 처리)
+    @Transactional
+    public BoothReservationAdminResponse markAttendance(
+            Long boothId, Long reservationId, boolean attended, AuthenticatedMemberDto principal) {
+
+        boothManagerPermissionChecker.requireBoothManager(boothId, principal);
+
+        BoothReservation reservation = reservationRepository.findByIdWithLock(reservationId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        if (!reservation.getBoothId().equals(boothId)) {
+            throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
+        }
+
+        if (reservation.getStatus() != BoothReservationStatus.RESERVED) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+
+        if (attended) {
+            reservation.updateStatus(BoothReservationStatus.CHECKED_IN);
+            reservation.updateCheckedInAt(now);
+        } else {
+            reservation.updateStatus(BoothReservationStatus.NO_SHOW);
+            reservation.updateNoShowAt(now);
+
+            // 노쇼 처리 시 슬롯 자리 복원 (비관적 잠금)
+            BoothReservationSlot slot = slotRepository.findByIdWithLock(reservation.getBoothReservationSlotId())
+                    .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+            if (slot.getReservedCount() < reservation.getPartySize()) {
+                throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+            }
+            slot.decrementReservedCount(reservation.getPartySize());
+            slotRepository.saveAndFlush(slot);
+        }
+        reservation.updateUpdatedAt(now);
+        reservationRepository.saveAndFlush(reservation);
+
+        BoothReservationSlot slot = slotRepository.findById(reservation.getBoothReservationSlotId()).orElse(null);
+        Member member = memberRepository.findById(reservation.getMemberId()).orElse(null);
+
+        return toAdminResponse(reservation, slot, member);
+    }
+
+    // 운영자 화면에는 예약자 식별에 필요한 최소 정보만 노출한다 (이메일은 마스킹).
+    private BoothReservationAdminResponse toAdminResponse(
+            BoothReservation reservation, BoothReservationSlot slot, Member member) {
+        return BoothReservationAdminResponse.builder()
+                .id(reservation.getId())
+                .slotId(reservation.getBoothReservationSlotId())
+                .startAt(slot != null ? slot.getStartAt() : null)
+                .endAt(slot != null ? slot.getEndAt() : null)
+                .memberId(reservation.getMemberId())
+                .memberNickname(member != null ? member.getNickname() : null)
+                .memberEmail(member != null ? maskEmail(member.getEmail()) : null)
+                .partySize(reservation.getPartySize())
+                .status(reservation.getStatus())
+                .reservedAt(reservation.getReservedAt())
+                .cancelledAt(reservation.getCancelledAt())
+                .build();
+    }
+
+    // ab****@example.com 형태로 마스킹 - 로컬 파트 앞 2글자만 남긴다.
+    private String maskEmail(String email) {
+        int atIndex = email.indexOf('@');
+        if (atIndex <= 0) {
+            return email;
+        }
+        String localPart = email.substring(0, atIndex);
+        String visible = localPart.substring(0, Math.min(2, localPart.length()));
+        return visible + "*".repeat(Math.max(localPart.length() - visible.length(), 1)) + email.substring(atIndex);
+    }
 
     /**
      * WBS-146: Redis 선점을 포함한 예약 생성 (통합 서비스)
@@ -76,8 +196,8 @@ public class BoothReservationWithRedisService {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
-        // 중복 예약 확인
-        if (reservationRepository.existsByMemberIdAndBoothId(memberId, boothId)) {
+        // 중복 예약 확인 (취소된 예약은 재예약 허용)
+        if (reservationRepository.existsByMemberIdAndBoothIdAndStatus(memberId, boothId, BoothReservationStatus.RESERVED)) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
@@ -96,10 +216,17 @@ public class BoothReservationWithRedisService {
                     .partySize(request.getPartySize())
                     .status(BoothReservationStatus.RESERVED)
                     .reservedAt(now)
+                    .createdAt(now)
                     .updatedAt(now)
                     .build();
 
-            BoothReservation saved = reservationRepository.saveAndFlush(reservation);
+            BoothReservation saved;
+            try {
+                saved = reservationRepository.saveAndFlush(reservation);
+            } catch (DataIntegrityViolationException e) {
+                // 동시 요청이 사전 중복 검사를 함께 통과한 경우, uk_booth_reservations 제약 위반을 409로 변환
+                throw new BusinessException(GlobalErrorCode.RESERVATION_ALREADY_EXISTS, e);
+            }
 
             // 슬롯의 남은 자리 감소 (이미 비관적 잠금으로 보호됨)
             slot.incrementReservedCount(request.getPartySize());
@@ -190,6 +317,11 @@ public class BoothReservationWithRedisService {
      * 결과: 중복 해제 절대 불가능!
      */
     private void registerRedisReleaseOnCommit(Long boothId, Long slotId, Long memberId) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            redisReservationService.releaseSlot(boothId, slotId, memberId);
+            return;
+        }
+
         TransactionSynchronizationManager.registerSynchronization(
                 new TransactionSynchronization() {
                     @Override
