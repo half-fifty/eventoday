@@ -49,6 +49,7 @@ class TicketOrderQueryServiceTest {
         TicketOrderQueryService service = service();
         TicketOrderListProjection order = projection(
             2L,
+            null,
             "EVT-20260803-000000000002",
             1L,
             "Event",
@@ -69,6 +70,7 @@ class TicketOrderQueryServiceTest {
         assertThat(response.getContent()).hasSize(1);
         TicketOrderListItemResponse item = response.getContent().getFirst();
         assertThat(item.getTicketOrderId()).isEqualTo(2L);
+        assertThat(item.getPaymentId()).isNull();
         assertThat(item.getOrderNo()).isEqualTo("EVT-20260803-000000000002");
         assertThat(item.getEventId()).isEqualTo(1L);
         assertThat(item.getEventName()).isEqualTo("Event");
@@ -87,6 +89,7 @@ class TicketOrderQueryServiceTest {
         TicketOrderQueryService service = service();
         TicketOrderListProjection order = projection(
             1L,
+            5L,
             "EVT-20260803-000000000001",
             1L,
             "Event",
@@ -105,6 +108,7 @@ class TicketOrderQueryServiceTest {
         MyTicketOrderListResponse response = service.getMyTicketOrders(10L, 0, 20);
 
         assertThat(response.getContent().getFirst().getPaymentRequired()).isTrue();
+        assertThat(response.getContent().getFirst().getPaymentId()).isEqualTo(5L);
     }
 
     @Test
@@ -180,7 +184,7 @@ class TicketOrderQueryServiceTest {
     @Test
     void getTicketOrderDetail_returnsMemberOrderForOwner() {
         TicketOrderQueryService service = service();
-        TicketOrderDetailProjection order = detailProjection(1L, "ORDER-1", 10L);
+        TicketOrderDetailProjection order = detailProjection(1L, 5L, "ORDER-1", 10L);
         ExchangeCode exchangeCode = ExchangeCode.createForTicketOrder(
             100L,
             1L,
@@ -199,6 +203,7 @@ class TicketOrderQueryServiceTest {
 
         assertThat(response.getOrderNo()).isEqualTo("ORDER-1");
         assertThat(response.getTicketOrderId()).isEqualTo(1L);
+        assertThat(response.getPaymentId()).isEqualTo(5L);
         assertThat(response.getPaymentRequired()).isTrue();
         assertThat(response.getExchangeCodes()).hasSize(1);
         assertThat(response.getExchangeCodes().getFirst().getCode())
@@ -206,10 +211,35 @@ class TicketOrderQueryServiceTest {
     }
 
     @Test
+    void getTicketOrderDetail_returnsNullPaymentIdForFreeOrder() {
+        TicketOrderQueryService service = service();
+        given(ticketOrderRepository.findTicketOrderDetailByOrderNo("FREE-ORDER-1"))
+            .willReturn(Optional.of(detailProjection(
+                2L,
+                null,
+                "FREE-ORDER-1",
+                10L,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                "PAID",
+                "CONFIRMED"
+            )));
+        given(exchangeCodeRepository.findAllByTicketOrderIdOrderByIdAsc(2L))
+            .willReturn(List.of());
+
+        TicketOrderDetailResponse response =
+            service.getTicketOrderDetail("FREE-ORDER-1", 10L, null);
+
+        assertThat(response.getOrderNo()).isEqualTo("FREE-ORDER-1");
+        assertThat(response.getPaymentId()).isNull();
+        assertThat(response.getPaymentRequired()).isFalse();
+    }
+
+    @Test
     void getTicketOrderDetail_failsWhenMemberOrderIsRequestedWithoutLogin() {
         TicketOrderQueryService service = service();
         given(ticketOrderRepository.findTicketOrderDetailByOrderNo("ORDER-1"))
-            .willReturn(Optional.of(detailProjection(1L, "ORDER-1", 10L)));
+            .willReturn(Optional.of(detailProjection(1L, 5L, "ORDER-1", 10L)));
 
         assertThatThrownBy(() -> service.getTicketOrderDetail("ORDER-1", null, null))
             .isInstanceOf(BusinessException.class)
@@ -222,7 +252,7 @@ class TicketOrderQueryServiceTest {
     void getTicketOrderDetail_failsWhenMemberOrderIsRequestedByOtherMember() {
         TicketOrderQueryService service = service();
         given(ticketOrderRepository.findTicketOrderDetailByOrderNo("ORDER-1"))
-            .willReturn(Optional.of(detailProjection(1L, "ORDER-1", 10L)));
+            .willReturn(Optional.of(detailProjection(1L, 5L, "ORDER-1", 10L)));
 
         assertThatThrownBy(() -> service.getTicketOrderDetail("ORDER-1", 20L, null))
             .isInstanceOf(BusinessException.class)
@@ -235,7 +265,7 @@ class TicketOrderQueryServiceTest {
     void getTicketOrderDetail_returnsGuestOrderWithValidToken() {
         TicketOrderQueryService service = service();
         given(ticketOrderRepository.findTicketOrderDetailByOrderNo("ORDER-1"))
-            .willReturn(Optional.of(detailProjection(1L, "ORDER-1", null)));
+            .willReturn(Optional.of(detailProjection(1L, 5L, "ORDER-1", null)));
         given(orderAccessTokenProvider.getOrderNo("guest-token")).willReturn("ORDER-1");
         given(exchangeCodeRepository.findAllByTicketOrderIdOrderByIdAsc(1L))
             .willReturn(List.of());
@@ -244,6 +274,7 @@ class TicketOrderQueryServiceTest {
             service.getTicketOrderDetail("ORDER-1", null, "guest-token");
 
         assertThat(response.getOrderNo()).isEqualTo("ORDER-1");
+        assertThat(response.getPaymentId()).isEqualTo(5L);
         assertThat(response.getExchangeCodes()).isEmpty();
     }
 
@@ -251,7 +282,7 @@ class TicketOrderQueryServiceTest {
     void getTicketOrderDetail_requiresTokenForGuestOrderEvenWhenLoggedIn() {
         TicketOrderQueryService service = service();
         given(ticketOrderRepository.findTicketOrderDetailByOrderNo("ORDER-1"))
-            .willReturn(Optional.of(detailProjection(1L, "ORDER-1", null)));
+            .willReturn(Optional.of(detailProjection(1L, 5L, "ORDER-1", null)));
 
         assertThatThrownBy(() -> service.getTicketOrderDetail("ORDER-1", 10L, null))
             .isInstanceOf(BusinessException.class)
@@ -264,7 +295,7 @@ class TicketOrderQueryServiceTest {
     void getTicketOrderDetail_failsWhenGuestTokenOrderNoDoesNotMatch() {
         TicketOrderQueryService service = service();
         given(ticketOrderRepository.findTicketOrderDetailByOrderNo("ORDER-1"))
-            .willReturn(Optional.of(detailProjection(1L, "ORDER-1", null)));
+            .willReturn(Optional.of(detailProjection(1L, 5L, "ORDER-1", null)));
         given(orderAccessTokenProvider.getOrderNo("guest-token")).willReturn("ORDER-2");
 
         assertThatThrownBy(() -> service.getTicketOrderDetail("ORDER-1", null, "guest-token"))
@@ -278,7 +309,7 @@ class TicketOrderQueryServiceTest {
     void getTicketOrderDetail_propagatesInvalidGuestToken() {
         TicketOrderQueryService service = service();
         given(ticketOrderRepository.findTicketOrderDetailByOrderNo("ORDER-1"))
-            .willReturn(Optional.of(detailProjection(1L, "ORDER-1", null)));
+            .willReturn(Optional.of(detailProjection(1L, 5L, "ORDER-1", null)));
         given(orderAccessTokenProvider.getOrderNo("bad-token"))
             .willThrow(new BusinessException(GlobalErrorCode.ORDER_ACCESS_TOKEN_INVALID));
 
@@ -293,7 +324,7 @@ class TicketOrderQueryServiceTest {
     void getTicketOrderDetail_propagatesExpiredGuestToken() {
         TicketOrderQueryService service = service();
         given(ticketOrderRepository.findTicketOrderDetailByOrderNo("ORDER-1"))
-            .willReturn(Optional.of(detailProjection(1L, "ORDER-1", null)));
+            .willReturn(Optional.of(detailProjection(1L, 5L, "ORDER-1", null)));
         given(orderAccessTokenProvider.getOrderNo("expired-token"))
             .willThrow(new BusinessException(GlobalErrorCode.ORDER_ACCESS_TOKEN_EXPIRED));
 
@@ -327,6 +358,7 @@ class TicketOrderQueryServiceTest {
 
     private TicketOrderListProjection projection(
             Long ticketOrderId,
+            Long paymentId,
             String orderNo,
             Long eventId,
             String eventName,
@@ -342,6 +374,11 @@ class TicketOrderQueryServiceTest {
             @Override
             public Long getTicketOrderId() {
                 return ticketOrderId;
+            }
+
+            @Override
+            public Long getPaymentId() {
+                return paymentId;
             }
 
             @Override
@@ -403,12 +440,39 @@ class TicketOrderQueryServiceTest {
 
     private TicketOrderDetailProjection detailProjection(
             Long ticketOrderId,
+            Long paymentId,
             String orderNo,
             Long buyerMemberId) {
+        return detailProjection(
+            ticketOrderId,
+            paymentId,
+            orderNo,
+            buyerMemberId,
+            BigDecimal.valueOf(10000),
+            BigDecimal.valueOf(20000),
+            "PENDING",
+            "PENDING_PAYMENT"
+        );
+    }
+
+    private TicketOrderDetailProjection detailProjection(
+            Long ticketOrderId,
+            Long paymentId,
+            String orderNo,
+            Long buyerMemberId,
+            BigDecimal unitPrice,
+            BigDecimal totalAmount,
+            String paymentOrderStatus,
+            String ticketOrderStatus) {
         return new TicketOrderDetailProjection() {
             @Override
             public Long getTicketOrderId() {
                 return ticketOrderId;
+            }
+
+            @Override
+            public Long getPaymentId() {
+                return paymentId;
             }
 
             @Override
@@ -438,22 +502,22 @@ class TicketOrderQueryServiceTest {
 
             @Override
             public BigDecimal getUnitPrice() {
-                return BigDecimal.valueOf(10000);
+                return unitPrice;
             }
 
             @Override
             public BigDecimal getTotalAmount() {
-                return BigDecimal.valueOf(20000);
+                return totalAmount;
             }
 
             @Override
             public String getPaymentOrderStatus() {
-                return "PENDING";
+                return paymentOrderStatus;
             }
 
             @Override
             public String getTicketOrderStatus() {
-                return "PENDING_PAYMENT";
+                return ticketOrderStatus;
             }
 
             @Override

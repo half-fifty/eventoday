@@ -1,12 +1,16 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
+import { admissionApi } from "../api/admissionApi.js";
+import { exchangeCodeApi } from "../api/exchangeCodeApi.js";
+import { paymentApi } from "../api/paymentApi.js";
 import useAuth from "../hooks/useAuth.js";
 import { useNotifications } from "../notifications/NotificationContext.jsx";
 
 const tabs = [
   { key: "tickets", label: "예매내역", icon: "confirmation_number" },
+  { key: "refunds", label: "환불내역", icon: "payments" },
   { key: "qr", label: "입장 QR", icon: "qr_code_2" },
   { key: "booths", label: "부스 활동", icon: "favorite" },
   { key: "notif", label: "알림", icon: "notifications" },
@@ -17,7 +21,45 @@ const subtabs = [
   { key: "reserved", label: "예약 내역" },
   { key: "visited", label: "방문한 부스" },
 ];
-const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 41 + 7) % 7 < 3);
+const formatDateTime = (value) =>
+  value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
+const formatMoney = (value) => `${Number(value || 0).toLocaleString("ko-KR")}원`;
+const pageInfo = (result) => ({
+  number: result?.data?.number || 0,
+  totalPages: result?.data?.totalPages || 1,
+});
+const orderStatusLabel = {
+  PENDING: "대기",
+  PAID: "결제 완료",
+  CONFIRMED: "확정",
+  CANCELLED: "취소",
+  EXPIRED: "만료",
+  FAILED: "실패",
+  REFUNDED: "환불 완료",
+};
+const refundStatusLabel = {
+  REQUESTED: "환불 요청",
+  COMPLETED: "환불 완료",
+  FAILED: "환불 실패",
+  REJECTED: "환불 거절",
+};
+const exchangeCodeStatusLabel = {
+  ISSUED: "사용 전",
+  REDEEMED: "사용 완료",
+  CANCELLED: "취소",
+  EXPIRED: "만료",
+};
+const exchangeCodeSourceLabel = {
+  TICKET_ORDER: "티켓 주문",
+  EXTERNAL_REQUEST: "외부 발급",
+};
+
+const admissionStatusLabel = {
+  ISSUED: "사용 가능",
+  USED: "입장 완료",
+  CANCELLED: "취소",
+  EXPIRED: "만료",
+};
 
 export default function MyPage() {
   const { member, logout } = useAuth();
@@ -56,6 +98,32 @@ export default function MyPage() {
   const [redeemMsg, setRedeemMsg] = useState(null); // { ok, text }
   const [rating, setRating] = useState(0);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [ticketOrders, setTicketOrders] = useState([]);
+  const [ticketOrdersPage, setTicketOrdersPage] = useState(0);
+  const [ticketOrdersPageInfo, setTicketOrdersPageInfo] = useState({ number: 0, totalPages: 1 });
+  const [ticketOrdersLoading, setTicketOrdersLoading] = useState(false);
+  const [ticketOrdersError, setTicketOrdersError] = useState("");
+  const [refunds, setRefunds] = useState([]);
+  const [refundsPage, setRefundsPage] = useState(0);
+  const [refundsPageInfo, setRefundsPageInfo] = useState({ number: 0, totalPages: 1 });
+  const [refundsLoading, setRefundsLoading] = useState(false);
+  const [refundsError, setRefundsError] = useState("");
+  const [exchangeCodes, setExchangeCodes] = useState([]);
+  const [exchangeCodesPage, setExchangeCodesPage] = useState(0);
+  const [exchangeCodesPageInfo, setExchangeCodesPageInfo] = useState({ number: 0, totalPages: 1 });
+  const [exchangeCodesLoading, setExchangeCodesLoading] = useState(false);
+  const [exchangeCodesError, setExchangeCodesError] = useState("");
+  const [admissionTickets, setAdmissionTickets] = useState([]);
+  const [admissionTicketsPage, setAdmissionTicketsPage] = useState(0);
+  const [admissionTicketsPageInfo, setAdmissionTicketsPageInfo] = useState({ number: 0, totalPages: 1 });
+  const [admissionTicketsLoading, setAdmissionTicketsLoading] = useState(false);
+  const [admissionTicketsError, setAdmissionTicketsError] = useState("");
+  const [issuedAdmissionTicketId, setIssuedAdmissionTicketId] = useState(null);
+  const [validationResult, setValidationResult] = useState(null);
+  const [validatedCode, setValidatedCode] = useState("");
+  const [validatingCode, setValidatingCode] = useState(false);
+  const [redeemingCode, setRedeemingCode] = useState(false);
+  const validationSeqRef = useRef(0);
   const loginDescription = isBusinessMember
     ? `${member.organization?.name || "사업자"} · 사업자 계정`
     : "일반 회원";
@@ -74,6 +142,30 @@ export default function MyPage() {
     STAFF: "실무자",
   }[member.organization?.organizationRole] || "권한 정보 없음";
 
+  const loadExchangeCodes = useCallback(() => {
+    setExchangeCodesLoading(true);
+    setExchangeCodesError("");
+    return exchangeCodeApi.getMyExchangeCodes({ page: exchangeCodesPage, size: 20 })
+      .then((result) => {
+        setExchangeCodes(result?.data?.content || []);
+        setExchangeCodesPageInfo(pageInfo(result));
+      })
+      .catch((requestError) => setExchangeCodesError(requestError.message || "교환 코드 목록을 불러오지 못했습니다."))
+      .finally(() => setExchangeCodesLoading(false));
+  }, [exchangeCodesPage]);
+
+  const loadAdmissionTickets = useCallback(() => {
+    setAdmissionTicketsLoading(true);
+    setAdmissionTicketsError("");
+    return admissionApi.getMyAdmissionTickets({ page: admissionTicketsPage, size: 20 })
+      .then((result) => {
+        setAdmissionTickets(result?.data?.content || []);
+        setAdmissionTicketsPageInfo(pageInfo(result));
+      })
+      .catch((requestError) => setAdmissionTicketsError(requestError.message || "입장 티켓 목록을 불러오지 못했습니다."))
+      .finally(() => setAdmissionTicketsLoading(false));
+  }, [admissionTicketsPage]);
+
   useEffect(() => {
     const visibleTabKeys = isBusinessMember
       ? ["business-overview", "business-activity", "profile"]
@@ -83,6 +175,98 @@ export default function MyPage() {
       setTab(visibleTabKeys[0]);
     }
   }, [isBusinessMember, tab]);
+
+  useEffect(() => {
+    if (isBusinessMember || tab !== "tickets") return;
+    let cancelled = false;
+    setTicketOrdersLoading(true);
+    setTicketOrdersError("");
+    paymentApi.getMyTicketOrders({ page: ticketOrdersPage, size: 20 })
+      .then((result) => {
+        if (!cancelled) {
+          setTicketOrders(result?.data?.content || []);
+          setTicketOrdersPageInfo(pageInfo(result));
+        }
+      })
+      .catch((requestError) => {
+        if (!cancelled) setTicketOrdersError(requestError.message || "예매 내역을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setTicketOrdersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusinessMember, tab, ticketOrdersPage]);
+
+  useEffect(() => {
+    if (isBusinessMember || tab !== "tickets") return;
+    let cancelled = false;
+    setExchangeCodesLoading(true);
+    setExchangeCodesError("");
+    exchangeCodeApi.getMyExchangeCodes({ page: exchangeCodesPage, size: 20 })
+      .then((result) => {
+        if (!cancelled) {
+          setExchangeCodes(result?.data?.content || []);
+          setExchangeCodesPageInfo(pageInfo(result));
+        }
+      })
+      .catch((requestError) => {
+        if (!cancelled) setExchangeCodesError(requestError.message || "교환 코드 목록을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setExchangeCodesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [exchangeCodesPage, isBusinessMember, tab]);
+
+  useEffect(() => {
+    if (isBusinessMember || tab !== "refunds") return;
+    let cancelled = false;
+    setRefundsLoading(true);
+    setRefundsError("");
+    paymentApi.getMyRefunds({ page: refundsPage, size: 20 })
+      .then((result) => {
+        if (!cancelled) {
+          setRefunds(result?.data?.content || []);
+          setRefundsPageInfo(pageInfo(result));
+        }
+      })
+      .catch((requestError) => {
+        if (!cancelled) setRefundsError(requestError.message || "환불 내역을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setRefundsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusinessMember, refundsPage, tab]);
+
+  useEffect(() => {
+    if (isBusinessMember || tab !== "qr") return;
+    let cancelled = false;
+    setAdmissionTicketsLoading(true);
+    setAdmissionTicketsError("");
+    admissionApi.getMyAdmissionTickets({ page: admissionTicketsPage, size: 20 })
+      .then((result) => {
+        if (!cancelled) {
+          setAdmissionTickets(result?.data?.content || []);
+          setAdmissionTicketsPageInfo(pageInfo(result));
+        }
+      })
+      .catch((requestError) => {
+        if (!cancelled) setAdmissionTicketsError(requestError.message || "입장 티켓 목록을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setAdmissionTicketsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [admissionTicketsPage, isBusinessMember, tab]);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -96,14 +280,68 @@ export default function MyPage() {
     }
   };
 
-  const redeemCode = () => {
+  const handleCodeChange = (event) => {
+    setCode(event.target.value);
+    setValidationResult(null);
+    setValidatedCode("");
+    setRedeemMsg(null);
+    setIssuedAdmissionTicketId(null);
+  };
+
+  const validateCode = async () => {
     const val = code.trim();
     if (!val) return setRedeemMsg({ ok: false, text: "교환 코드를 입력해 주세요." });
-    if (val.toUpperCase() === "USED123") {
-      setRedeemMsg({ ok: false, text: "이미 사용 완료된 교환 코드입니다." });
-    } else {
-      setRedeemMsg({ ok: true, text: "교환 코드가 확인되어 입장 QR이 발급되었습니다." });
+    if (validatingCode) return;
+    const seq = validationSeqRef.current + 1;
+    validationSeqRef.current = seq;
+    setValidatingCode(true);
+    setRedeemMsg(null);
+    setValidationResult(null);
+    setValidatedCode("");
+    try {
+      const result = await exchangeCodeApi.validateExchangeCode(val);
+      if (validationSeqRef.current !== seq || code.trim() !== val) return;
+      const data = result?.data || null;
+      if (!data?.valid) {
+        setRedeemMsg({ ok: false, text: data?.message || "사용할 수 없는 교환 코드입니다." });
+        return;
+      }
+      setValidationResult(data);
+      setValidatedCode(val);
+      setRedeemMsg({ ok: true, text: "교환 코드가 확인되었습니다." });
+    } catch (requestError) {
+      if (validationSeqRef.current === seq && code.trim() === val) {
+        setRedeemMsg({ ok: false, text: requestError.message || "교환 코드를 확인하지 못했습니다." });
+      }
+    } finally {
+      if (validationSeqRef.current === seq) setValidatingCode(false);
+    }
+  };
+
+  const redeemCode = async () => {
+    const val = validatedCode;
+    if (!validationResult?.valid || validatedCode !== code.trim() || redeemingCode) return;
+    setRedeemingCode(true);
+    setRedeemMsg(null);
+    try {
+      const result = await exchangeCodeApi.redeemExchangeCode(val);
+      const redeemed = result?.data;
+      setValidationResult(null);
+      setValidatedCode("");
       setCode("");
+      setIssuedAdmissionTicketId(redeemed?.admissionTicketId || null);
+      setRedeemMsg({
+        ok: true,
+        text: redeemed?.admissionTicketId
+          ? `입장 티켓이 발급되었습니다. 티켓 ID: ${redeemed.admissionTicketId}`
+          : "입장 티켓이 발급되었습니다.",
+      });
+      await loadExchangeCodes();
+      await loadAdmissionTickets();
+    } catch (requestError) {
+      setRedeemMsg({ ok: false, text: requestError.message || "교환 코드 사용에 실패했습니다." });
+    } finally {
+      setRedeemingCode(false);
     }
   };
 
@@ -192,8 +430,26 @@ export default function MyPage() {
                 {isExhibitor ? "부스 신청 현황" : businessActivityLabel}
               </h2>
               <p className="mt-xs text-caption text-ink-muted">
-                {isOrganizer ? "행사 조회 API 연결 후 등록한 행사가 표시됩니다." : isExhibitor ? "부스 신청 조회 API 연결 후 신청 내역이 표시됩니다." : "조직 정보를 확인한 후 이용해 주세요."}
+                {isOrganizer ? "개최자센터에서 등록한 행사를 관리할 수 있습니다." : isExhibitor ? "부스 신청 내역과 검토 상태를 확인할 수 있습니다." : "조직 정보를 확인한 후 이용해 주세요."}
               </p>
+              {/* 참가기업: 내 부스 신청 현황 페이지로 연결 (WBS-196) */}
+              {isExhibitor && (
+                <Link
+                  to="/my-applications"
+                  className="mt-md inline-flex items-center gap-xs px-lg py-sm bg-primary text-white rounded-full text-caption font-body-strong"
+                >
+                  <Icon name="storefront" className="text-[16px]" /> 내 부스 신청 현황 보기
+                </Link>
+              )}
+              {/* 개최자: 개최자센터로 연결 */}
+              {isOrganizer && (
+                <Link
+                  to="/organizer-admin"
+                  className="mt-md inline-flex items-center gap-xs px-lg py-sm bg-primary text-white rounded-full text-caption font-body-strong"
+                >
+                  <Icon name="event" className="text-[16px]" /> 개최자센터로 이동
+                </Link>
+              )}
             </div>
           )}
 
@@ -206,57 +462,207 @@ export default function MyPage() {
                 <div className="flex gap-sm">
                   <input
                     value={code}
-                    onChange={(e) => setCode(e.target.value)}
+                    onChange={handleCodeChange}
                     type="text"
                     placeholder="교환 코드 입력 (예: ABCD-1234)"
                     className="flex-1 h-[44px] rounded-lg border border-hairline px-sm outline-none focus:border-primary-focus"
                   />
-                  <button onClick={redeemCode} className="px-lg h-[44px] rounded-lg bg-primary text-white font-body-strong flex items-center gap-1">
-                    <Icon name="key" className="text-[18px]" />등록
+                  <button
+                    onClick={validateCode}
+                    disabled={validatingCode || redeemingCode}
+                    className="px-lg h-[44px] rounded-lg bg-primary text-white font-body-strong flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <Icon name="key" className="text-[18px]" />{validatingCode ? "확인 중" : "검증"}
                   </button>
                 </div>
+                {validationResult?.valid && validatedCode === code.trim() && (
+                  <div className="mt-md rounded-xl bg-surface-container p-md text-caption">
+                    <p className="font-body-strong text-body">{validationResult.eventName}</p>
+                    <p className="text-ink-muted">상태 {exchangeCodeStatusLabel[validationResult.status] || validationResult.status} · {exchangeCodeSourceLabel[validationResult.source] || validationResult.source}</p>
+                    <p className="text-ink-muted">만료일 {formatDateTime(validationResult.expiresAt)}</p>
+                    <button
+                      onClick={redeemCode}
+                      disabled={redeemingCode || validatedCode !== code.trim()}
+                      className="mt-md w-full rounded-lg bg-black px-lg py-sm text-white font-body-strong disabled:opacity-50"
+                    >
+                      {redeemingCode ? "사용 중..." : "사용하기"}
+                    </button>
+                  </div>
+                )}
                 {redeemMsg && (
                   <p className={`text-caption mt-sm ${redeemMsg.ok ? "text-status-available" : "text-error"}`}>{redeemMsg.text}</p>
+                )}
+                {issuedAdmissionTicketId && (
+                  <Link
+                    to={`/admission-tickets/${issuedAdmissionTicketId}`}
+                    className="mt-sm inline-flex items-center gap-1 rounded-full border border-hairline px-md py-1.5 text-caption font-body-strong"
+                  >
+                    <Icon name="qr_code_2" className="text-[16px]" />
+                    입장 티켓 보기
+                  </Link>
+                )}
+              </div>
+
+              <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
+                <div className="p-lg font-body-strong">내 교환 코드</div>
+                {exchangeCodesLoading && (
+                  <p className="p-lg text-caption text-ink-muted">교환 코드 목록을 불러오는 중입니다.</p>
+                )}
+                {exchangeCodesError && (
+                  <p className="p-lg text-caption text-error">{exchangeCodesError}</p>
+                )}
+                {!exchangeCodesLoading && !exchangeCodesError && exchangeCodes.length === 0 && (
+                  <p className="p-lg text-caption text-ink-muted">보유한 교환 코드가 없습니다.</p>
+                )}
+                {!exchangeCodesLoading && !exchangeCodesError && exchangeCodes.map((exchangeCode) => (
+                  <div key={exchangeCode.exchangeCodeId} className="flex items-center gap-md p-lg">
+                    <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#00b09b,#96c93d)" }}><Icon name="key" className="text-[18px]" /></div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono font-body-strong break-all">{exchangeCode.code}</p>
+                      <p className="text-caption text-ink-muted">{exchangeCode.eventName} · {exchangeCodeSourceLabel[exchangeCode.source] || exchangeCode.source}</p>
+                      <p className="text-[11px] text-ink-muted">
+                        발급 {formatDateTime(exchangeCode.createdAt)}
+                        {exchangeCode.expiresAt ? ` · 만료 ${formatDateTime(exchangeCode.expiresAt)}` : ""}
+                        {exchangeCode.redeemedAt ? ` · 사용 ${formatDateTime(exchangeCode.redeemedAt)}` : ""}
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-primary-container/10 text-primary-focus">
+                      {exchangeCodeStatusLabel[exchangeCode.status] || exchangeCode.status}
+                    </span>
+                  </div>
+                ))}
+                {!exchangeCodesError && (
+                  <Pager
+                    pageInfo={exchangeCodesPageInfo}
+                    loading={exchangeCodesLoading}
+                    onPrev={() => setExchangeCodesPage((page) => Math.max(0, page - 1))}
+                    onNext={() => setExchangeCodesPage((page) => Math.min(exchangeCodesPageInfo.totalPages - 1, page + 1))}
+                  />
                 )}
               </div>
 
               <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
                 <div className="p-lg font-body-strong">예매한 행사</div>
-                <div className="flex items-center gap-md p-lg">
-                  <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#ff9966,#ff5e62)" }}><Icon name="confirmation_number" className="text-[18px]" /></div>
-                  <div className="flex-1">
-                    <p className="font-body-strong">2026 서울 푸드테크 박람회</p>
-                    <p className="text-caption text-ink-muted">코엑스 · 08.12–08.14</p>
-                  </div>
-                  <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-status-blocked/10 text-status-blocked">입장 완료</span>
-                </div>
-                <div className="flex items-center gap-md p-lg">
-                  <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#ee9ca7,#ffdde1)" }}><Icon name="confirmation_number" className="text-[18px]" /></div>
-                  <div className="flex-1">
-                    <p className="font-body-strong">K-뷰티 & 코스메틱 전시회</p>
-                    <p className="text-caption text-ink-muted">코엑스 · 09.10–09.13</p>
-                  </div>
-                  <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-primary-container/10 text-primary-focus">사용 전</span>
-                </div>
+                {ticketOrdersLoading && (
+                  <p className="p-lg text-caption text-ink-muted">예매 내역을 불러오는 중입니다.</p>
+                )}
+                {ticketOrdersError && (
+                  <p className="p-lg text-caption text-error">{ticketOrdersError}</p>
+                )}
+                {!ticketOrdersLoading && !ticketOrdersError && ticketOrders.length === 0 && (
+                  <p className="p-lg text-caption text-ink-muted">아직 구매한 티켓이 없습니다.</p>
+                )}
+                {!ticketOrdersLoading && !ticketOrdersError && ticketOrders.map((order) => (
+                  <Link key={order.orderNo} to={`/tickets/orders/${order.orderNo}`} className="flex items-center gap-md p-lg transition-colors hover:bg-surface-container-low">
+                    <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#ff9966,#ff5e62)" }}><Icon name="confirmation_number" className="text-[18px]" /></div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-body-strong truncate">{order.eventName}</p>
+                      <p className="text-caption text-ink-muted">주문 {order.orderNo} · {order.quantity}매 · {formatMoney(order.totalAmount)}</p>
+                      <p className="text-[11px] text-ink-muted">주문 일시 {formatDateTime(order.createdAt)}</p>
+                    </div>
+                    <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-primary-container/10 text-primary-focus">
+                      {orderStatusLabel[order.ticketOrderStatus] || order.ticketOrderStatus}
+                    </span>
+                  </Link>
+                ))}
+                {!ticketOrdersError && (
+                  <Pager
+                    pageInfo={ticketOrdersPageInfo}
+                    loading={ticketOrdersLoading}
+                    onPrev={() => setTicketOrdersPage((page) => Math.max(0, page - 1))}
+                    onNext={() => setTicketOrdersPage((page) => Math.min(ticketOrdersPageInfo.totalPages - 1, page + 1))}
+                  />
+                )}
               </div>
+            </div>
+          )}
+
+          {/* REFUNDS */}
+          {tab === "refunds" && (
+            <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
+              <div className="p-lg font-body-strong">환불 내역</div>
+              {refundsLoading && (
+                <p className="p-lg text-caption text-ink-muted">환불 내역을 불러오는 중입니다.</p>
+              )}
+              {refundsError && (
+                <p className="p-lg text-caption text-error">{refundsError}</p>
+              )}
+              {!refundsLoading && !refundsError && refunds.length === 0 && (
+                <p className="p-lg text-caption text-ink-muted">환불 내역이 없습니다.</p>
+              )}
+              {!refundsLoading && !refundsError && refunds.map((refund) => (
+                <Link key={refund.refundId} to={`/refunds/${refund.refundId}`} className="flex items-center gap-md p-lg transition-colors hover:bg-surface-container-low">
+                  <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#667eea,#764ba2)" }}><Icon name="payments" className="text-[18px]" /></div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-body-strong truncate">{refund.eventName}</p>
+                    <p className="text-caption text-ink-muted">환불 #{refund.refundId} · 주문 {refund.orderNo} · {formatMoney(refund.refundAmount)}</p>
+                    <p className="text-[11px] text-ink-muted">
+                      신청 {formatDateTime(refund.requestedAt)}
+                      {refund.completedAt ? ` · 처리 ${formatDateTime(refund.completedAt)}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-primary-container/10 text-primary-focus">
+                    {refundStatusLabel[refund.refundStatus] || refund.refundStatus}
+                  </span>
+                </Link>
+              ))}
+              {!refundsError && (
+                <Pager
+                  pageInfo={refundsPageInfo}
+                  loading={refundsLoading}
+                  onPrev={() => setRefundsPage((page) => Math.max(0, page - 1))}
+                  onNext={() => setRefundsPage((page) => Math.min(refundsPageInfo.totalPages - 1, page + 1))}
+                />
+              )}
             </div>
           )}
 
           {/* QR */}
           {tab === "qr" && (
-            <div className="text-center">
-              <div className="bg-black rounded-2xl p-xl flex flex-col items-center">
-                <div className="grid grid-cols-10 gap-[2px] w-[180px] mb-lg">
-                  {qrPixels.map((on, i) => (
-                    <div key={i} className={`w-full aspect-square ${on ? "bg-black" : "bg-white"}`} />
-                  ))}
-                </div>
-                <p className="text-white font-display-md text-[18px]">2026 서울 푸드테크 박람회</p>
-                <span className="text-white/70 text-caption mt-xs px-md py-1 bg-white/10 rounded-full">회원 입장 QR · 입장 완료</span>
-              </div>
+            <div className="bg-white rounded-2xl border border-hairline divide-y divide-divider-soft">
+              <div className="p-lg font-body-strong">입장 티켓</div>
+              {admissionTicketsLoading && (
+                <p className="p-lg text-caption text-ink-muted">입장 티켓 목록을 불러오는 중입니다.</p>
+              )}
+              {admissionTicketsError && (
+                <p className="p-lg text-caption text-error">{admissionTicketsError}</p>
+              )}
+              {!admissionTicketsLoading && !admissionTicketsError && admissionTickets.length === 0 && (
+                <p className="p-lg text-caption text-ink-muted">발급된 입장 티켓이 없습니다.</p>
+              )}
+              {!admissionTicketsLoading && !admissionTicketsError && admissionTickets.map((ticket) => (
+                <Link
+                  key={ticket.admissionTicketId}
+                  to={`/admission-tickets/${ticket.admissionTicketId}`}
+                  className="flex items-center gap-md p-lg transition-colors hover:bg-surface-container-low"
+                >
+                  <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#0f766e,#14b8a6)" }}>
+                    <Icon name="qr_code_2" className="text-[18px]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-body-strong truncate">{ticket.eventName}</p>
+                    <p className="text-caption text-ink-muted">입장 티켓 ID {ticket.admissionTicketId}</p>
+                    <p className="text-[11px] text-ink-muted">
+                      발급 {formatDateTime(ticket.issuedAt)}
+                      {ticket.usedAt ? ` · 사용 ${formatDateTime(ticket.usedAt)}` : ""}
+                      {ticket.cancelledAt ? ` · 취소 ${formatDateTime(ticket.cancelledAt)}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-primary-container/10 text-primary-focus">
+                    {admissionStatusLabel[ticket.status] || ticket.status}
+                  </span>
+                </Link>
+              ))}
+              {!admissionTicketsError && (
+                <Pager
+                  pageInfo={admissionTicketsPageInfo}
+                  loading={admissionTicketsLoading}
+                  onPrev={() => setAdmissionTicketsPage((page) => Math.max(0, page - 1))}
+                  onNext={() => setAdmissionTicketsPage((page) => Math.min(admissionTicketsPageInfo.totalPages - 1, page + 1))}
+                />
+              )}
             </div>
           )}
-
           {/* BOOTHS */}
           {tab === "booths" && (
             <div>
@@ -331,6 +737,32 @@ export default function MyPage() {
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+function Pager({ pageInfo, loading, onPrev, onNext }) {
+  const current = pageInfo.number + 1;
+  const total = Math.max(1, pageInfo.totalPages);
+  return (
+    <div className="flex items-center justify-center gap-sm p-md text-caption">
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={loading || pageInfo.number <= 0}
+        className="rounded-full border border-hairline px-md py-1 disabled:opacity-40"
+      >
+        이전
+      </button>
+      <span className="text-ink-muted">{current} / {total}</span>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={loading || current >= total}
+        className="rounded-full border border-hairline px-md py-1 disabled:opacity-40"
+      >
+        다음
+      </button>
     </div>
   );
 }

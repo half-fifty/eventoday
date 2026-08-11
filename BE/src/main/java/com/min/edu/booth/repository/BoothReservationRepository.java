@@ -34,4 +34,11 @@ public interface BoothReservationRepository extends JpaRepository<BoothReservati
     Optional<BoothReservation> findFirstByMemberIdAndStatusOrderByCheckedInAtDesc(
             Long memberId, BoothReservationStatus status);
 
+    // ===== CheckIn용 메서드 (WBS-155) =====
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT br FROM BoothReservation br WHERE br.memberId = :memberId AND br.boothId = :boothId")
+    Optional<BoothReservation> findByMemberIdAndBoothIdWithLock(
+            @Param("memberId") Long memberId,
+            @Param("boothId") Long boothId
+    );
 }

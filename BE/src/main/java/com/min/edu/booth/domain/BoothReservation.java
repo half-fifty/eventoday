@@ -35,6 +35,10 @@ public class BoothReservation {
     @Column(name = "id")
     private Long id;
 
+    @Column(name = "created_at")
+    private OffsetDateTime createdAt;
+
+
     @Column(name = "booth_id", nullable = false)
     private Long boothId;
 

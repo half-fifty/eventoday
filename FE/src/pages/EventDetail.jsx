@@ -4,10 +4,12 @@ import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/apiClient.js";
 import { eventApi } from "../api/eventApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
+import { listContents } from "../api/contentApi.js";
 import { listPublicVenueMaps } from "../api/venueMapApi.js";
 import Footer from "../components/Footer.jsx";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
+import FileDownloadLink from "../components/FileDownloadLink.jsx";
 import VenueMapPins from "../components/VenueMapPins.jsx";
 import BoothPinPopup from "../components/BoothPinPopup.jsx";
 import useAuth from "../hooks/useAuth.js";
@@ -30,6 +32,10 @@ export default function EventDetail() {
   const [purchasing, setPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState("");
   const [issuedCodes, setIssuedCodes] = useState([]);
+  // 공지·자료 (WBS-199): 권한에 따라 BE가 필터링해 내려준다
+  const [contents, setContents] = useState([]);
+  const [expandedContentId, setExpandedContentId] = useState(null);
+  const [completedOrderNo, setCompletedOrderNo] = useState("");
 
   const [venueMaps, setVenueMaps] = useState([]);
   const [loadingVenueMaps, setLoadingVenueMaps] = useState(false);
@@ -45,6 +51,25 @@ export default function EventDetail() {
       .then((result) => !cancelled && setEvent(result?.data || null))
       .catch((requestError) => !cancelled && setError(requestError.message || "행사를 불러오지 못했습니다."))
       .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [eventId]);
+
+  // CONTENT-API-001: 행사 공지·자료 로드 (실패해도 페이지 표시에는 영향 없도록 조용히 처리)
+  useEffect(() => {
+    let cancelled = false;
+    setContents([]);
+    listContents(eventId)
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : [];
+        // 고정 공지 우선, 이후 게시일 최신순 정렬
+        // pinned가 undefined면 뺄셈 결과가 NaN이 되므로 boolean → 숫자로 정규화
+        list.sort((a, b) =>
+          (Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)))
+          || new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+        setContents(list);
+      })
+      .catch(() => { if (!cancelled) setContents([]); });
     return () => { cancelled = true; };
   }, [eventId]);
 
@@ -68,16 +93,34 @@ export default function EventDetail() {
 
   const submitTicketOrder = async (submitEvent) => {
     submitEvent.preventDefault();
+    if (purchasing) return;
+    const ticketQuantity = Number(quantity);
+    const purchaseLimit = event.ticketPurchaseLimit || 1;
+    if (!Number.isInteger(ticketQuantity) || ticketQuantity < 1 || ticketQuantity > purchaseLimit) {
+      setPurchaseError(`수량은 1매부터 ${purchaseLimit}매까지 선택할 수 있습니다.`);
+      return;
+    }
     setPurchasing(true);
     setPurchaseError("");
     try {
       const payload = {
-        quantity: Number(quantity),
-        ...(isAuthenticated ? {} : { buyer }),
+        quantity: ticketQuantity,
+        ...(isAuthenticated ? {} : {
+          buyer: {
+            name: buyer.name.trim(),
+            email: buyer.email.trim(),
+            phone: buyer.phone.trim(),
+          },
+        }),
       };
       const result = await eventApi.createTicketOrder(eventId, payload);
       const order = result?.data;
       if (!order) throw new Error("티켓 주문 정보를 받지 못했습니다.");
+
+      setCompletedOrderNo(order.orderNo || "");
+      if (order.orderAccessToken) {
+        sessionStorage.setItem(`ticket-order-token:${order.orderNo}`, order.orderAccessToken);
+      }
 
       if (!order.paymentRequired) {
         setIssuedCodes(order.exchangeCodes || []);
@@ -86,9 +129,6 @@ export default function EventDetail() {
 
       const clientKey = import.meta.env.VITE_TOSS_CLIENT_KEY;
       if (!clientKey) throw new Error("VITE_TOSS_CLIENT_KEY가 설정되지 않아 결제창을 열 수 없습니다.");
-      if (order.orderAccessToken) {
-        sessionStorage.setItem(`ticket-order-token:${order.orderNo}`, order.orderAccessToken);
-      }
       const tossPayments = await loadTossPayments(clientKey);
       const payment = tossPayments.payment({ customerKey: ANONYMOUS });
       await payment.requestPayment({
@@ -111,6 +151,7 @@ export default function EventDetail() {
     setPurchaseOpen(false);
     setPurchaseError("");
     setIssuedCodes([]);
+    setCompletedOrderNo("");
   };
 
   const now = Date.now();
@@ -135,6 +176,53 @@ export default function EventDetail() {
             <section className="space-y-xl">
               <div><h2 className="font-display-md text-[22px] mb-md">행사 소개</h2><p className="whitespace-pre-wrap leading-7">{event.description}</p></div>
               <div><h2 className="font-display-md text-[22px] mb-md">운영 기능</h2><div className="flex flex-wrap gap-sm">{event.boothRecruitmentEnabled && <span className="px-md py-xs bg-primary/10 text-primary rounded-full text-caption">부스 모집</span>}{event.venueMapEnabled && <span className="px-md py-xs bg-primary/10 text-primary rounded-full text-caption">평면도</span>}{event.boothReservationEnabled && <span className="px-md py-xs bg-primary/10 text-primary rounded-full text-caption">부스 예약</span>}</div></div>
+
+              {/* 공지·자료 (WBS-199): 제목 클릭 시 내용 펼침, 첨부는 다운로드 링크 */}
+              {contents.length > 0 && (
+                <div>
+                  <h2 className="font-display-md text-[22px] mb-md">공지 · 자료</h2>
+                  <div className="bg-white border border-hairline rounded-2xl divide-y divide-divider-soft overflow-hidden">
+                    {contents.map((content) => (
+                      <div key={content.contentId}>
+                        <button
+                          onClick={() => setExpandedContentId(expandedContentId === content.contentId ? null : content.contentId)}
+                          className="w-full flex items-center gap-sm p-lg text-left hover:bg-surface-pearl/50 transition-colors"
+                        >
+                          <Icon
+                            name={content.contentType === "NOTICE" ? "campaign" : "folder"}
+                            className="text-[18px] text-ink-muted flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-body-strong text-[14px] truncate">
+                              {content.pinned && <Icon name="push_pin" className="text-[13px] text-primary mr-1" />}
+                              {content.title}
+                            </p>
+                            <p className="text-caption text-ink-muted">
+                              {content.contentType === "NOTICE" ? "공지" : "자료"}
+                              {content.version ? ` · v${content.version}` : ""}
+                              {content.publishedAt ? ` · ${new Date(content.publishedAt).toLocaleDateString("ko-KR")}` : ""}
+                            </p>
+                          </div>
+                          <Icon name={expandedContentId === content.contentId ? "expand_less" : "expand_more"} className="text-ink-muted text-[18px]" />
+                        </button>
+                        {expandedContentId === content.contentId && (
+                          <div className="px-lg pb-lg space-y-sm">
+                            {content.content && <p className="text-caption whitespace-pre-line bg-surface-pearl rounded-lg p-md">{content.content}</p>}
+                            {/* fileName·fileSize: BE Summary에 포함된 원본 파일명·크기 (다운로드 파일명으로 사용) */}
+                            {content.fileId && (
+                              <FileDownloadLink
+                                fileId={content.fileId}
+                                fileName={content.fileName || "첨부파일"}
+                                fileSize={content.fileSize}
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {event.venueMapEnabled && (
                 <div>
                   <h2 className="font-display-md text-[22px] mb-md">행사장 배치도</h2>
@@ -172,7 +260,7 @@ export default function EventDetail() {
       {purchaseOpen && event && <div className="fixed inset-0 z-50 bg-black/50 grid place-items-center p-lg" onMouseDown={(e) => e.target === e.currentTarget && closePurchase()}>
         <section role="dialog" aria-modal="true" aria-labelledby="ticket-title" className="w-full max-w-md bg-white rounded-2xl p-xl shadow-2xl">
           <div className="flex items-start justify-between gap-md mb-lg"><div><p className="text-caption text-primary">TICKET</p><h2 id="ticket-title" className="font-display-md text-[24px]">{issuedCodes.length ? "예매 완료" : "티켓 구매"}</h2></div><button type="button" onClick={closePurchase} aria-label="닫기"><Icon name="close" /></button></div>
-          {issuedCodes.length ? <div className="space-y-md"><p>무료 티켓이 발급되었습니다.</p>{issuedCodes.map((item, index) => <div key={item.exchangeCode || index} className="rounded-xl bg-surface-container p-md"><p className="text-caption text-ink-muted">입장 코드 {index + 1}</p><p className="font-mono font-bold text-lg break-all">{item.exchangeCode || item.code}</p></div>)}<button type="button" onClick={closePurchase} className="w-full py-sm bg-primary text-white rounded-full">확인</button></div> : <form onSubmit={submitTicketOrder} className="space-y-md">
+          {issuedCodes.length ? <div className="space-y-md"><p>무료 티켓이 발급되었습니다.</p>{issuedCodes.map((item, index) => <div key={item.exchangeCode || index} className="rounded-xl bg-surface-container p-md"><p className="text-caption text-ink-muted">입장 코드 {index + 1}</p><p className="font-mono font-bold text-lg break-all">{item.exchangeCode || item.code}</p></div>)}{completedOrderNo && <Link to={`/tickets/orders/${completedOrderNo}`} className="block w-full py-sm border border-hairline rounded-full text-center">주문 상세 보기</Link>}<button type="button" onClick={closePurchase} className="w-full py-sm bg-primary text-white rounded-full">확인</button></div> : <form onSubmit={submitTicketOrder} className="space-y-md">
             <div className="rounded-xl bg-surface-container p-md"><p className="font-body-strong">{event.name}</p><p className="text-caption text-ink-muted">1매 {Number(event.ticketPrice) === 0 ? "무료" : `${Number(event.ticketPrice).toLocaleString("ko-KR")}원`}</p></div>
             <label className="block">수량<input required min="1" max={event.ticketPurchaseLimit || 1} type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label>
             {!isAuthenticated && <div className="space-y-md border-t border-hairline pt-md"><p className="text-caption text-ink-muted">비회원 구매 정보</p><label className="block">이름<input required value={buyer.name} onChange={(e) => setBuyer({ ...buyer, name: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label><label className="block">이메일<input required type="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label><label className="block">전화번호<input required placeholder="010-1234-5678" value={buyer.phone} onChange={(e) => setBuyer({ ...buyer, phone: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label></div>}
