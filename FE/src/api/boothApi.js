@@ -71,6 +71,16 @@ const getBoothQr = async (eventId, boothId) => {
   return response.data;
 };
 
+// QR 스캔으로 접근하는 공개 부스 상세 (비로그인도 조회 가능).
+const getGuideBoothDetail = async (eventId, boothId) => {
+  const response = await apiRequest(`/events/${eventId}/guide/booths/${boothId}`);
+  return response;
+};
+
+const addBoothInterest = (boothId) => apiRequest(`/booths/${boothId}/interests`, json("POST"));
+
+const removeBoothInterest = (boothId) => apiRequest(`/booths/${boothId}/interests`, { method: "DELETE" });
+
 export {
   listBooths,
   listPublicBooths,
@@ -83,4 +93,7 @@ export {
   updateBoothIntro,
   issueBoothQr,
   getBoothQr,
+  getGuideBoothDetail,
+  addBoothInterest,
+  removeBoothInterest,
 };
