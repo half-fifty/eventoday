@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -32,21 +33,28 @@ import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.common.exception.GlobalExceptionHandler;
 import com.min.edu.member.domain.PlatformRole;
+import com.min.edu.payment.dto.response.GuestOrderAccessTokenResponse;
 import com.min.edu.payment.dto.response.MyTicketOrderListResponse;
 import com.min.edu.payment.dto.response.TicketOrderDetailResponse;
 import com.min.edu.payment.dto.response.TicketOrderListItemResponse;
+import com.min.edu.payment.service.GuestOrderAccessService;
 import com.min.edu.payment.service.TicketOrderQueryService;
 
 class TicketOrderQueryControllerTest {
 
     private TicketOrderQueryService ticketOrderQueryService;
+    private GuestOrderAccessService guestOrderAccessService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         ticketOrderQueryService = org.mockito.Mockito.mock(TicketOrderQueryService.class);
+        guestOrderAccessService = org.mockito.Mockito.mock(GuestOrderAccessService.class);
         mockMvc = MockMvcBuilders
-            .standaloneSetup(new TicketOrderQueryController(ticketOrderQueryService))
+            .standaloneSetup(new TicketOrderQueryController(
+                ticketOrderQueryService,
+                guestOrderAccessService
+            ))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setCustomArgumentResolvers(authenticationPrincipalResolver())
             .build();
@@ -253,6 +261,30 @@ class TicketOrderQueryControllerTest {
         mockMvc.perform(get("/ticket-orders/ORDER-1"))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.code").value(GlobalErrorCode.TICKET_ORDER_NOT_FOUND.getCode()));
+    }
+
+    @Test
+    void issueGuestOrderAccessToken_returnsRecoveredToken() throws Exception {
+        given(guestOrderAccessService.issueGuestAccessToken(
+            org.mockito.ArgumentMatchers.eq("ORDER-1"),
+            org.mockito.ArgumentMatchers.any()))
+            .willReturn(new GuestOrderAccessTokenResponse(
+                "ORDER-1",
+                "guest-token",
+                OffsetDateTime.parse("2026-08-03T10:10:00+09:00")
+            ));
+
+        mockMvc.perform(post("/ticket-orders/ORDER-1/access-token")
+                .contentType("application/json")
+                .content("{\"email\":\"guest@example.com\",\"phone\":\"010-1234-5678\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.orderNo").value("ORDER-1"))
+            .andExpect(jsonPath("$.data.orderAccessToken").value("guest-token"));
+
+        verify(guestOrderAccessService).issueGuestAccessToken(
+            org.mockito.ArgumentMatchers.eq("ORDER-1"),
+            org.mockito.ArgumentMatchers.any()
+        );
     }
 
     private void authenticate(Long memberId) {

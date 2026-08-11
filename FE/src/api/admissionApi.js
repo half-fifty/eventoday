@@ -7,6 +7,21 @@ const withQuery = (path, params = {}) => {
 };
 
 export const admissionApi = {
+  getGuestOrderAdmissionTickets: (orderNo, orderAccessToken) =>
+    apiRequest(`/ticket-orders/${pathId(orderNo)}/admission-tickets`, {
+      headers: { "X-Order-Access-Token": orderAccessToken },
+    }),
+  getGuestOrderAdmissionTicket: (orderNo, admissionTicketId, orderAccessToken) =>
+    apiRequest(`/ticket-orders/${pathId(orderNo)}/admission-tickets/${pathId(admissionTicketId)}`, {
+      headers: { "X-Order-Access-Token": orderAccessToken },
+    }),
+  getGuestOrderAdmissionTicketQr: (orderNo, admissionTicketId, orderAccessToken) =>
+    apiBlobRequest(`/ticket-orders/${pathId(orderNo)}/admission-tickets/${pathId(admissionTicketId)}/qr`, {
+      headers: {
+        Accept: "image/png",
+        "X-Order-Access-Token": orderAccessToken,
+      },
+    }),
   getMyAdmissionTickets: (params = {}) =>
     apiRequest(withQuery("/members/me/admission-tickets", params)),
   getAdmissionTicket: (admissionTicketId) =>

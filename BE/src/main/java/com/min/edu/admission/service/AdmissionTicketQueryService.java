@@ -16,6 +16,8 @@ import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
+import com.min.edu.payment.service.GuestOrderAccessService;
+import com.min.edu.payment.service.GuestTicketOrderAccess;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -37,18 +39,21 @@ public class AdmissionTicketQueryService {
     private final EventMemberRepository eventMemberRepository;
     private final EventOrganizationMemberRepository organizationMemberRepository;
     private final AdmissionQrImageGenerator admissionQrImageGenerator;
+    private final GuestOrderAccessService guestOrderAccessService;
 
     public AdmissionTicketQueryService(
             AdmissionTicketRepository admissionTicketRepository,
             EventRepository eventRepository,
             EventMemberRepository eventMemberRepository,
             EventOrganizationMemberRepository organizationMemberRepository,
-            AdmissionQrImageGenerator admissionQrImageGenerator) {
+            AdmissionQrImageGenerator admissionQrImageGenerator,
+            GuestOrderAccessService guestOrderAccessService) {
         this.admissionTicketRepository = admissionTicketRepository;
         this.eventRepository = eventRepository;
         this.eventMemberRepository = eventMemberRepository;
         this.organizationMemberRepository = organizationMemberRepository;
         this.admissionQrImageGenerator = admissionQrImageGenerator;
+        this.guestOrderAccessService = guestOrderAccessService;
     }
 
     public Page<AdmissionTicketDtos.MyListResponse> getMyAdmissionTickets(
@@ -79,6 +84,45 @@ public class AdmissionTicketQueryService {
         AdmissionTicket ticket = admissionTicketRepository.findById(admissionTicketId)
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND));
         requireOwner(ticket, actor.getMemberId());
+        if (ticket.getStatus() != AdmissionTicketStatus.ISSUED || ticket.getQrToken() == null) {
+            throw new BusinessException(GlobalErrorCode.ADMISSION_TICKET_QR_NOT_AVAILABLE);
+        }
+        return admissionQrImageGenerator.generate(ticket.getQrToken());
+    }
+
+    public List<AdmissionTicketDtos.MyListResponse> getGuestOrderAdmissionTickets(
+            String orderNo,
+            String orderAccessToken) {
+        GuestTicketOrderAccess access =
+            guestOrderAccessService.validateGuestTicketOrderAccess(orderNo, orderAccessToken);
+        return admissionTicketRepository
+            .findGuestOrderAdmissionTickets(access.ticketOrderId())
+            .stream()
+            .map(this::toMyListResponse)
+            .toList();
+    }
+
+    public AdmissionTicketDtos.DetailResponse getGuestOrderAdmissionTicketDetail(
+            String orderNo,
+            String orderAccessToken,
+            Long admissionTicketId) {
+        GuestTicketOrderAccess access =
+            guestOrderAccessService.validateGuestTicketOrderAccess(orderNo, orderAccessToken);
+        AdmissionTicketView view = admissionTicketRepository
+            .findGuestOrderAdmissionTicketDetail(access.ticketOrderId(), admissionTicketId)
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND));
+        return toDetailResponse(view);
+    }
+
+    public byte[] getGuestOrderAdmissionTicketQr(
+            String orderNo,
+            String orderAccessToken,
+            Long admissionTicketId) {
+        GuestTicketOrderAccess access =
+            guestOrderAccessService.validateGuestTicketOrderAccess(orderNo, orderAccessToken);
+        AdmissionTicket ticket = admissionTicketRepository
+            .findByIdAndTicketOrderId(admissionTicketId, access.ticketOrderId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND));
         if (ticket.getStatus() != AdmissionTicketStatus.ISSUED || ticket.getQrToken() == null) {
             throw new BusinessException(GlobalErrorCode.ADMISSION_TICKET_QR_NOT_AVAILABLE);
         }

@@ -14,8 +14,11 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 public class ExchangeCodeController {
@@ -53,6 +56,16 @@ public class ExchangeCodeController {
         );
     }
 
+    @GetMapping("/ticket-orders/{orderNo}/exchange-codes")
+    public ApiResponse<List<ExchangeCodeDtos.GuestOrderResponse>> getGuestOrderExchangeCodes(
+            @PathVariable String orderNo,
+            @RequestHeader(value = "X-Order-Access-Token", required = false)
+            String orderAccessToken) {
+        return ApiResponse.success(
+            exchangeCodeQueryService.getGuestOrderExchangeCodes(orderNo, orderAccessToken)
+        );
+    }
+
     @PostMapping("/exchange-codes/validation")
     public ApiResponse<ExchangeCodeRedemptionDtos.ValidationResponse> validateExchangeCode(
             @Valid @RequestBody ExchangeCodeRedemptionDtos.Request request,
@@ -65,5 +78,20 @@ public class ExchangeCodeController {
             @Valid @RequestBody ExchangeCodeRedemptionDtos.Request request,
             @AuthenticationPrincipal AuthenticatedMemberDto actor) {
         return ApiResponse.success(exchangeCodeRedemptionService.redeem(request, actor));
+    }
+
+    @PostMapping("/ticket-orders/{orderNo}/exchange-codes/{exchangeCodeId}/redemption")
+    public ApiResponse<ExchangeCodeRedemptionDtos.RedemptionResponse> redeemGuestOrderExchangeCode(
+            @PathVariable String orderNo,
+            @PathVariable Long exchangeCodeId,
+            @RequestHeader(value = "X-Order-Access-Token", required = false)
+            String orderAccessToken) {
+        return ApiResponse.success(
+            exchangeCodeRedemptionService.redeemGuestOrderExchangeCode(
+                orderNo,
+                orderAccessToken,
+                exchangeCodeId
+            )
+        );
     }
 }

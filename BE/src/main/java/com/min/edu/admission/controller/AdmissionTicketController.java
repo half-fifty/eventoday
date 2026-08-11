@@ -11,8 +11,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 public class AdmissionTicketController {
@@ -53,6 +56,49 @@ public class AdmissionTicketController {
         return ResponseEntity.ok()
             .contentType(MediaType.IMAGE_PNG)
             .body(admissionTicketQueryService.getMyAdmissionTicketQr(admissionTicketId, actor));
+    }
+
+    @GetMapping("/ticket-orders/{orderNo}/admission-tickets")
+    public ApiResponse<List<AdmissionTicketDtos.MyListResponse>> getGuestOrderAdmissionTickets(
+            @PathVariable String orderNo,
+            @RequestHeader(value = "X-Order-Access-Token", required = false)
+            String orderAccessToken) {
+        return ApiResponse.success(
+            admissionTicketQueryService.getGuestOrderAdmissionTickets(orderNo, orderAccessToken)
+        );
+    }
+
+    @GetMapping("/ticket-orders/{orderNo}/admission-tickets/{admissionTicketId}")
+    public ApiResponse<AdmissionTicketDtos.DetailResponse> getGuestOrderAdmissionTicketDetail(
+            @PathVariable String orderNo,
+            @PathVariable Long admissionTicketId,
+            @RequestHeader(value = "X-Order-Access-Token", required = false)
+            String orderAccessToken) {
+        return ApiResponse.success(
+            admissionTicketQueryService.getGuestOrderAdmissionTicketDetail(
+                orderNo,
+                orderAccessToken,
+                admissionTicketId
+            )
+        );
+    }
+
+    @GetMapping(
+        value = "/ticket-orders/{orderNo}/admission-tickets/{admissionTicketId}/qr",
+        produces = MediaType.IMAGE_PNG_VALUE
+    )
+    public ResponseEntity<byte[]> getGuestOrderAdmissionTicketQr(
+            @PathVariable String orderNo,
+            @PathVariable Long admissionTicketId,
+            @RequestHeader(value = "X-Order-Access-Token", required = false)
+            String orderAccessToken) {
+        return ResponseEntity.ok()
+            .contentType(MediaType.IMAGE_PNG)
+            .body(admissionTicketQueryService.getGuestOrderAdmissionTicketQr(
+                orderNo,
+                orderAccessToken,
+                admissionTicketId
+            ));
     }
 
     @GetMapping("/events/{eventId}/admission-tickets")

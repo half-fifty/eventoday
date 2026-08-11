@@ -33,4 +33,14 @@ public final class ExchangeCodeDtos {
             OffsetDateTime expiresAt,
             OffsetDateTime redeemedAt,
             OffsetDateTime createdAt) {}
+
+    public record GuestOrderResponse(
+            Long exchangeCodeId,
+            Long eventId,
+            String eventName,
+            String code,
+            ExchangeCodeStatus status,
+            OffsetDateTime expiresAt,
+            OffsetDateTime redeemedAt,
+            OffsetDateTime createdAt) {}
 }
