@@ -1,5 +1,6 @@
 package com.min.edu.advertisement.service;
 
+import com.min.edu.admin.service.PlatformAuditService;
 import com.min.edu.advertisement.domain.Advertisement;
 import com.min.edu.advertisement.domain.AdvertisementStatus;
 import com.min.edu.advertisement.dto.AdvertisementDtos;
@@ -53,12 +54,14 @@ public class AdvertisementService {
     private final MemberRepository memberRepository;
     private final BigDecimal eventAdPrice;
     private final Duration paymentExpiry;
+    private final PlatformAuditService platformAuditService;
 
     public AdvertisementService(AdvertisementRepository advertisementRepository,
             AdvertisementBoothRepository boothRepository, EventRepository eventRepository,
             EventOrganizationMemberRepository organizationMemberRepository,
             EventMemberRepository eventMemberRepository, PaymentOrderRepository paymentOrderRepository,
             OrderNoGenerator orderNoGenerator, MemberRepository memberRepository,
+            PlatformAuditService platformAuditService,
             @Value("${advertisement.event-ad-price:100000}") BigDecimal eventAdPrice,
             @Value("${advertisement.payment-expiry:PT30M}") Duration paymentExpiry) {
         this.advertisementRepository = advertisementRepository;
@@ -69,6 +72,7 @@ public class AdvertisementService {
         this.paymentOrderRepository = paymentOrderRepository;
         this.orderNoGenerator = orderNoGenerator;
         this.memberRepository = memberRepository;
+        this.platformAuditService = platformAuditService;
         this.eventAdPrice = eventAdPrice;
         this.paymentExpiry = paymentExpiry;
     }
@@ -167,6 +171,8 @@ public class AdvertisementService {
     public void cancel(Long id, AuthenticatedMemberDto actor) {
         Advertisement ad = getAd(id); requireOrganizationManager(ad.getApplicantOrganizationId(), actor);
         transition(() -> ad.cancel(OffsetDateTime.now()));
+        platformAuditService.record(actor.getMemberId(), "ADVERTISEMENT", "CANCELLED", ad.getId(),
+                ad.getEventId() != null ? "행사 광고 #" + ad.getEventId() : "부스 광고 #" + ad.getBoothId(), null);
     }
 
     public Page<AdvertisementDtos.Response> findAdminAds(AdvertisementStatus status,
@@ -181,12 +187,16 @@ public class AdvertisementService {
     public void approve(Long id, AuthenticatedMemberDto actor) {
         requireAdmin(actor); Advertisement ad = getAd(id);
         transition(() -> ad.approve(actor.getMemberId(), OffsetDateTime.now()));
+        platformAuditService.record(actor.getMemberId(), "ADVERTISEMENT", "APPROVED", ad.getId(),
+                ad.getEventId() != null ? "행사 광고 #" + ad.getEventId() : "부스 광고 #" + ad.getBoothId(), null);
     }
 
     @Transactional
     public void reject(Long id, String reason, AuthenticatedMemberDto actor) {
         requireAdmin(actor); Advertisement ad = getAd(id);
         transition(() -> ad.reject(actor.getMemberId(), reason, OffsetDateTime.now()));
+        platformAuditService.record(actor.getMemberId(), "ADVERTISEMENT", "REJECTED", ad.getId(),
+                ad.getEventId() != null ? "행사 광고 #" + ad.getEventId() : "부스 광고 #" + ad.getBoothId(), reason);
     }
 
     public List<AdvertisementDtos.BoothCandidate> findBoothCandidates(Long eventId,
