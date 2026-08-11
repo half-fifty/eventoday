@@ -8,6 +8,7 @@ import com.min.edu.booth.dto.BoothReservationSlotResponse;
 import com.min.edu.booth.dto.CreateBoothReservationSlotRequest;
 import com.min.edu.booth.dto.UpdateBoothReservationSlotRequest;
 import com.min.edu.booth.repository.BoothRepository;
+import com.min.edu.booth.repository.BoothReservationRepository;
 import com.min.edu.booth.repository.BoothReservationSlotRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
@@ -32,8 +33,16 @@ public class BoothReservationSlotService {
             List.of(OrganizationRole.OWNER, OrganizationRole.MANAGER);
 
     private final BoothReservationSlotRepository boothReservationSlotRepository;
+    private final BoothReservationRepository boothReservationRepository;
     private final BoothRepository boothRepository;
     private final BoothOrganizationMemberRepository boothOrganizationMemberRepository;
+
+    @Transactional(readOnly = true)
+    public List<BoothReservationSlotResponse> listSlots(Long boothId) {
+        return boothReservationSlotRepository.findAllByBoothIdOrderByStartAtAsc(boothId).stream()
+                .map(this::toResponse)
+                .toList();
+    }
 
     public BoothReservationSlotResponse createReservationSlot(
             Long boothId,
@@ -158,6 +167,60 @@ public class BoothReservationSlotService {
 
         BoothReservationSlot saved = boothReservationSlotRepository.saveAndFlush(closed);
         return toResponse(saved);
+    }
+
+    @Transactional
+    public BoothReservationSlotResponse reopenReservationSlot(
+            Long boothId,
+            Long slotId,
+            AuthenticatedMemberDto principal) {
+
+        requireBoothManager(boothId, principal);
+
+        BoothReservationSlot slot = boothReservationSlotRepository.findByIdWithLock(slotId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        if (!slot.getBoothId().equals(boothId)) {
+            throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
+        }
+
+        if (slot.getStatus() == BoothReservationSlotStatus.OPEN) {
+            return toResponse(slot);
+        }
+
+        BoothReservationSlot reopened = BoothReservationSlot.builder()
+                .id(slot.getId())
+                .boothId(slot.getBoothId())
+                .startAt(slot.getStartAt())
+                .endAt(slot.getEndAt())
+                .capacity(slot.getCapacity())
+                .reservedCount(slot.getReservedCount())
+                .status(BoothReservationSlotStatus.OPEN)
+                .createdAt(slot.getCreatedAt())
+                .updatedAt(OffsetDateTime.now())
+                .build();
+
+        BoothReservationSlot saved = boothReservationSlotRepository.saveAndFlush(reopened);
+        return toResponse(saved);
+    }
+
+    @Transactional
+    public void deleteReservationSlot(Long boothId, Long slotId, AuthenticatedMemberDto principal) {
+        requireBoothManager(boothId, principal);
+
+        BoothReservationSlot slot = boothReservationSlotRepository.findByIdWithLock(slotId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        if (!slot.getBoothId().equals(boothId)) {
+            throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
+        }
+
+        // 취소된 예약도 FK로 이 슬롯을 참조하고 있어 삭제할 수 없다. 대신 on/off로 끄도록 안내한다.
+        if (boothReservationRepository.existsByBoothReservationSlotId(slotId)) {
+            throw new BusinessException(GlobalErrorCode.RESERVATION_SLOT_HAS_RESERVATIONS);
+        }
+
+        boothReservationSlotRepository.delete(slot);
     }
 
     private BoothReservationSlotResponse toResponse(BoothReservationSlot slot) {

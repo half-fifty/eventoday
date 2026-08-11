@@ -1,18 +1,29 @@
 package com.min.edu.booth.service;
 
+import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.Booth;
 import com.min.edu.booth.domain.BoothReservation;
 import com.min.edu.booth.domain.BoothReservationSlot;
 import com.min.edu.booth.domain.BoothReservationStatus;
 import com.min.edu.booth.domain.BoothReservationSlotStatus;
+import com.min.edu.booth.dto.BoothReservationAdminResponse;
 import com.min.edu.booth.dto.BoothReservationResponse;
 import com.min.edu.booth.dto.CreateBoothReservationRequest;
 import com.min.edu.booth.event.BoothVacancyEvent;
+import com.min.edu.booth.repository.BoothOrganizationMemberRepository;
 import com.min.edu.booth.repository.BoothRepository;
 import com.min.edu.booth.repository.BoothReservationRepository;
 import com.min.edu.booth.repository.BoothReservationSlotRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.member.domain.Member;
+import com.min.edu.member.repository.MemberRepository;
+import com.min.edu.organization.domain.OrganizationMemberStatus;
+import com.min.edu.organization.domain.OrganizationRole;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -27,11 +38,134 @@ import java.time.OffsetDateTime;
 @Transactional
 public class BoothReservationWithRedisService {
 
+    private static final List<OrganizationRole> MANAGER_ROLES =
+            List.of(OrganizationRole.OWNER, OrganizationRole.MANAGER);
+
     private final BoothReservationRepository reservationRepository;
     private final BoothReservationSlotRepository slotRepository;
     private final BoothRepository boothRepository;
+    private final BoothOrganizationMemberRepository boothOrganizationMemberRepository;
+    private final MemberRepository memberRepository;
     private final RedisReservationService redisReservationService;
     private final ApplicationEventPublisher eventPublisher;
+
+    @Transactional(readOnly = true)
+    public BoothReservationResponse getMyReservation(Long boothId, Long memberId) {
+        return reservationRepository.findByMemberIdAndBoothId(memberId, boothId)
+                .map(this::toResponse)
+                .orElse(null);
+    }
+
+    // 운영자: 부스 예약자 전체 목록 (누가, 언제, 몇 명) 조회
+    @Transactional(readOnly = true)
+    public List<BoothReservationAdminResponse> listReservationsForManager(
+            Long boothId, AuthenticatedMemberDto principal) {
+
+        requireBoothManager(boothId, principal);
+
+        List<BoothReservation> reservations = reservationRepository.findAllByBoothIdOrderByReservedAtDesc(boothId);
+        if (reservations.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, BoothReservationSlot> slotsById = slotRepository
+                .findAllByBoothIdOrderByStartAtAsc(boothId).stream()
+                .collect(Collectors.toMap(BoothReservationSlot::getId, Function.identity()));
+
+        List<Long> memberIds = reservations.stream().map(BoothReservation::getMemberId).distinct().toList();
+        Map<Long, Member> membersById = memberRepository.findAllById(memberIds).stream()
+                .collect(Collectors.toMap(Member::getId, Function.identity()));
+
+        return reservations.stream()
+                .map(reservation -> {
+                    BoothReservationSlot slot = slotsById.get(reservation.getBoothReservationSlotId());
+                    Member member = membersById.get(reservation.getMemberId());
+                    return BoothReservationAdminResponse.builder()
+                            .id(reservation.getId())
+                            .slotId(reservation.getBoothReservationSlotId())
+                            .startAt(slot != null ? slot.getStartAt() : null)
+                            .endAt(slot != null ? slot.getEndAt() : null)
+                            .memberId(reservation.getMemberId())
+                            .memberNickname(member != null ? member.getNickname() : null)
+                            .memberEmail(member != null ? member.getEmail() : null)
+                            .partySize(reservation.getPartySize())
+                            .status(reservation.getStatus())
+                            .reservedAt(reservation.getReservedAt())
+                            .cancelledAt(reservation.getCancelledAt())
+                            .build();
+                })
+                .toList();
+    }
+
+    // 운영자: 예약자 출석 수동 체크 (true=방문 확인, false=노쇼 처리)
+    @Transactional
+    public BoothReservationAdminResponse markAttendance(
+            Long boothId, Long reservationId, boolean attended, AuthenticatedMemberDto principal) {
+
+        requireBoothManager(boothId, principal);
+
+        BoothReservation reservation = reservationRepository.findByIdWithLock(reservationId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        if (!reservation.getBoothId().equals(boothId)) {
+            throw new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND);
+        }
+
+        if (reservation.getStatus() != BoothReservationStatus.RESERVED) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+
+        if (attended) {
+            reservation.updateStatus(BoothReservationStatus.CHECKED_IN);
+            reservation.updateCheckedInAt(now);
+        } else {
+            reservation.updateStatus(BoothReservationStatus.NO_SHOW);
+            reservation.updateNoShowAt(now);
+
+            // 노쇼 처리 시 슬롯 자리 복원 (비관적 잠금)
+            BoothReservationSlot slot = slotRepository.findByIdWithLock(reservation.getBoothReservationSlotId())
+                    .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+            slot.decrementReservedCount(reservation.getPartySize());
+            slotRepository.saveAndFlush(slot);
+        }
+        reservation.updateUpdatedAt(now);
+        reservationRepository.saveAndFlush(reservation);
+
+        BoothReservationSlot slot = slotRepository.findById(reservation.getBoothReservationSlotId()).orElse(null);
+        Member member = memberRepository.findById(reservation.getMemberId()).orElse(null);
+
+        return BoothReservationAdminResponse.builder()
+                .id(reservation.getId())
+                .slotId(reservation.getBoothReservationSlotId())
+                .startAt(slot != null ? slot.getStartAt() : null)
+                .endAt(slot != null ? slot.getEndAt() : null)
+                .memberId(reservation.getMemberId())
+                .memberNickname(member != null ? member.getNickname() : null)
+                .memberEmail(member != null ? member.getEmail() : null)
+                .partySize(reservation.getPartySize())
+                .status(reservation.getStatus())
+                .reservedAt(reservation.getReservedAt())
+                .cancelledAt(reservation.getCancelledAt())
+                .build();
+    }
+
+    private void requireBoothManager(Long boothId, AuthenticatedMemberDto actor) {
+        if (actor == null) {
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+        }
+
+        Booth booth = boothRepository.findById(boothId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        Long organizationId = booth.getAssignedOrganizationId();
+        if (organizationId == null
+                || !boothOrganizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
+                organizationId, actor.getMemberId(), OrganizationMemberStatus.ACTIVE, MANAGER_ROLES)) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+    }
 
     /**
      * WBS-146: Redis 선점을 포함한 예약 생성 (통합 서비스)
@@ -96,6 +230,7 @@ public class BoothReservationWithRedisService {
                     .partySize(request.getPartySize())
                     .status(BoothReservationStatus.RESERVED)
                     .reservedAt(now)
+                    .createdAt(now)
                     .updatedAt(now)
                     .build();
 

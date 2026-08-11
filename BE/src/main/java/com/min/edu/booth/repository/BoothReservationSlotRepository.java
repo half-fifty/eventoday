@@ -77,4 +77,10 @@ public interface BoothReservationSlotRepository extends JpaRepository<BoothReser
             "WHERE brs.boothId = :boothId " +
             "AND brs.status = 'OPEN'")
     List<BoothReservationSlot> findAllOpenSlotsByBoothId(@Param("boothId") Long boothId);
+
+    /**
+     * 6. 부스의 전체 슬롯 조회 (OPEN/CLOSED 모두, 시작시간순)
+     * - 예약 화면의 시간대 선택 목록, 운영자의 슬롯 관리 목록에서 사용
+     */
+    List<BoothReservationSlot> findAllByBoothIdOrderByStartAtAsc(Long boothId);
 }

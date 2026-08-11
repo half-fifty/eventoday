@@ -20,11 +20,25 @@ public interface BoothReservationRepository extends JpaRepository<BoothReservati
     @Query("select r from BoothReservation r where r.id = :id and r.memberId = :memberId")
     Optional<BoothReservation> findByIdAndMemberIdWithLock(@Param("id") Long id, @Param("memberId") Long memberId);
 
+    // 운영자의 수동 출석 체크용 (memberId 무관하게 예약 단건 잠금 조회)
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from BoothReservation r where r.id = :id")
+    Optional<BoothReservation> findByIdWithLock(@Param("id") Long id);
+
     // 회원의 특정 부스 예약 조회
     Optional<BoothReservation> findByIdAndMemberId(Long id, Long memberId);
 
     // 회원의 같은 부스 예약 존재 여부
     boolean existsByMemberIdAndBoothId(Long memberId, Long boothId);
+
+    // 회원의 특정 부스 예약 조회 (내 예약 상태 확인용)
+    Optional<BoothReservation> findByMemberIdAndBoothId(Long memberId, Long boothId);
+
+    // 슬롯 삭제 가능 여부 확인용 (취소된 예약도 FK로 슬롯을 참조하므로 상태와 무관하게 확인한다)
+    boolean existsByBoothReservationSlotId(Long boothReservationSlotId);
+
+    // 운영자용 예약 목록 (부스별 전체 예약자 조회)
+    List<BoothReservation> findAllByBoothIdOrderByReservedAtDesc(Long boothId);
 
     @Query("select r from BoothReservation r join BoothReservationSlot s on r.boothReservationSlotId = s.id " +
             "where s.endAt <= :now and r.status = 'RESERVED'")

@@ -209,6 +209,7 @@ public class MobileGuideService {
                 .location(booth.getLocationDescription() != null
                         ? booth.getLocationDescription()
                         : booth.getZoneName())
+                .representativeFileId(booth.getRepresentativeFileId())
                 .averageRating(averageRating)
                 .reviewCount(reviewCount)
                 .isInterested(isInterested)
