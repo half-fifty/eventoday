@@ -2,7 +2,7 @@ import { Navigate, useLocation } from "react-router-dom";
 
 import useAuth from "../hooks/useAuth.js";
 
-const ProtectedRoute = ({ children, roles = null }) => {
+const ProtectedRoute = ({ children, roles = null, organizationTypes = null }) => {
   const location = useLocation();
   const {
     loading,
@@ -35,6 +35,13 @@ const ProtectedRoute = ({ children, roles = null }) => {
   if (
     Array.isArray(roles) &&
     !roles.includes(member.platformRole)
+  ) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (
+    Array.isArray(organizationTypes) &&
+    !organizationTypes.includes(member.organization?.organizationType)
   ) {
     return <Navigate to="/" replace />;
   }

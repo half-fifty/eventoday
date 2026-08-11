@@ -20,6 +20,8 @@ import com.min.edu.file.repository.FileAssetRepository;
 import com.min.edu.file.service.FileService;
 import com.min.edu.file.storage.FileStorageService;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -29,6 +31,9 @@ import java.util.stream.Collectors;
 import java.time.OffsetDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -41,12 +46,17 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class EventContentService {
 
+    // 전체 공지 목록(CONTENT-API-006) 페이지 크기 상한 - BoothApplicationService와 동일
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final EventContentRepository eventContentRepository;
     private final EventRepository eventRepository;
     private final EventMemberRepository eventMemberRepository;
     private final FileService fileService;
     private final FileAssetRepository fileAssetRepository;
     private final FileStorageService fileStorageService;
+    // 첨부파일 교체 시 기존 파일 정리를 커밋 이후로 미루기 위한 이벤트 발행
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     /**
      * 공지·자료 목록 조회
@@ -100,24 +110,26 @@ public class EventContentService {
     /**
      * 전체 공지·자료 목록 조회 (CONTENT-API-006)
      *
-     * 공개(PUBLISHED) 행사의 공지·자료를 행사 이름과 함께 한 번에 반환한다.
+     * 공개(PUBLISHED) 행사의 공지·자료를 행사 이름과 함께 페이지 단위로 반환한다.
      * 공지사항 페이지(/notices)가 행사별로 N번 호출하던 것을 1회 호출로 대체.
+     *
+     * 공개 API이므로 페이지 크기를 MAX_PAGE_SIZE로 제한한다
+     * (행사·콘텐츠 증가에 따라 응답 크기와 DB 부하가 무제한으로 커지는 것을 방지)
      *
      * audience 정책: PLATFORM_ADMIN은 전체, 그 외(비로그인 포함)는 ALL만 노출
      *
      * @param contentType 콘텐츠 유형 필터 (null이면 전체)
+     * @param page        페이지 번호 (0부터)
+     * @param size        페이지 크기 (최대 MAX_PAGE_SIZE)
      * @param member      인증 회원 (비로그인이면 null)
      */
-    public List<EventContentDtos.BoardItem> listAllContents(
-            EventContentType contentType, AuthenticatedMemberDto member) {
+    public EventContentDtos.BoardPageResponse listAllContents(
+            EventContentType contentType, int page, int size, AuthenticatedMemberDto member) {
 
-        // 공개된 행사만 대상 → id → 행사 이름 맵
-        List<Event> publishedEvents = eventRepository.findAllByStatus(EventStatus.PUBLISHED);
-        if (publishedEvents.isEmpty()) {
-            return List.of();
+        // 페이지 파라미터 검증 (BoothApplicationService.validatePageRequest 패턴)
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
-        Map<Long, String> eventNames = publishedEvents.stream()
-                .collect(Collectors.toMap(Event::getId, Event::getName));
 
         // 전체 목록은 공개 페이지 용도이므로 ALL audience만 (PLATFORM_ADMIN은 전체)
         List<EventContentAudience> allowedAudiences =
@@ -125,9 +137,17 @@ public class EventContentService {
                         ? Arrays.asList(EventContentAudience.values())
                         : List.of(EventContentAudience.ALL);
 
+        // 공개(PUBLISHED) 행사 소속 콘텐츠만 서브쿼리로 필터링
+        // (행사 ID를 전부 메모리로 올리지 않도록 DB 단에서 처리)
         Specification<EventContent> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(root.get("eventId").in(eventNames.keySet()));
+
+            Subquery<Long> publishedEventIds = query.subquery(Long.class);
+            Root<Event> eventRoot = publishedEventIds.from(Event.class);
+            publishedEventIds.select(eventRoot.get("id"))
+                    .where(cb.equal(eventRoot.get("status"), EventStatus.PUBLISHED));
+            predicates.add(root.get("eventId").in(publishedEventIds));
+
             predicates.add(root.get("audience").in(allowedAudiences));
             if (contentType != null) {
                 predicates.add(cb.equal(root.get("contentType"), contentType));
@@ -135,17 +155,49 @@ public class EventContentService {
             return cb.and(predicates.toArray(Predicate[]::new));
         };
 
+        // 상단 고정 우선(pinned DESC), 최신순(publishedAt DESC)
         Sort sort = Sort.by(Sort.Order.desc("pinned"), Sort.Order.desc("publishedAt"));
-        List<EventContent> contents = eventContentRepository.findAll(spec, sort);
+        Page<EventContent> result =
+                eventContentRepository.findAll(spec, PageRequest.of(page, size, sort));
+
+        List<EventContent> contents = result.getContent();
+
+        // 현재 페이지에 등장한 행사만 이름 조회 (전체 행사 로드 방지)
+        Map<Long, String> eventNames = loadEventNames(contents);
 
         // 첨부파일 메타 일괄 조회 (N+1 방지)
         Map<Long, FileAsset> fileAssets = loadFileAssets(contents);
 
-        return contents.stream()
+        List<EventContentDtos.BoardItem> items = contents.stream()
                 .map(c -> new EventContentDtos.BoardItem(
                         eventNames.get(c.getEventId()),
                         EventContentDtos.Summary.from(c, findFileAsset(fileAssets, c.getFileId()))))
                 .toList();
+
+        return new EventContentDtos.BoardPageResponse(
+                items,
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.isFirst(),
+                result.isLast(),
+                result.isEmpty()
+        );
+    }
+
+    /** 현재 페이지 콘텐츠의 eventId만 모아 행사 이름을 일괄 조회 (eventId → 행사명) */
+    private Map<Long, String> loadEventNames(List<EventContent> contents) {
+        List<Long> eventIds = contents.stream()
+                .map(EventContent::getEventId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (eventIds.isEmpty()) {
+            return Map.of();
+        }
+        return eventRepository.findAllById(eventIds).stream()
+                .collect(Collectors.toMap(Event::getId, Event::getName));
     }
 
     /**
@@ -339,16 +391,12 @@ public class EventContentService {
 
             EventContentDtos.Summary result = EventContentDtos.Summary.from(content, resultAsset);
 
-            // 파일 교체 완료 후 기존 파일 S3·DB에서 삭제
+            // 기존 파일 삭제는 커밋 이후로 미룬다 (EventContentFileCleanupListener)
+            // 커밋 전에 지우면 이후 롤백 시 S3 객체가 복구되지 않아
+            // 되살아난 콘텐츠가 다운로드 불가능한 파일을 참조하게 된다
             if (newStorageKey != null && oldFileId != null) {
-                fileAssetRepository.findById(oldFileId).ifPresent(old -> {
-                    try {
-                        fileStorageService.delete(old.getStorageKey());
-                    } catch (Exception deleteEx) {
-                        log.warn("기존 파일 S3 삭제 실패. fileId={}", oldFileId, deleteEx);
-                    }
-                    fileAssetRepository.delete(old);
-                });
+                applicationEventPublisher.publishEvent(
+                        new EventContentFileReplaced(content.getId(), oldFileId));
             }
 
             return result;
