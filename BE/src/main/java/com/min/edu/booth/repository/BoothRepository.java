@@ -19,6 +19,10 @@ public interface BoothRepository extends JpaRepository<Booth, Long> {
 
     List<Booth> findByEventIdAndIdIn(Long eventId, Collection<Long> ids);
 
+
+
+    List<Booth> findByIdIn(List<Long> ids);
+
     boolean existsByEventIdAndBoothCode(Long eventId, String boothCode);
 
     boolean existsByQrToken(String qrToken);
@@ -68,6 +72,24 @@ public interface BoothRepository extends JpaRepository<Booth, Long> {
             @Param("boothCode") String boothCode
     );
 
+    // ===== 모바일 안내 API (GUIDE-API-001~003) =====
+
+    // GUIDE-API-001, 002: 행사별 부스 목록 조회
+
+
+    // GUIDE-API-002: 부스 검색 (부스명 기반)
+    List<Booth> findByEventIdAndDisplayNameContainingIgnoreCase(Long eventId, String displayName);
+
     // 행사 내 전체 부스 조회 (통계 집계용)
     List<Booth> findByEventId(Long eventId);
+
+    /**
+     * 행사 내에서 부스명으로 검색 (Pageable 지원)
+     */
+    Page<Booth> findByEventIdAndDisplayNameContainingIgnoreCase(
+            Long eventId,
+            String keyword,
+            Pageable pageable);
+
+
 }
