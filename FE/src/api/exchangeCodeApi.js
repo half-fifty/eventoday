@@ -7,6 +7,15 @@ const json = (method, body) => ({
 });
 
 export const exchangeCodeApi = {
+  getGuestOrderExchangeCodes: (orderNo, orderAccessToken) =>
+    apiRequest(`/ticket-orders/${encodeURIComponent(orderNo)}/exchange-codes`, {
+      headers: { "X-Order-Access-Token": orderAccessToken },
+    }),
+  redeemGuestOrderExchangeCode: (orderNo, exchangeCodeId, orderAccessToken) =>
+    apiRequest(`/ticket-orders/${encodeURIComponent(orderNo)}/exchange-codes/${encodeURIComponent(exchangeCodeId)}/redemption`, {
+      method: "POST",
+      headers: { "X-Order-Access-Token": orderAccessToken },
+    }),
   getMyExchangeCodes: (params = {}) =>
     apiRequest(`/members/me/exchange-codes?${new URLSearchParams(params)}`),
   validateExchangeCode: (code) =>

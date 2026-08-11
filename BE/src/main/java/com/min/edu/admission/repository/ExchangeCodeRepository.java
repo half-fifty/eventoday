@@ -25,6 +25,10 @@ public interface ExchangeCodeRepository extends JpaRepository<ExchangeCode, Long
     @Query("select c from ExchangeCode c where c.code = :code")
     Optional<ExchangeCode> findByCodeForUpdate(@Param("code") String code);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from ExchangeCode c where c.id = :id")
+    Optional<ExchangeCode> findByIdForUpdate(@Param("id") Long id);
+
     List<ExchangeCode> findAllByTicketOrderIdOrderByIdAsc(Long ticketOrderId);
 
     List<ExchangeCode> findAllByExchangeCodeRequestIdOrderByIdAsc(Long exchangeCodeRequestId);

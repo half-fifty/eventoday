@@ -27,6 +27,8 @@ import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
+import com.min.edu.payment.service.GuestOrderAccessService;
+import com.min.edu.payment.service.GuestTicketOrderAccess;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -48,6 +50,7 @@ class AdmissionTicketQueryServiceTest {
     @Mock private EventMemberRepository eventMemberRepository;
     @Mock private EventOrganizationMemberRepository organizationMemberRepository;
     @Mock private AdmissionQrImageGenerator admissionQrImageGenerator;
+    @Mock private GuestOrderAccessService guestOrderAccessService;
 
     private AdmissionTicketQueryService service;
 
@@ -58,7 +61,8 @@ class AdmissionTicketQueryServiceTest {
             eventRepository,
             eventMemberRepository,
             organizationMemberRepository,
-            admissionQrImageGenerator
+            admissionQrImageGenerator,
+            guestOrderAccessService
         );
     }
 
@@ -194,6 +198,62 @@ class AdmissionTicketQueryServiceTest {
         assertQrUnavailable(AdmissionTicketStatus.USED);
         assertQrUnavailable(AdmissionTicketStatus.CANCELLED);
         assertQrUnavailable(AdmissionTicketStatus.EXPIRED);
+    }
+
+    @Test
+    void getGuestOrderAdmissionTickets_usesOrderScopedAccess() {
+        given(guestOrderAccessService.validateGuestTicketOrderAccess("ORDER-1", "guest-token"))
+            .willReturn(new GuestTicketOrderAccess(3L, 1L, "ORDER-1"));
+        given(admissionTicketRepository.findGuestOrderAdmissionTickets(3L))
+            .willReturn(List.of(view(11L, null, AdmissionTicketStatus.ISSUED)));
+
+        List<AdmissionTicketDtos.MyListResponse> response =
+            service.getGuestOrderAdmissionTickets("ORDER-1", "guest-token");
+
+        assertThat(response).hasSize(1);
+        assertThat(response.getFirst().admissionTicketId()).isEqualTo(11L);
+        verify(admissionTicketRepository).findGuestOrderAdmissionTickets(3L);
+    }
+
+    @Test
+    void getGuestOrderAdmissionTicketDetail_returnsOnlyTicketInOrderScope() {
+        given(guestOrderAccessService.validateGuestTicketOrderAccess("ORDER-1", "guest-token"))
+            .willReturn(new GuestTicketOrderAccess(3L, 1L, "ORDER-1"));
+        given(admissionTicketRepository.findGuestOrderAdmissionTicketDetail(3L, 11L))
+            .willReturn(Optional.of(view(11L, null, AdmissionTicketStatus.ISSUED)));
+
+        AdmissionTicketDtos.DetailResponse response =
+            service.getGuestOrderAdmissionTicketDetail("ORDER-1", "guest-token", 11L);
+
+        assertThat(response.admissionTicketId()).isEqualTo(11L);
+        assertThat(response.qrAvailable()).isTrue();
+
+        given(admissionTicketRepository.findGuestOrderAdmissionTicketDetail(3L, 99L))
+            .willReturn(Optional.empty());
+        assertThatThrownBy(() -> service.getGuestOrderAdmissionTicketDetail("ORDER-1", "guest-token", 99L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND);
+    }
+
+    @Test
+    void getGuestOrderAdmissionTicketQr_usesExistingQrPolicy() {
+        given(guestOrderAccessService.validateGuestTicketOrderAccess("ORDER-1", "guest-token"))
+            .willReturn(new GuestTicketOrderAccess(3L, 1L, "ORDER-1"));
+        given(admissionTicketRepository.findByIdAndTicketOrderId(11L, 3L))
+            .willReturn(Optional.of(ticket(11L, null, AdmissionTicketStatus.ISSUED)));
+        given(admissionQrImageGenerator.generate("qr-token")).willReturn(new byte[] {4, 5, 6});
+
+        byte[] qr = service.getGuestOrderAdmissionTicketQr("ORDER-1", "guest-token", 11L);
+
+        assertThat(qr).containsExactly(4, 5, 6);
+
+        given(admissionTicketRepository.findByIdAndTicketOrderId(12L, 3L))
+            .willReturn(Optional.of(ticket(12L, null, AdmissionTicketStatus.USED)));
+        assertThatThrownBy(() -> service.getGuestOrderAdmissionTicketQr("ORDER-1", "guest-token", 12L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.ADMISSION_TICKET_QR_NOT_AVAILABLE);
     }
 
     @Test

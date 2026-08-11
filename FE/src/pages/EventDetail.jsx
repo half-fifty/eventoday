@@ -268,6 +268,11 @@ export default function EventDetail() {
             {purchaseError && <p className="text-caption text-error bg-error/10 rounded-lg p-sm">{purchaseError}</p>}
             <button disabled={purchasing} className="w-full py-sm bg-primary text-white rounded-full disabled:opacity-50">{purchasing ? "주문 생성 중..." : Number(event.ticketPrice) === 0 ? "무료 티켓 받기" : "결제하기"}</button>
           </form>}
+          {issuedCodes.length > 0 && completedOrderNo && !isAuthenticated && (
+            <Link to={`/guest/orders/${completedOrderNo}`} className="mt-md block w-full py-sm border border-hairline rounded-full text-center">
+              비회원 예매 관리
+            </Link>
+          )}
         </section>
       </div>}
       <BoothPinPopup booth={selectedMapBooth} onClose={() => setSelectedMapBooth(null)} />

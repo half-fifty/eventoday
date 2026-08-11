@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { paymentApi } from "../api/paymentApi.js";
 import TopNav from "../components/TopNav.jsx";
+import useAuth from "../hooks/useAuth.js";
 
 const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
@@ -28,10 +29,14 @@ const refundStatusLabel = {
 };
 
 export default function PaymentDetail() {
+  const { isAuthenticated } = useAuth();
   const { paymentId } = useParams();
   const [params] = useSearchParams();
   const orderNo = params.get("orderNo");
   const orderAccessToken = orderNo ? sessionStorage.getItem(`ticket-order-token:${orderNo}`) : null;
+  const guestBackPath = !isAuthenticated && orderNo && orderAccessToken
+    ? `/guest/orders/${encodeURIComponent(orderNo)}`
+    : null;
   const [payment, setPayment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -113,8 +118,8 @@ export default function PaymentDetail() {
             <h1 className="font-display-lg text-[30px]">결제 상세</h1>
           </div>
           {payment?.orderNo && (
-            <Link to={`/tickets/orders/${payment.orderNo}`} className="rounded-full border border-hairline px-lg py-sm text-caption font-body-strong">
-              주문 상세
+            <Link to={guestBackPath || `/tickets/orders/${payment.orderNo}`} className="rounded-full border border-hairline px-lg py-sm text-caption font-body-strong">
+              {guestBackPath ? "비회원 예매 관리" : "주문 상세"}
             </Link>
           )}
         </div>

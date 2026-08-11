@@ -4,6 +4,7 @@ import com.min.edu.admission.domain.AdmissionTicketStatus;
 import com.min.edu.admission.domain.AdmissionTicket;
 import com.min.edu.admission.dto.AdmissionTicketView;
 import jakarta.persistence.LockModeType;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -80,10 +81,68 @@ public interface AdmissionTicketRepository extends JpaRepository<AdmissionTicket
         join ExchangeCode c on c.id = t.exchangeCodeId
         join Event e on e.id = c.eventId
         left join Member member on member.id = t.memberId
+        where c.ticketOrderId = :ticketOrderId
+        order by t.issuedAt desc, t.id desc
+        """)
+    List<AdmissionTicketView> findGuestOrderAdmissionTickets(
+            @Param("ticketOrderId") Long ticketOrderId);
+
+    @Query("""
+        select
+            t.id as admissionTicketId,
+            e.id as eventId,
+            e.name as eventName,
+            t.memberId as memberId,
+            member.nickname as memberNickname,
+            t.status as status,
+            c.status as exchangeCodeStatus,
+            t.issuedAt as issuedAt,
+            t.usedAt as usedAt,
+            t.cancelledAt as cancelledAt,
+            t.qrToken as qrToken
+        from AdmissionTicket t
+        join ExchangeCode c on c.id = t.exchangeCodeId
+        join Event e on e.id = c.eventId
+        left join Member member on member.id = t.memberId
         where t.id = :admissionTicketId
         """)
     Optional<AdmissionTicketView> findAdmissionTicketDetail(
             @Param("admissionTicketId") Long admissionTicketId);
+
+    @Query("""
+        select
+            t.id as admissionTicketId,
+            e.id as eventId,
+            e.name as eventName,
+            t.memberId as memberId,
+            member.nickname as memberNickname,
+            t.status as status,
+            c.status as exchangeCodeStatus,
+            t.issuedAt as issuedAt,
+            t.usedAt as usedAt,
+            t.cancelledAt as cancelledAt,
+            t.qrToken as qrToken
+        from AdmissionTicket t
+        join ExchangeCode c on c.id = t.exchangeCodeId
+        join Event e on e.id = c.eventId
+        left join Member member on member.id = t.memberId
+        where t.id = :admissionTicketId
+            and c.ticketOrderId = :ticketOrderId
+        """)
+    Optional<AdmissionTicketView> findGuestOrderAdmissionTicketDetail(
+            @Param("ticketOrderId") Long ticketOrderId,
+            @Param("admissionTicketId") Long admissionTicketId);
+
+    @Query("""
+        select t
+        from AdmissionTicket t
+        join ExchangeCode c on c.id = t.exchangeCodeId
+        where t.id = :admissionTicketId
+            and c.ticketOrderId = :ticketOrderId
+        """)
+    Optional<AdmissionTicket> findByIdAndTicketOrderId(
+            @Param("admissionTicketId") Long admissionTicketId,
+            @Param("ticketOrderId") Long ticketOrderId);
 
     @Query(
         value = """
