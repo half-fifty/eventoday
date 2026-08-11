@@ -74,6 +74,7 @@ public class BoothReservationService {
                 .partySize(request.getPartySize())
                 .status(BoothReservationStatus.RESERVED)
                 .reservedAt(now)
+                .createdAt(now)
                 .updatedAt(now)
                 .build();
 

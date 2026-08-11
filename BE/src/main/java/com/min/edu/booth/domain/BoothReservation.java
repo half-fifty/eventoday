@@ -16,7 +16,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 // member_id + booth_id 유일성은 status = 'RESERVED'인 행에만 적용되는 부분 유니크 인덱스
-// (uk_booth_reservations_active, V17)로 관리된다. JPA @UniqueConstraint로는 조건부 인덱스를
+// (uk_booth_reservations_active, V18)로 관리된다. JPA @UniqueConstraint로는 조건부 인덱스를
 // 표현할 수 없어 여기서는 선언하지 않는다.
 @Entity
 @Table(name = "booth_reservations")
@@ -31,7 +31,7 @@ public class BoothReservation {
     @Column(name = "id")
     private Long id;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
 
