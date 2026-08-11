@@ -35,10 +35,10 @@ public class GuestOrderAccessService {
             String orderNo,
             GuestOrderAccessTokenRequest request) {
         PaymentOrder paymentOrder = findPaymentOrder(orderNo);
+        validateGuestRecoverable(paymentOrder, request);
+
         TicketOrder ticketOrder = findTicketOrder(paymentOrder);
         Event event = findEvent(ticketOrder.getEventId());
-
-        validateGuestRecoverable(paymentOrder, request);
 
         String token = orderAccessTokenProvider.create(orderNo, event.getEndAt());
         return new GuestOrderAccessTokenResponse(orderNo, token, event.getEndAt());

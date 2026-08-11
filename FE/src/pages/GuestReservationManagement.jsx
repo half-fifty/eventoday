@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { admissionApi } from "../api/admissionApi.js";
 import { exchangeCodeApi } from "../api/exchangeCodeApi.js";
@@ -39,9 +39,19 @@ export default function GuestReservationManagement() {
   const [refunding, setRefunding] = useState(false);
   const [qrUrls, setQrUrls] = useState({});
   const [qrErrors, setQrErrors] = useState({});
+  const loadGenerationRef = useRef(0);
 
   const loadAll = useCallback(async () => {
+    const generation = loadGenerationRef.current + 1;
+    loadGenerationRef.current = generation;
+    const isLatestLoad = () => generation === loadGenerationRef.current;
+
     if (!orderAccessToken) {
+      if (!isLatestLoad()) return;
+      setOrder(null);
+      setPayment(null);
+      setExchangeCodes([]);
+      setAdmissionTickets([]);
       setError("비회원 예매 조회가 필요합니다.");
       setLoading(false);
       return;
@@ -49,8 +59,13 @@ export default function GuestReservationManagement() {
     setLoading(true);
     setError("");
     setActionError("");
+    setOrder(null);
+    setPayment(null);
+    setExchangeCodes([]);
+    setAdmissionTickets([]);
     try {
       const orderResult = await paymentApi.getTicketOrder(orderNo, orderAccessToken);
+      if (!isLatestLoad()) return;
       const nextOrder = orderResult?.data || null;
       setOrder(nextOrder);
 
@@ -61,13 +76,15 @@ export default function GuestReservationManagement() {
           ? paymentApi.getPayment(nextOrder.paymentId, orderAccessToken).catch(() => null)
           : Promise.resolve(null),
       ]);
+      if (!isLatestLoad()) return;
       setExchangeCodes(codesResult?.data || []);
       setAdmissionTickets(ticketsResult?.data || []);
       setPayment(paymentResult?.data || null);
     } catch (requestError) {
+      if (!isLatestLoad()) return;
       setError(requestError.message || "예매 정보를 불러오지 못했습니다.");
     } finally {
-      setLoading(false);
+      if (isLatestLoad()) setLoading(false);
     }
   }, [orderAccessToken, orderNo]);
 

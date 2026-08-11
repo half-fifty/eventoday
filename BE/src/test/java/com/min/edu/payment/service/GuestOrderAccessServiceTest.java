@@ -3,6 +3,8 @@ package com.min.edu.payment.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.math.BigDecimal;
@@ -59,19 +61,23 @@ class GuestOrderAccessServiceTest {
     }
 
     @Test
-    void issueGuestAccessToken_failsWithSameErrorForWrongEmailWrongPhoneMissingOrderOrMemberOrder() {
+    void issueGuestAccessToken_failsWithSameErrorForMissingOrder() {
         GuestOrderAccessService service = service();
         given(paymentOrderRepository.findByOrderNo("NOPE")).willReturn(Optional.empty());
+
         assertDenied(() -> service.issueGuestAccessToken(
             "NOPE",
             new GuestOrderAccessTokenRequest("guest@example.com", "010-1234-5678")
         ));
+        verifyNoInteractions(ticketOrderRepository, eventRepository, orderAccessTokenProvider);
+    }
 
+    @Test
+    void issueGuestAccessToken_failsBeforeTicketOrEventLookupWhenEmailOrPhoneIsWrong() {
+        GuestOrderAccessService service = service();
         given(paymentOrderRepository.findByOrderNo("ORDER-1"))
             .willReturn(Optional.of(guestPaymentOrder("ORDER-1")));
-        given(ticketOrderRepository.findByPaymentOrderId(1L))
-            .willReturn(Optional.of(ticketOrder()));
-        given(eventRepository.findById(100L)).willReturn(Optional.of(event(OffsetDateTime.now().plusDays(1))));
+
         assertDenied(() -> service.issueGuestAccessToken(
             "ORDER-1",
             new GuestOrderAccessTokenRequest("other@example.com", "010-1234-5678")
@@ -80,15 +86,21 @@ class GuestOrderAccessServiceTest {
             "ORDER-1",
             new GuestOrderAccessTokenRequest("guest@example.com", "010-0000-0000")
         ));
+        verifyNoInteractions(ticketOrderRepository, eventRepository, orderAccessTokenProvider);
+    }
 
+    @Test
+    void issueGuestAccessToken_failsBeforeTicketOrEventLookupForMemberOrder() {
+        GuestOrderAccessService service = service();
         given(paymentOrderRepository.findByOrderNo("MEMBER-ORDER"))
             .willReturn(Optional.of(memberPaymentOrder("MEMBER-ORDER")));
-        given(ticketOrderRepository.findByPaymentOrderId(2L))
-            .willReturn(Optional.of(ticketOrder()));
+
         assertDenied(() -> service.issueGuestAccessToken(
             "MEMBER-ORDER",
             new GuestOrderAccessTokenRequest("guest@example.com", "010-1234-5678")
         ));
+        verify(ticketOrderRepository, never()).findByPaymentOrderId(2L);
+        verifyNoInteractions(eventRepository, orderAccessTokenProvider);
     }
 
     @Test
