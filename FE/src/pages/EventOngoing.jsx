@@ -82,6 +82,12 @@ export default function EventOngoing() {
     () => new Set(interestedBooths.map((b) => b.boothId)),
     [interestedBooths]
   );
+  // 관심 부스는 회원 기준으로 전체 행사에 걸쳐 조회되지만, 관심 부스 탭에는 현재 보고 있는
+  // 행사의 부스만 노출해야 한다.
+  const eventInterestedBooths = useMemo(
+    () => interestedBooths.filter((b) => String(b.eventId) === String(selectedEventId)),
+    [interestedBooths, selectedEventId]
+  );
 
   // 마운트 시 초기 조회와 toggleInterestFromSheet/관심 부스 탭 삭제 버튼의 뮤테이션 후 수동
   // 새로고침이 같은 함수를 공유한다. 두 경로가 겹쳐서 요청하면(예: 초기 조회가 늦게 끝나서 방금
@@ -478,14 +484,14 @@ export default function EventOngoing() {
               <p className="text-caption text-ink-muted">관심 부스를 불러오는 중입니다.</p>
             ) : interestsError ? (
               <p className="text-caption text-error">{interestsError}</p>
-            ) : interestedBooths.length === 0 ? (
+            ) : eventInterestedBooths.length === 0 ? (
               <p className="text-center text-ink-muted py-xxl">
                 <Icon name="favorite_border" className="text-[32px] block mb-sm" />
                 등록한 관심 부스가 없어요
               </p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-md">
-                {interestedBooths.map((b) => (
+                {eventInterestedBooths.map((b) => (
                   // 삭제 버튼은 Link(a 태그) 밖의 형제 요소로 둔다 - <a> 안에 <button>을 중첩하는 건
                   // 유효하지 않은 HTML이라 접근성 트리/하이드레이션 문제를 일으킬 수 있다.
                   <div key={b.boothId} className="relative bg-white border border-hairline rounded-xl overflow-hidden hover:shadow-md transition-all-custom">
