@@ -28,6 +28,15 @@ const validateUploadFile = (file) => {
   return null;
 };
 
+// 설비 요청 체크박스 목록 - 신청서 제출값이자 부스 선택 조건 필터로 함께 사용한다
+const FACILITY_OPTIONS = [
+  { key: "electricityRequired", label: "전기", icon: "bolt", availableKey: "electricityAvailable" },
+  { key: "waterRequired", label: "급수", icon: "water_drop", availableKey: "waterAvailable" },
+  { key: "drainageRequired", label: "배수", icon: "waves", availableKey: "drainageAvailable" },
+  { key: "internetRequired", label: "인터넷", icon: "wifi", availableKey: "internetAvailable" },
+];
+const FACILITY_KEYS = FACILITY_OPTIONS.map((option) => option.key);
+
 // 신청 폼 초기값 - BE BoothApplicationSubmitRequestDto 필드와 1:1 대응
 const emptyForm = {
   teamName: "",
@@ -59,7 +68,6 @@ export default function BoothApply() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  const [filters, setFilters] = useState({ elec: false, water: false });
   const [selectedBoothId, setSelectedBoothId] = useState(null);
 
   // 부스 페이지네이션 (RecruitmentDetail.jsx와 동일한 "부스 더 보기" 패턴)
@@ -141,11 +149,16 @@ export default function BoothApply() {
     }
   }, [member]);
 
-  // 신청 가능 여부: AVAILABLE 상태 + 설비 필터 충족
-  const isEligible = (booth) =>
+  // 신청 가능 여부: AVAILABLE 상태 + 신청서에 체크한 설비 요청을 부스가 충족하는지
+  // 별도 필터 UI 없이 신청서의 "설비 요청 사항" 체크박스가 필터 역할을 겸한다
+  const matchesFacility = (booth, values) =>
     booth.status === "AVAILABLE" &&
-    (!filters.elec || booth.electricityAvailable) &&
-    (!filters.water || booth.waterAvailable);
+    (!values.electricityRequired || booth.electricityAvailable) &&
+    (!values.waterRequired || booth.waterAvailable) &&
+    (!values.drainageRequired || booth.drainageAvailable) &&
+    (!values.internetRequired || booth.internetAvailable);
+
+  const isEligible = (booth) => matchesFacility(booth, form);
 
   // URL로 전달된 부스 사전 선택 (목록 로드 후 1회)
   // "부스 더 보기"로 booths가 갱신될 때마다 재실행되면 사용자가 고른 부스가
@@ -160,27 +173,24 @@ export default function BoothApply() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booths]);
 
-  const toggleFilter = (key) => {
-    const next = { ...filters, [key]: !filters[key] };
-    setFilters(next);
-    // 필터 변경으로 조건 불충족이 된 부스는 선택 해제
-    if (selectedBoothId) {
-      const booth = booths.find((b) => b.id === selectedBoothId);
-      const stillEligible =
-        booth &&
-        booth.status === "AVAILABLE" &&
-        (!next.elec || booth.electricityAvailable) &&
-        (!next.water || booth.waterAvailable);
-      if (!stillEligible) setSelectedBoothId(null);
-    }
-  };
+  // 부스 선택 토글 - 이미 선택된 부스를 다시 클릭하면 선택 해제
+  const toggleBooth = (boothId) =>
+    setSelectedBoothId((prev) => (prev === boothId ? null : boothId));
 
   const selectedBooth = useMemo(
     () => booths.find((b) => b.id === selectedBoothId) || null,
     [booths, selectedBoothId]
   );
 
-  const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const setField = (key, value) => {
+    const next = { ...form, [key]: value };
+    setForm(next);
+    // 설비 요청이 추가되어 선택한 부스가 조건 불충족이 되면 선택을 해제한다
+    if (FACILITY_KEYS.includes(key) && selectedBoothId) {
+      const booth = booths.find((b) => b.id === selectedBoothId);
+      if (!booth || !matchesFacility(booth, next)) setSelectedBoothId(null);
+    }
+  };
 
   // 기타 첨부파일 업로드 (최대 5개)
   const uploadOtherFile = async (event) => {
@@ -255,11 +265,6 @@ export default function BoothApply() {
     }
   };
 
-  const filterBtnCls = (on) =>
-    `px-lg py-sm rounded-full border font-body text-body flex items-center gap-xs transition-all ${
-      on ? "border-2 border-primary-focus bg-surface-pearl font-body-strong" : "border-hairline"
-    }`;
-
   const inputCls =
     "w-full h-[44px] rounded-lg border border-hairline px-sm focus:border-primary-focus focus:ring-2 focus:ring-primary-focus/20 outline-none transition-all";
 
@@ -310,17 +315,22 @@ export default function BoothApply() {
               <div className="flex flex-col gap-xs">
                 <h1 className="font-hero-display text-[32px] md:text-[40px] font-semibold tracking-tight">참가 부스 선택</h1>
                 <p className="text-secondary text-body">{recruitment.title}</p>
-                <p className="text-secondary text-caption">필요한 설비 조건을 선택하면 조건에 맞지 않는 부스는 선택할 수 없어요.</p>
+                <p className="text-secondary text-caption">필요한 설비를 체크하면 조건에 맞지 않는 부스는 선택할 수 없어요.</p>
               </div>
 
-              {/* 설비 조건 필터 */}
-              <div className="bg-white rounded-xl border border-hairline p-lg flex flex-wrap gap-sm">
-                <button onClick={() => toggleFilter("elec")} className={filterBtnCls(filters.elec)}>
-                  <Icon name="bolt" className="text-[18px]" /> 전기 사용 필요
-                </button>
-                <button onClick={() => toggleFilter("water")} className={filterBtnCls(filters.water)}>
-                  <Icon name="water_drop" className="text-[18px]" /> 급수·배수 필요
-                </button>
+              {/* 설비 요청 사항 - 신청서 제출값이자 아래 부스 목록의 선택 조건 필터로 함께 동작한다 */}
+              <div className="bg-white rounded-xl border border-hairline p-lg space-y-sm">
+                <label className="block text-[14px] font-bold">설비 사항</label>
+                <p className="text-[12px] text-ink-muted">체크한 설비를 제공하지 않는 부스는 선택할 수 없어요.</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-sm">
+                  {FACILITY_OPTIONS.map((option) => (
+                    <label key={option.key} className={`flex items-center gap-sm border rounded-lg px-md py-sm cursor-pointer transition-all ${form[option.key] ? "border-primary bg-primary/5" : "border-hairline"}`}>
+                      <input type="checkbox" checked={form[option.key]} onChange={(e) => setField(option.key, e.target.checked)} className="rounded" />
+                      <Icon name={option.icon} className="text-[16px] text-ink-muted" />
+                      <span className="text-[13px]">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               {/* 부스 그리드 */}
@@ -336,7 +346,7 @@ export default function BoothApply() {
                         <button
                           key={booth.id}
                           disabled={!eligible}
-                          onClick={eligible ? () => setSelectedBoothId(booth.id) : undefined}
+                          onClick={eligible ? () => toggleBooth(booth.id) : undefined}
                           title={`${booth.boothCode} · ${booth.status}`}
                           className={`booth-cell h-16 rounded-lg text-[11px] font-bold flex flex-col items-center justify-center gap-0.5 transition-all ${
                             !eligible
@@ -347,9 +357,13 @@ export default function BoothApply() {
                           }`}
                         >
                           <span>{booth.boothCode}</span>
+                          {/* 부스가 제공하는 설비 아이콘 (신청서 체크 항목과 동일한 4종) */}
                           <span className="flex gap-0.5">
-                            {booth.electricityAvailable && <Icon name="bolt" className="text-[11px]" />}
-                            {booth.waterAvailable && <Icon name="water_drop" className="text-[11px]" />}
+                            {FACILITY_OPTIONS.map((option) =>
+                              booth[option.availableKey] ? (
+                                <Icon key={option.key} name={option.icon} className="text-[11px]" />
+                              ) : null
+                            )}
                           </span>
                         </button>
                       );
@@ -469,26 +483,7 @@ export default function BoothApply() {
                       <input type="number" min="0" value={form.expectedVisitors} onChange={(e) => setField("expectedVisitors", e.target.value)} placeholder="예: 500" className={inputCls} />
                     </div>
 
-                    {/* 설비 요청 사항 */}
                     <div className="space-y-sm border-t border-hairline pt-lg">
-                      <label className="block text-[14px] font-bold">설비 요청 사항</label>
-                      <div className="grid grid-cols-2 gap-sm">
-                        {[
-                          { key: "electricityRequired", label: "전기", icon: "bolt" },
-                          { key: "waterRequired", label: "급수", icon: "water_drop" },
-                          { key: "drainageRequired", label: "배수", icon: "waves" },
-                          { key: "internetRequired", label: "인터넷", icon: "wifi" },
-                        ].map((option) => (
-                          <label key={option.key} className={`flex items-center gap-sm border rounded-lg px-md py-sm cursor-pointer transition-all ${form[option.key] ? "border-primary bg-primary/5" : "border-hairline"}`}>
-                            <input type="checkbox" checked={form[option.key]} onChange={(e) => setField(option.key, e.target.checked)} className="rounded" />
-                            <Icon name={option.icon} className="text-[16px] text-ink-muted" />
-                            <span className="text-[13px]">{option.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-sm">
                       <label className="block text-[14px] font-bold">신청 사유 (선택)</label>
                       <textarea value={form.applicationReason} onChange={(e) => setField("applicationReason", e.target.value)} rows={2} placeholder="참가 신청 사유를 입력해 주세요" className="w-full rounded-lg border border-hairline p-sm focus:border-primary-focus focus:ring-2 focus:ring-primary-focus/20 outline-none transition-all resize-none" />
                     </div>
