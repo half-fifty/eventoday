@@ -32,27 +32,46 @@ export default function BoothDetail() {
   const [reserving, setReserving] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [reservationError, setReservationError] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
 
-  const loadReservationInfo = () => {
-    if (!boothId) return;
+  const loadReservationInfo = () => setReloadToken((value) => value + 1);
+
+  useEffect(() => {
+    if (!boothId) return undefined;
+
+    let cancelled = false;
     setLoadingSlots(true);
     listReservationSlots(boothId)
-      .then((data) => setSlots(Array.isArray(data) ? data : []))
-      .catch(() => setSlots([]))
-      .finally(() => setLoadingSlots(false));
+      .then((data) => {
+        if (!cancelled) setSlots(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSlots(false);
+      });
 
     if (isAuthenticated) {
       setLoadingReservation(true);
       getMyReservation(boothId)
-        .then((data) => setMyReservation(data ?? null))
-        .catch(() => setMyReservation(null))
-        .finally(() => setLoadingReservation(false));
+        .then((data) => {
+          if (!cancelled) setMyReservation(data ?? null);
+        })
+        .catch(() => {
+          if (!cancelled) setMyReservation(null);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingReservation(false);
+        });
     } else {
-      setMyReservation(null);
+      if (!cancelled) setMyReservation(null);
     }
-  };
 
-  useEffect(loadReservationInfo, [boothId, isAuthenticated]);
+    return () => {
+      cancelled = true;
+    };
+  }, [boothId, isAuthenticated, reloadToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -285,10 +304,6 @@ export default function BoothDetail() {
                             {cancelling ? "취소 중..." : "예약 취소"}
                           </button>
                         </div>
-                      )}
-
-                      {isAuthenticated && !loadingSlots && !loadingReservation && myReservation && myReservation.status !== "RESERVED" && (
-                        <p className="text-caption text-ink-muted">이 부스는 이전에 예약했던 이력이 있어 재예약할 수 없어요.</p>
                       )}
 
                       {isAuthenticated && !loadingSlots && !loadingReservation && !myReservation && (

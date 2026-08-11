@@ -99,6 +99,10 @@ public class BoothReservationController {
             @PathVariable Long reservationId,
             @AuthenticationPrincipal AuthenticatedMemberDto principal) {
 
+        if (principal == null) {
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+        }
+
         reservationService.cancelReservation(
                 reservationId,
                 boothId,

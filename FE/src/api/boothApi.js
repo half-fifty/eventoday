@@ -24,6 +24,22 @@ const listPublicBooths = async (eventId, params = {}) => {
   return response.data;
 };
 
+// /booths/public 엔드포인트는 status 필터를 지원하지 않아, 전체 부스가 필요한 화면(참가 부스 목록,
+// 신청서-부스 매칭)은 페이지를 끝까지 순회해서 모아야 한다. 한 페이지만 가정하면 100건을 넘는
+// 행사에서 결과가 조용히 잘린다.
+const listAllPublicBooths = async (eventId, size = 100) => {
+  const first = await listPublicBooths(eventId, { page: 0, size });
+  const content = [...(first?.content ?? [])];
+  const totalPages = first?.totalPages ?? 1;
+
+  for (let page = 1; page < totalPages; page += 1) {
+    const next = await listPublicBooths(eventId, { page, size });
+    content.push(...(next?.content ?? []));
+  }
+
+  return content;
+};
+
 const getBooth = async (eventId, boothId) => {
   const response = await apiRequest(`/events/${eventId}/booths/${boothId}`);
   return response.data;
@@ -84,6 +100,7 @@ const removeBoothInterest = (boothId) => apiRequest(`/booths/${boothId}/interest
 export {
   listBooths,
   listPublicBooths,
+  listAllPublicBooths,
   getBooth,
   createBooth,
   createBoothsBulk,

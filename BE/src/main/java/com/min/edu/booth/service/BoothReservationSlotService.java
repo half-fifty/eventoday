@@ -1,20 +1,15 @@
 package com.min.edu.booth.service;
 
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
-import com.min.edu.booth.domain.Booth;
 import com.min.edu.booth.domain.BoothReservationSlot;
 import com.min.edu.booth.domain.BoothReservationSlotStatus;
 import com.min.edu.booth.dto.BoothReservationSlotResponse;
 import com.min.edu.booth.dto.CreateBoothReservationSlotRequest;
 import com.min.edu.booth.dto.UpdateBoothReservationSlotRequest;
-import com.min.edu.booth.repository.BoothRepository;
 import com.min.edu.booth.repository.BoothReservationRepository;
 import com.min.edu.booth.repository.BoothReservationSlotRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
-import com.min.edu.organization.domain.OrganizationMemberStatus;
-import com.min.edu.organization.domain.OrganizationRole;
-import com.min.edu.booth.repository.BoothOrganizationMemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -29,13 +24,9 @@ import java.util.List;
 @Transactional
 public class BoothReservationSlotService {
 
-    private static final List<OrganizationRole> MANAGER_ROLES =
-            List.of(OrganizationRole.OWNER, OrganizationRole.MANAGER);
-
     private final BoothReservationSlotRepository boothReservationSlotRepository;
     private final BoothReservationRepository boothReservationRepository;
-    private final BoothRepository boothRepository;
-    private final BoothOrganizationMemberRepository boothOrganizationMemberRepository;
+    private final BoothManagerPermissionChecker boothManagerPermissionChecker;
 
     @Transactional(readOnly = true)
     public List<BoothReservationSlotResponse> listSlots(Long boothId) {
@@ -49,7 +40,7 @@ public class BoothReservationSlotService {
             CreateBoothReservationSlotRequest request,
             AuthenticatedMemberDto actor) {
 
-        requireBoothManager(boothId, actor);
+        boothManagerPermissionChecker.requireBoothManager(boothId, actor);
 
         if (boothReservationSlotRepository.existsByBoothIdAndStartAt(boothId, request.getStartAt())) {
             throw new BusinessException(GlobalErrorCode.RESERVATION_SLOT_TIME_CONFLICT);
@@ -90,7 +81,7 @@ public class BoothReservationSlotService {
             UpdateBoothReservationSlotRequest request,
             AuthenticatedMemberDto principal) {
 
-        requireBoothManager(boothId, principal);
+        boothManagerPermissionChecker.requireBoothManager(boothId, principal);
 
         BoothReservationSlot slot = boothReservationSlotRepository.findByIdWithLock(slotId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
@@ -140,7 +131,7 @@ public class BoothReservationSlotService {
             Long slotId,
             AuthenticatedMemberDto principal) {
 
-        requireBoothManager(boothId, principal);
+        boothManagerPermissionChecker.requireBoothManager(boothId, principal);
 
         BoothReservationSlot slot = boothReservationSlotRepository.findByIdWithLock(slotId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
@@ -175,7 +166,7 @@ public class BoothReservationSlotService {
             Long slotId,
             AuthenticatedMemberDto principal) {
 
-        requireBoothManager(boothId, principal);
+        boothManagerPermissionChecker.requireBoothManager(boothId, principal);
 
         BoothReservationSlot slot = boothReservationSlotRepository.findByIdWithLock(slotId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
@@ -206,7 +197,7 @@ public class BoothReservationSlotService {
 
     @Transactional
     public void deleteReservationSlot(Long boothId, Long slotId, AuthenticatedMemberDto principal) {
-        requireBoothManager(boothId, principal);
+        boothManagerPermissionChecker.requireBoothManager(boothId, principal);
 
         BoothReservationSlot slot = boothReservationSlotRepository.findByIdWithLock(slotId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
@@ -248,21 +239,5 @@ public class BoothReservationSlotService {
             cause = cause.getCause();
         }
         return false;
-    }
-
-    private void requireBoothManager(Long boothId, AuthenticatedMemberDto actor) {
-        if (actor == null) {
-            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
-        }
-
-        Booth booth = boothRepository.findById(boothId)
-                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
-
-        Long organizationId = booth.getAssignedOrganizationId();
-        if (organizationId == null
-                || !boothOrganizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
-                organizationId, actor.getMemberId(), OrganizationMemberStatus.ACTIVE, MANAGER_ROLES)) {
-            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
-        }
     }
 }

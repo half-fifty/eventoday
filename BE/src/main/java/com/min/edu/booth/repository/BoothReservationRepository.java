@@ -28,11 +28,11 @@ public interface BoothReservationRepository extends JpaRepository<BoothReservati
     // 회원의 특정 부스 예약 조회
     Optional<BoothReservation> findByIdAndMemberId(Long id, Long memberId);
 
-    // 회원의 같은 부스 예약 존재 여부
-    boolean existsByMemberIdAndBoothId(Long memberId, Long boothId);
+    // 회원의 같은 부스 진행 중(RESERVED) 예약 존재 여부 - 취소된 예약은 재예약을 막지 않는다
+    boolean existsByMemberIdAndBoothIdAndStatus(Long memberId, Long boothId, BoothReservationStatus status);
 
-    // 회원의 특정 부스 예약 조회 (내 예약 상태 확인용)
-    Optional<BoothReservation> findByMemberIdAndBoothId(Long memberId, Long boothId);
+    // 회원의 특정 부스 예약 조회 (내 예약 상태 확인용) - 취소된 예약은 재예약을 막지 않는다
+    Optional<BoothReservation> findByMemberIdAndBoothIdAndStatus(Long memberId, Long boothId, BoothReservationStatus status);
 
     // 슬롯 삭제 가능 여부 확인용 (취소된 예약도 FK로 슬롯을 참조하므로 상태와 무관하게 확인한다)
     boolean existsByBoothReservationSlotId(Long boothReservationSlotId);

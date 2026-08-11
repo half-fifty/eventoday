@@ -8,10 +8,9 @@ import {
   getOrganizationApplications,
 } from "../api/boothApplicationApi.js";
 import { getPublicRecruitment } from "../api/recruitmentApi.js";
-import { listPublicBooths, updateBoothIntro } from "../api/boothApi.js";
+import { listAllPublicBooths, updateBoothIntro } from "../api/boothApi.js";
 import { listReservationSlots, createReservationSlot, closeReservationSlot, reopenReservationSlot, deleteReservationSlot, listReservationsForManager, markReservationAttendance } from "../api/boothReservationApi.js";
 import { uploadFile, fileDownloadUrl } from "../api/fileApi.js";
-import { toIsoOffset } from "../utils/datetime.js";
 
 const buildReservationSlotRange = (date, startTime, endTime) => {
   const [year, month, day] = date.split("-").map(Number);
@@ -30,7 +29,12 @@ const buildReservationSlotRange = (date, startTime, endTime) => {
 const EMPTY_INTRO_FORM = { displayName: "", shortIntro: "", description: "", exhibitionContent: "" };
 // 예약 시간대는 요일을 따지지 않는 시간 블록으로만 설정한다(예: 11:00~11:30).
 // 백엔드는 실제 날짜시각으로 저장해야 해서, 오늘 날짜를 내부적으로만 붙여 만든다.
-const todayValue = () => new Date().toISOString().slice(0, 10);
+const todayValue = () => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+};
 const EMPTY_SLOT_FORM = { startTime: "11:00", endTime: "11:30", capacity: "" };
 
 const formatSlotRange = (startAt, endAt) => {
@@ -138,8 +142,7 @@ export default function ExhibitorAdmin() {
 
           let booths = boothsByEventId.get(eventId);
           if (!booths) {
-            const boothPage = await listPublicBooths(eventId, { page: 0, size: 100 });
-            booths = boothPage?.content ?? [];
+            booths = await listAllPublicBooths(eventId);
             boothsByEventId.set(eventId, booths);
           }
 
@@ -235,6 +238,7 @@ export default function ExhibitorAdmin() {
     setSlotManagerApplicationId(application.id);
     setSlotForm(EMPTY_SLOT_FORM);
     setSlotError("");
+    setConfirmingDeleteSlotId(null);
     loadSlots(application);
   };
 
@@ -676,7 +680,10 @@ export default function ExhibitorAdmin() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setSlotManagerApplicationId(null)}
+                                onClick={() => {
+                                  setSlotManagerApplicationId(null);
+                                  setConfirmingDeleteSlotId(null);
+                                }}
                                 className="rounded-full border border-hairline px-lg py-sm text-caption"
                               >
                                 닫기

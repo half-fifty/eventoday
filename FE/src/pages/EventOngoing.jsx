@@ -6,7 +6,7 @@ import VenueMapPins from "../components/VenueMapPins.jsx";
 import { ApiError } from "../api/apiClient.js";
 import { eventApi } from "../api/eventApi.js";
 import { listPublicVenueMaps } from "../api/venueMapApi.js";
-import { listPublicBooths } from "../api/boothApi.js";
+import { listAllPublicBooths } from "../api/boothApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
 
 const formatEventPeriod = (event) => {
@@ -168,10 +168,10 @@ export default function EventOngoing() {
     setParticipatingBooths([]);
     setParticipatingBoothsError("");
     setLoadingParticipatingBooths(true);
-    listPublicBooths(selectedEventId, { page: 0, size: 100 })
-      .then((data) => {
+    listAllPublicBooths(selectedEventId)
+      .then((content) => {
         if (!cancelled) {
-          const assigned = (data?.content ?? []).filter((b) => b.status === "ASSIGNED");
+          const assigned = content.filter((b) => b.status === "ASSIGNED");
           setParticipatingBooths(assigned);
         }
       })

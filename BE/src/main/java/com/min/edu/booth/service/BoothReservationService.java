@@ -61,8 +61,8 @@ public class BoothReservationService {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
-        // 5️⃣ 중복 예약 확인
-        if (reservationRepository.existsByMemberIdAndBoothId(memberId, boothId)) {
+        // 5️⃣ 중복 예약 확인 (취소된 예약은 재예약 허용)
+        if (reservationRepository.existsByMemberIdAndBoothIdAndStatus(memberId, boothId, BoothReservationStatus.RESERVED)) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
