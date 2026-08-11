@@ -38,7 +38,7 @@ import ProtectedRoute from "./auth/ProtectedRoute.jsx";
 import NotificationSseProvider from "./notifications/NotificationSseProvider.jsx";
 
 const organizerOnly = (element) => (
-  <ProtectedRoute organizationTypes={["ORGANIZER"]}>
+  <ProtectedRoute roles={["USER"]} organizationTypes={["ORGANIZER"]}>
     {element}
   </ProtectedRoute>
 );
@@ -77,7 +77,7 @@ const router = createBrowserRouter([
   {
     path: "/organizer-admin",
     element: (
-      <ProtectedRoute organizationTypes={["ORGANIZER"]}>
+      <ProtectedRoute roles={["USER"]} organizationTypes={["ORGANIZER"]}>
         <OrganizerAdmin />
       </ProtectedRoute>
     ),
@@ -85,7 +85,7 @@ const router = createBrowserRouter([
   {
     path: "/exhibitor-admin",
     element: (
-      <ProtectedRoute organizationTypes={["EXHIBITOR"]}>
+      <ProtectedRoute roles={["USER"]} organizationTypes={["EXHIBITOR"]}>
         <ExhibitorAdmin />
       </ProtectedRoute>
     ),

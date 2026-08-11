@@ -108,4 +108,9 @@ public class Member {
         this.lastLoginAt = loginAt;
         this.updatedAt = loginAt;
     }
+
+    public void changeStatus(MemberStatus status, OffsetDateTime updatedAt) {
+        this.status = status;
+        this.updatedAt = updatedAt;
+    }
 }

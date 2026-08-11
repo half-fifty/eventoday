@@ -1,367 +1,160 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import Icon from "../components/Icon.jsx";
-import { eventApi } from "../api/eventApi.js";
 import { advertisementApi } from "../api/advertisementApi.js";
+import { eventApi } from "../api/eventApi.js";
+import { platformAdminApi } from "../api/platformAdminApi.js";
 import { AdminExchangeCodeRequestPanel } from "../components/ExchangeCodeRequestPanels.jsx";
+import Icon from "../components/Icon.jsx";
+import TopNav from "../components/TopNav.jsx";
+import useAuth from "../hooks/useAuth.js";
 
-const navItems = [
+const menuItems = [
   { key: "dashboard", label: "전체 대시보드", icon: "dashboard" },
-  { key: "requests", label: "행사 등록 신청 관리", icon: "verified" },
+  { key: "requests", label: "행사 등록 신청", icon: "verified" },
   { key: "exchange-codes", label: "교환 코드 관리", icon: "key" },
   { key: "accounts", label: "계정 관리", icon: "group" },
   { key: "ads", label: "광고 승인 관리", icon: "campaign" },
   { key: "stats", label: "통합 통계", icon: "bar_chart" },
   { key: "audit", label: "감사 로그", icon: "history" },
 ];
-const initialRequests = [
-  { id: 1, name: "2026 서울 푸드테크 박람회", organizer: "코엑스 이벤트", submitted: "2026.07.22", place: "코엑스 3층 A홀", booth: "10/10 배정 완료", status: "pending" },
-  { id: 2, name: "친환경 에너지 컨퍼런스", organizer: "그린포럼", submitted: "2026.07.18", place: "송도 컨벤시아", booth: "부스 모집 미사용", status: "approved" },
-  { id: 3, name: "무자격 팝업 마켓", organizer: "미확인 주최", submitted: "2026.07.15", place: "정보 미기재", booth: "0/8 배정", status: "rejected", reason: "행사장 정보와 안전 계획이 확인되지 않아 반려" },
-];
-const initialAccounts = [
-  { id: 1, name: "코엑스 이벤트", role: "행사 개최자", active: true },
-  { id: 2, name: "그린포럼", role: "행사 개최자", active: true },
-  { id: 3, name: "그린 키친랩", role: "참가기업", active: true },
-  { id: 4, name: "김서연", role: "회원 관람객", active: true },
-];
-const initialAds = [
-  { id: 1, target: "2026 서울 푸드테크 박람회", type: "행사 광고", amount: "500,000원", payment: "confirmed", status: "pending" },
-  { id: 2, target: "A06 콜드체인 솔루션", type: "부스 광고", amount: "80,000원", payment: "pending", status: "pending" },
-];
-const accTabs = ["전체", "행사 개최자", "참가기업", "회원 관람객"];
-const eventStatusLabel = {
-  pending: "승인 대기",
-  approved: "승인 완료",
-  rejected: "반려됨",
-  inactive: "제출 전",
-  suspended: "공개 중단",
-  ended: "행사 종료",
-  cancelled: "취소됨",
+
+const eventStatus = {
+  PREPARING: ["작성 중", "bg-surface-container text-ink-muted"],
+  SUBMITTED: ["승인 대기", "bg-status-pending/10 text-status-pending"],
+  UNDER_REVIEW: ["검토 중", "bg-status-pending/10 text-status-pending"],
+  APPROVED: ["승인", "bg-status-available/10 text-status-available"],
+  PUBLISHED: ["공개 중", "bg-primary/10 text-primary"],
+  REJECTED: ["반려", "bg-status-visited/10 text-status-visited"],
+  SUSPENDED: ["공개 중단", "bg-error/10 text-error"],
+  CANCELLED: ["취소", "bg-surface-container text-ink-muted"],
 };
-const eventStatusView = {
-  PREPARING: "inactive",
-  SUBMITTED: "pending",
-  UNDER_REVIEW: "pending",
-  APPROVED: "approved",
-  PUBLISHED: "approved",
-  REJECTED: "rejected",
-  SUSPENDED: "suspended",
-  ENDED: "ended",
-  CANCELLED: "cancelled",
+
+const adStatus = {
+  PAYMENT_PENDING: "결제 대기", PAID: "결제 완료", REVIEW_PENDING: "검토 대기",
+  APPROVED: "승인", REJECTED: "반려", SCHEDULED: "노출 예정", ACTIVE: "노출 중",
+  ENDED: "종료", CANCELLED: "취소",
 };
+
+const accountFilters = [
+  ["ALL", "전체"], ["ORGANIZER", "행사 개최자"], ["EXHIBITOR", "참가기업"], ["PERSONAL", "일반 회원"],
+];
+
+const formatDateTime = (value) => value
+  ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
+const formatMoney = (value) => `${Number(value || 0).toLocaleString("ko-KR")}원`;
+const dataOf = (result, fallback) => result?.data ?? fallback;
 
 export default function PlatformAdmin() {
+  const { member } = useAuth();
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [dashboard, setDashboard] = useState(null);
   const [requests, setRequests] = useState([]);
-  const [accounts, setAccounts] = useState(initialAccounts);
-  const [accFilter, setAccFilter] = useState("전체");
+  const [accounts, setAccounts] = useState([]);
   const [ads, setAds] = useState([]);
+  const [statistics, setStatistics] = useState(null);
+  const [audit, setAudit] = useState([]);
+  const [accountFilter, setAccountFilter] = useState("ALL");
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
+  const [error, setError] = useState("");
+  const [actionKey, setActionKey] = useState("");
 
-  const pendingReq = useMemo(() => requests.filter((r) => r.status === "pending"), [requests]);
-  const activeAccounts = accounts.filter((a) => a.active).length;
-  const pendingAds = ads.filter((a) => a.status === "pending").length;
-  const accountList = accFilter === "전체" ? accounts : accounts.filter((a) => a.role === accFilter);
-
-  const loadAdminData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
-    setLoadError("");
-    try {
-      const [eventResult, adResult] = await Promise.allSettled([
-        eventApi.adminList({ size: 100, sort: "createdAt,desc" }),
-        advertisementApi.adminList({ size: 100, sort: "createdAt,desc" }),
-      ]);
-      if (eventResult.status === "fulfilled") setRequests((eventResult.value?.data?.content || []).map((event) => ({
-        id: event.id,
-        name: event.name,
-        organizer: `조직 #${event.organizerOrganizationId || "-"}`,
-        submitted: event.updatedAt ? new Date(event.updatedAt).toLocaleDateString("ko-KR") : "-",
-        place: `${event.venueName || "장소 미정"} · ${event.address || ""}`,
-        booth: event.boothRecruitmentEnabled ? "부스 모집 사용" : "부스 모집 미사용",
-        status: eventStatusView[event.status] || "inactive",
-        rawStatus: event.status,
-        reason: event.rejectionReason,
-      })));
-      else setLoadError(eventResult.reason?.message || "행사 목록을 불러오지 못했습니다.");
+    setError("");
+    const results = await Promise.allSettled([
+      platformAdminApi.dashboard(), eventApi.adminList({ size: 100, sort: "createdAt,desc" }),
+      platformAdminApi.accounts(), advertisementApi.adminList({ size: 100, sort: "createdAt,desc" }),
+      platformAdminApi.statistics(), platformAdminApi.audit(),
+    ]);
+    const [dashboardResult, eventResult, accountResult, adResult, statsResult, auditResult] = results;
+    if (dashboardResult.status === "fulfilled") setDashboard(dataOf(dashboardResult.value, null));
+    if (eventResult.status === "fulfilled") setRequests(dataOf(eventResult.value, {})?.content || []);
+    if (accountResult.status === "fulfilled") setAccounts(dataOf(accountResult.value, []));
+    if (adResult.status === "fulfilled") setAds(dataOf(adResult.value, {})?.content || []);
+    if (statsResult.status === "fulfilled") setStatistics(dataOf(statsResult.value, null));
+    if (auditResult.status === "fulfilled") setAudit(dataOf(auditResult.value, []));
+    const failures = results.filter((result) => result.status === "rejected");
+    if (failures.length) setError(failures[0].reason?.message || "관리 데이터를 불러오지 못했습니다.");
+    setLoading(false);
+  }, []);
 
-      if (adResult.status === "fulfilled") setAds((adResult.value?.data?.content || []).map((ad) => ({
-        id: ad.id,
-        target: ad.eventId ? `행사 #${ad.eventId}` : `부스 #${ad.boothId}`,
-        type: ad.eventId ? "행사 광고" : "부스 광고",
-        amount: ad.eventId ? "결제 연동" : "무료",
-        payment: ["PAID", "REVIEW_PENDING", "APPROVED", "SCHEDULED", "ACTIVE", "ENDED"].includes(ad.status)
-          ? "confirmed" : "pending",
-        status: ["APPROVED", "SCHEDULED", "ACTIVE", "ENDED"].includes(ad.status)
-          ? "approved" : ad.status === "REJECTED" ? "rejected" : "pending",
-        rawStatus: ad.status,
-      })));
-      else setLoadError((current) => [current, adResult.reason?.message || "광고 목록을 불러오지 못했습니다."].filter(Boolean).join(" "));
-    } catch (error) {
-      setLoadError(error.message || "관리 데이터를 불러오지 못했습니다.");
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const pendingRequests = useMemo(() => requests.filter((event) =>
+    ["SUBMITTED", "UNDER_REVIEW"].includes(event.status)), [requests]);
+  const filteredAccounts = useMemo(() => accounts.filter((account) =>
+    accountFilter === "ALL" || (accountFilter === "PERSONAL"
+      ? !account.organizationType : account.organizationType === accountFilter)), [accounts, accountFilter]);
+
+  const runAction = async (key, action) => {
+    setActionKey(key); setError("");
+    try { await action(); await loadData(); }
+    catch (requestError) { setError(requestError.message || "요청 처리에 실패했습니다."); }
+    finally { setActionKey(""); }
   };
 
-  useEffect(() => { loadAdminData(); }, []);
+  const approveEvent = (id) => runAction(`event-${id}`, () => eventApi.approve(id));
+  const rejectEvent = (id) => {
+    const reason = window.prompt("반려 사유를 입력하세요.");
+    if (reason?.trim()) runAction(`event-${id}`, () => eventApi.reject(id, reason.trim()));
+  };
+  const decideAd = (id, approve) => {
+    if (approve) return runAction(`ad-${id}`, () => advertisementApi.approve(id));
+    const reason = window.prompt("반려 사유를 입력하세요.");
+    if (reason?.trim()) runAction(`ad-${id}`, () => advertisementApi.reject(id, reason.trim()));
+  };
+  const toggleAccount = (account) => runAction(`account-${account.id}`, () =>
+    platformAdminApi.changeAccountStatus(account.id, account.status === "ACTIVE" ? "BLOCKED" : "ACTIVE"));
+  const movePage = (key) => { setPage(key); setSidebarOpen(false); };
+  const menuClass = (active) => `flex w-full items-center gap-sm rounded-r-xl border-l-[3px] px-md py-sm text-left transition-colors ${active
+    ? "border-primary bg-primary/10 font-body-strong text-primary"
+    : "border-transparent text-on-surface-variant hover:bg-surface-container"}`;
 
-  const approveReq = async (id) => {
-    setLoadError("");
-    try {
-      await eventApi.approve(id);
-      await loadAdminData();
-    } catch (error) {
-      setLoadError(error.message || "행사 승인에 실패했습니다.");
-    }
+  const Empty = ({ text }) => <p className="p-xl text-center text-caption text-ink-muted">{text}</p>;
+  const StatusBadge = ({ status }) => {
+    const [label, cls] = eventStatus[status] || [status, "bg-surface-container text-ink-muted"];
+    return <span className={`rounded-full px-sm py-1 text-[11px] font-bold ${cls}`}>{label}</span>;
   };
-  const rejectReq = async (id) => {
-    const reason = window.prompt("반려 사유를 입력하세요");
-    if (!reason) return;
-    setLoadError("");
-    try {
-      await eventApi.reject(id, reason);
-      await loadAdminData();
-    } catch (error) {
-      setLoadError(error.message || "행사 반려에 실패했습니다.");
-    }
-  };
-  const toggleAccount = (id) => setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, active: !a.active } : a)));
-  const decideAd = async (id, decision) => {
-    setLoadError("");
-    try {
-      if (decision === "approved") await advertisementApi.approve(id);
-      else {
-        const reason = window.prompt("반려 사유를 입력하세요");
-        if (!reason) return;
-        await advertisementApi.reject(id, reason);
-      }
-      await loadAdminData();
-    } catch (error) {
-      setLoadError(error.message || "광고 처리에 실패했습니다.");
-    }
-  };
-
-  const gotoPage = (key) => {
-    setPage(key);
-    if (window.innerWidth < 768) setSidebarOpen(false);
-  };
-
-  const navBtnCls = (active) =>
-    `w-full flex items-center gap-sm px-md py-sm rounded-lg font-body text-left transition-colors ${
-      active ? "bg-white/10 text-white font-body-strong" : "text-white/60 hover:bg-white/10"
-    }`;
 
   return (
-    <div className="bg-surface-container-lowest text-on-surface">
-      {/* Sidebar */}
-      <aside className={`fixed left-0 top-0 h-screen w-[260px] bg-black text-white z-50 flex flex-col transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="px-lg py-xl flex items-center justify-between">
-          <span className="font-hero-display text-tagline text-white tracking-tight">EvenToday</span>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden"><Icon name="close" /></button>
+    <div className="min-h-screen bg-surface-container-lowest pt-[44px] text-on-surface">
+      <TopNav active="platform" />
+      <aside className={`fixed bottom-0 left-0 top-[44px] z-50 flex w-[280px] flex-col border-r border-hairline bg-white shadow-[12px_0_40px_rgba(15,23,42,0.04)] transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="flex items-start justify-between border-b border-hairline bg-gradient-to-br from-primary/10 via-white to-primary-container/10 px-lg py-lg">
+          <div><span className="text-[10px] font-bold tracking-[0.18em] text-primary">EVENTODAY</span><h1 className="mt-1 font-display-md text-[20px]">플랫폼 관리자센터</h1><p className="mt-1 text-[11px] text-ink-muted">서비스 운영 현황을 관리하세요</p></div>
+          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="메뉴 닫기" className="md:hidden"><Icon name="close" /></button>
         </div>
-        <p className="px-lg text-[11px] text-white/40 mb-sm">관리자센터</p>
-        <nav className="flex-1 px-sm space-y-1">
-          {navItems.map((n) => (
-            <button key={n.key} onClick={() => gotoPage(n.key)} className={navBtnCls(page === n.key)}>
-              <Icon name={n.icon} /><span>{n.label}</span>
-            </button>
-          ))}
+        <nav className="flex-1 space-y-1 overflow-y-auto px-md py-md" aria-label="플랫폼 관리자 메뉴">
+          {menuItems.map((item) => <button key={item.key} type="button" onClick={() => movePage(item.key)} className={menuClass(page === item.key)}><Icon name={item.icon} /><span>{item.label}</span></button>)}
         </nav>
-        <div className="p-lg border-t border-white/10">
-          <Link to="/" className="block w-full py-xs text-center text-caption text-white/70 border border-white/20 rounded-lg hover:bg-white/10 transition-colors">메인 사이트로</Link>
-        </div>
+        <div className="border-t border-hairline p-lg"><div className="flex items-center gap-sm"><div className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-primary"><Icon name="admin_panel_settings" /></div><div className="min-w-0"><p className="truncate text-caption font-body-strong">{member.nickname}</p><p className="text-[10px] text-ink-muted">PLATFORM_ADMIN</p></div></div></div>
       </aside>
-      {sidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/40 z-40 md:hidden" />}
+      {sidebarOpen && <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
-      <main className="md:ml-[260px] min-h-screen">
-        <header className="sticky top-0 z-30 bg-white/70 backdrop-blur-xl border-b border-hairline px-lg h-[64px] flex items-center justify-between">
-          <div className="flex items-center gap-sm">
-            <button onClick={() => setSidebarOpen(true)} className="md:hidden"><Icon name="menu" /></button>
-            <h2 className="font-display-md text-[20px]">{navItems.find((n) => n.key === page).label}</h2>
-          </div>
-          <span className="text-caption text-ink-muted">이벤투데이 플랫폼</span>
-        </header>
+      <main className="min-h-[calc(100vh-44px)] md:ml-[280px]">
+        <header className="sticky top-[44px] z-30 flex h-[64px] items-center justify-between border-b border-hairline bg-white/70 px-lg backdrop-blur-xl"><div className="flex items-center gap-sm"><button type="button" onClick={() => setSidebarOpen(true)} className="md:hidden"><Icon name="menu" /></button><h2 className="font-display-md text-[20px]">{menuItems.find((item) => item.key === page)?.label}</h2></div><button type="button" onClick={loadData} disabled={loading} className="inline-flex items-center gap-xs rounded-full border border-hairline px-md py-xs text-caption font-body-strong"><Icon name="refresh" className="text-[16px]" />새로고침</button></header>
+        <div className="mx-auto max-w-[1200px] space-y-section p-lg md:p-xl">
+          {loading && <div className="rounded-xl border border-hairline bg-white p-lg text-caption text-ink-muted">관리 데이터를 불러오는 중입니다.</div>}
+          {error && <div className="flex justify-between rounded-xl border border-error/20 bg-error/10 p-lg text-caption text-error"><span>{error}</span><button onClick={loadData} className="font-body-strong">다시 시도</button></div>}
 
-        <div className="p-lg md:p-xl space-y-section max-w-[1200px] mx-auto">
-          {loading && <div className="bg-white border border-hairline rounded-xl p-lg text-caption text-ink-muted">관리 데이터를 불러오는 중입니다.</div>}
-          {loadError && (
-            <div className="bg-error/10 border border-error/20 rounded-xl p-lg text-caption text-error flex justify-between">
-              <span>{loadError}</span><button onClick={loadAdminData} className="font-body-strong">다시 시도</button>
-            </div>
-          )}
-          {/* DASHBOARD */}
-          {page === "dashboard" && (
-            <section className="space-y-lg">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-lg">
-                <div className="bg-surface-pearl p-lg rounded-xl border border-hairline">
-                  <div className="flex justify-between items-start mb-md"><span className="text-caption text-on-surface-variant">행사 승인 대기</span><Icon name="verified" className="text-status-pending" /></div>
-                  <span className="font-display-md text-[26px]">{pendingReq.length}</span>
-                </div>
-                <div className="bg-surface-pearl p-lg rounded-xl border border-hairline">
-                  <div className="flex justify-between items-start mb-md"><span className="text-caption text-on-surface-variant">활성 계정 수</span><Icon name="group" className="text-status-assigned" /></div>
-                  <span className="font-display-md text-[26px]">{activeAccounts}</span>
-                </div>
-                <div className="bg-surface-pearl p-lg rounded-xl border border-hairline">
-                  <div className="flex justify-between items-start mb-md"><span className="text-caption text-on-surface-variant">광고 검토 대기</span><Icon name="campaign" className="text-status-available" /></div>
-                  <span className="font-display-md text-[26px]">{pendingAds}</span>
-                </div>
-                <div className="bg-surface-pearl p-lg rounded-xl border border-hairline">
-                  <div className="flex justify-between items-start mb-md"><span className="text-caption text-on-surface-variant">진행 중인 행사</span><Icon name="event" className="text-status-visited" /></div>
-                  <span className="font-display-md text-[26px]">6</span>
-                </div>
-              </div>
-              <div className="bg-white border border-hairline rounded-xl overflow-hidden">
-                <div className="flex justify-between items-center px-lg py-md border-b border-hairline">
-                  <h3 className="font-body-strong">승인 대기 행사</h3>
-                  <button onClick={() => gotoPage("requests")} className="text-caption text-primary font-body-strong">전체 보기</button>
-                </div>
-                <div className="divide-y divide-divider-soft">
-                  {pendingReq.length === 0 ? (
-                    <p className="p-lg text-caption text-ink-muted">대기 중인 요청이 없습니다.</p>
-                  ) : (
-                    pendingReq.map((r) => (
-                      <div key={r.id} className="flex items-center justify-between p-lg gap-md">
-                        <div><p className="font-body-strong text-[14px]">{r.name}</p><p className="text-caption text-ink-muted">{r.organizer} · 제출 {r.submitted}</p></div>
-                        <div className="flex gap-xs flex-shrink-0">
-                          <button onClick={() => approveReq(r.id)} className="w-8 h-8 rounded-full bg-status-available/10 text-status-available flex items-center justify-center"><Icon name="check" className="text-[16px]" /></button>
-                          <button onClick={() => rejectReq(r.id)} className="w-8 h-8 rounded-full bg-status-visited/10 text-status-visited flex items-center justify-center"><Icon name="close" className="text-[16px]" /></button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </section>
-          )}
+          {page === "dashboard" && <section className="space-y-xl"><div><h1 className="font-display-lg text-[28px]">서비스 운영 현황</h1><p className="text-lead text-on-surface-variant">실시간 플랫폼 관리 지표입니다.</p></div><div className="grid grid-cols-1 gap-lg sm:grid-cols-2 xl:grid-cols-4">{[
+            ["행사 승인 대기", dashboard?.pendingEventCount, "verified"], ["활성 계정", dashboard?.activeAccountCount, "group"], ["광고 검토 대기", dashboard?.pendingAdvertisementCount, "campaign"], ["공개 중인 행사", dashboard?.activeEventCount, "event"],
+          ].map(([label, value, icon]) => <div key={label} className="rounded-xl border border-hairline bg-surface-pearl p-lg"><div className="mb-md flex justify-between"><span className="text-caption text-on-surface-variant">{label}</span><Icon name={icon} className="text-primary" /></div><span className="font-display-md text-[26px]">{loading || value == null ? "-" : Number(value).toLocaleString()}</span></div>)}</div><div className="overflow-hidden rounded-xl border border-hairline bg-white"><div className="flex items-center justify-between border-b border-hairline px-lg py-md"><h3 className="font-body-strong">최근 운영 활동</h3><button onClick={() => movePage("audit")} className="text-caption font-body-strong text-primary">전체 보기</button></div>{dashboard?.recentActivity?.length ? <div className="divide-y divide-divider-soft">{dashboard.recentActivity.map((entry) => <div key={entry.id} className="flex gap-md p-lg"><Icon name={entry.category === "EVENT" ? "event" : "campaign"} className="text-primary" /><div className="flex-1"><p className="text-caption font-body-strong">{entry.target}</p><p className="text-[11px] text-ink-muted">{entry.action} · {formatDateTime(entry.occurredAt)}</p></div></div>)}</div> : <Empty text="기록된 운영 활동이 없습니다." />}</div></section>}
 
-          {/* REQUESTS */}
-          {page === "requests" && (
-            <section className="space-y-lg">
-              <h1 className="font-display-lg text-[26px]">행사 등록 신청 관리</h1>
-              <div className="space-y-md">
-                {requests.map((r) => (
-                  <div key={r.id} className="bg-white border border-hairline rounded-xl p-lg">
-                    <div className="flex justify-between items-start mb-sm">
-                      <div>
-                        <p className="font-body-strong">{r.name}</p>
-                        <p className="text-caption text-ink-muted">{r.organizer} · 제출 {r.submitted}</p>
-                      </div>
-                      {r.status === "pending" ? (
-                        <div className="flex gap-xs">
-                          <button onClick={() => approveReq(r.id)} className="w-9 h-9 rounded-full bg-status-available/10 text-status-available flex items-center justify-center"><Icon name="check" className="text-[18px]" /></button>
-                          <button onClick={() => rejectReq(r.id)} className="w-9 h-9 rounded-full bg-status-visited/10 text-status-visited flex items-center justify-center"><Icon name="close" className="text-[18px]" /></button>
-                        </div>
-                      ) : (
-                        <span className={`text-[11px] font-bold px-sm py-1 rounded-full ${r.status === "approved" ? "bg-status-available/10 text-status-available" : r.status === "rejected" ? "bg-status-visited/10 text-status-visited" : "bg-surface-container text-ink-muted"}`}>
-                          {eventStatusLabel[r.status] || r.rawStatus}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-md text-caption text-ink-muted bg-surface-container-low rounded-lg p-sm">
-                      <span className="flex items-center gap-1"><Icon name="location_on" className="text-[15px]" />{r.place}</span>
-                      <span className="flex items-center gap-1"><Icon name="grid_view" className="text-[15px]" />{r.booth}</span>
-                      {r.status === "rejected" && r.reason && <span className="text-error">반려 사유: {r.reason}</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
+          {page === "requests" && <section className="space-y-lg"><div><h1 className="font-display-lg text-[26px]">행사 등록 신청</h1><p className="mt-xs text-caption text-ink-muted">개최자가 제출한 행사를 검토하고 승인합니다.</p></div><div className="space-y-md">{requests.length ? requests.map((event) => <article key={event.id} className="rounded-xl border border-hairline bg-white p-lg"><div className="flex flex-wrap items-start justify-between gap-md"><div><p className="font-body-strong">{event.name}</p><p className="text-caption text-ink-muted">조직 #{event.organizerOrganizationId} · {event.venueName || "장소 미정"}</p><p className="text-[11px] text-ink-muted">수정 {formatDateTime(event.updatedAt)}</p></div><div className="flex items-center gap-sm"><StatusBadge status={event.status} />{["SUBMITTED", "UNDER_REVIEW"].includes(event.status) && <><button disabled={actionKey === `event-${event.id}`} onClick={() => approveEvent(event.id)} className="rounded-full bg-status-available px-md py-xs text-caption font-body-strong text-white disabled:opacity-50">승인</button><button disabled={actionKey === `event-${event.id}`} onClick={() => rejectEvent(event.id)} className="rounded-full border border-error/30 px-md py-xs text-caption font-body-strong text-error disabled:opacity-50">반려</button></>}</div></div>{event.rejectionReason && <p className="mt-md rounded-lg bg-error/5 p-sm text-caption text-error">반려 사유: {event.rejectionReason}</p>}</article>) : <div className="rounded-xl border border-hairline bg-white"><Empty text="등록된 행사가 없습니다." /></div>}</div></section>}
 
-          {/* EXCHANGE CODES */}
           {page === "exchange-codes" && <AdminExchangeCodeRequestPanel />}
 
-          {/* ACCOUNTS */}
-          {page === "accounts" && (
-            <section className="space-y-lg">
-              <h1 className="font-display-lg text-[26px]">전체 계정 관리</h1>
-              <div className="flex gap-xs">
-                {accTabs.map((t) => (
-                  <button key={t} onClick={() => setAccFilter(t)} className={`px-md py-1.5 rounded-full text-caption font-body-strong ${accFilter === t ? "bg-black text-white" : "bg-white border border-hairline text-on-surface-variant"}`}>{t}</button>
-                ))}
-              </div>
-              <div className="bg-white border border-hairline rounded-xl divide-y divide-divider-soft">
-                {accountList.map((a) => (
-                  <div key={a.id} className="flex items-center gap-md p-lg">
-                    <div className="w-9 h-9 rounded-lg bg-surface-container flex items-center justify-center flex-shrink-0"><Icon name="group" className="text-[16px] text-ink-muted" /></div>
-                    <div className="flex-1"><p className="font-body-strong text-[14px]">{a.name}</p><p className="text-caption text-ink-muted">{a.role}</p></div>
-                    <span className={`text-caption ${a.active ? "text-status-available" : "text-ink-muted"}`}>{a.active ? "활성" : "비활성"}</span>
-                    <button onClick={() => toggleAccount(a.id)} className={`w-10 h-6 rounded-full relative ${a.active ? "bg-status-available" : "bg-hairline"}`}>
-                      <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all" style={{ left: a.active ? "18px" : "2px" }} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
+          {page === "accounts" && <section className="space-y-lg"><div><h1 className="font-display-lg text-[26px]">계정 관리</h1><p className="mt-xs text-caption text-ink-muted">실제 가입 회원의 상태와 소속을 관리합니다.</p></div><div className="flex flex-wrap gap-xs">{accountFilters.map(([key, label]) => <button key={key} onClick={() => setAccountFilter(key)} className={`rounded-full px-md py-1.5 text-caption font-body-strong ${accountFilter === key ? "bg-primary text-white" : "border border-hairline bg-white"}`}>{label}</button>)}</div><div className="overflow-hidden rounded-xl border border-hairline bg-white">{filteredAccounts.length ? <div className="divide-y divide-divider-soft">{filteredAccounts.map((account) => <div key={account.id} className="flex flex-col gap-md p-lg sm:flex-row sm:items-center"><div className="grid h-10 w-10 place-items-center rounded-full bg-primary/10 text-primary"><Icon name="person" /></div><div className="min-w-0 flex-1"><p className="font-body-strong">{account.nickname} <span className="text-[10px] text-ink-muted">#{account.id}</span></p><p className="truncate text-caption text-ink-muted">{account.email}</p><p className="text-[11px] text-ink-muted">{account.organizationName || "개인 회원"} · {account.organizationType || account.platformRole}</p></div><div className="flex items-center gap-sm"><span className={`text-caption ${account.status === "ACTIVE" ? "text-status-available" : "text-error"}`}>{account.status === "ACTIVE" ? "활성" : "차단"}</span><button type="button" disabled={actionKey === `account-${account.id}` || account.id === member.id} onClick={() => toggleAccount(account)} className={`relative h-6 w-10 rounded-full disabled:opacity-40 ${account.status === "ACTIVE" ? "bg-status-available" : "bg-hairline"}`}><span className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all" style={{ left: account.status === "ACTIVE" ? "18px" : "2px" }} /></button></div></div>)}</div> : <Empty text="조건에 맞는 계정이 없습니다." />}</div></section>}
 
-          {/* ADS */}
-          {page === "ads" && (
-            <section className="space-y-lg">
-              <h1 className="font-display-lg text-[26px]">광고 입금 확인 및 승인</h1>
-              <div className="bg-white border border-hairline rounded-xl divide-y divide-divider-soft">
-                {ads.map((a) => (
-                  <div key={a.id} className="flex items-center gap-md p-lg">
-                    <div className="w-9 h-9 rounded-lg bg-surface-container flex items-center justify-center flex-shrink-0"><Icon name="payments" className="text-[16px] text-ink-muted" /></div>
-                    <div className="flex-1">
-                      <p className="font-body-strong text-[14px]">{a.target}</p>
-                      <p className="text-caption text-ink-muted">
-                        {a.type} · {a.amount} · <span className={a.payment === "confirmed" ? "text-status-available" : "text-status-pending"}>{a.payment === "confirmed" ? "입금 확인됨" : "입금 대기"}</span>
-                      </p>
-                    </div>
-                    <div>
-                      {a.status === "pending" ? (
-                        a.payment === "confirmed" ? (
-                          <div className="flex gap-xs">
-                            <button onClick={() => decideAd(a.id, "approved")} className="w-8 h-8 rounded-full bg-status-available/10 text-status-available flex items-center justify-center"><Icon name="check" className="text-[16px]" /></button>
-                            <button onClick={() => decideAd(a.id, "rejected")} className="w-8 h-8 rounded-full bg-status-visited/10 text-status-visited flex items-center justify-center"><Icon name="close" className="text-[16px]" /></button>
-                          </div>
-                        ) : (
-                          <span className="px-md py-1.5 border border-hairline rounded-full text-caption text-ink-muted">결제 대기</span>
-                        )
-                      ) : (
-                        <span className={`text-[11px] font-bold px-sm py-1 rounded-full ${a.status === "approved" ? "bg-status-available/10 text-status-available" : "bg-status-visited/10 text-status-visited"}`}>
-                          {a.status === "approved" ? "승인됨" : "반려됨"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
+          {page === "ads" && <section className="space-y-lg"><div><h1 className="font-display-lg text-[26px]">광고 승인 관리</h1><p className="mt-xs text-caption text-ink-muted">결제가 완료된 행사 광고와 부스 광고를 심사합니다.</p></div><div className="overflow-hidden rounded-xl border border-hairline bg-white">{ads.length ? <div className="divide-y divide-divider-soft">{ads.map((ad) => <article key={ad.id} className="flex flex-col gap-md p-lg sm:flex-row sm:items-center"><div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary"><Icon name="campaign" /></div><div className="min-w-0 flex-1"><p className="font-body-strong">{ad.eventId ? `행사 광고 #${ad.eventId}` : `부스 광고 #${ad.boothId}`}</p><p className="truncate text-caption text-ink-muted">{ad.adText || "광고 문구 없음"}</p><p className="text-[11px] text-ink-muted">{formatDateTime(ad.startAt)} ~ {formatDateTime(ad.endAt)}</p></div><div className="flex items-center gap-sm"><span className="rounded-full bg-surface-container px-sm py-1 text-[11px] font-bold">{adStatus[ad.status] || ad.status}</span>{["PAID", "REVIEW_PENDING"].includes(ad.status) && <><button disabled={actionKey === `ad-${ad.id}`} onClick={() => decideAd(ad.id, true)} className="rounded-full bg-status-available px-md py-xs text-caption font-body-strong text-white disabled:opacity-50">승인</button><button disabled={actionKey === `ad-${ad.id}`} onClick={() => decideAd(ad.id, false)} className="rounded-full border border-error/30 px-md py-xs text-caption font-body-strong text-error disabled:opacity-50">반려</button></>}</div></article>)}</div> : <Empty text="등록된 광고가 없습니다." />}</div></section>}
 
-          {/* STATS */}
-          {page === "stats" && (
-            <section className="space-y-lg">
-              <div className="flex justify-between items-center">
-                <h1 className="font-display-lg text-[26px]">통합 통계</h1>
-                <button className="px-lg py-sm border border-hairline rounded-full text-caption font-body-strong">CSV로 다운로드</button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-lg">
-                <div className="bg-surface-pearl p-lg rounded-xl border border-hairline"><span className="font-display-md text-[24px] block">6</span><span className="text-caption text-ink-muted">진행 중 행사</span></div>
-                <div className="bg-surface-pearl p-lg rounded-xl border border-hairline"><span className="font-display-md text-[24px] block">1,284</span><span className="text-caption text-ink-muted">누적 예매자 수</span></div>
-                <div className="bg-surface-pearl p-lg rounded-xl border border-hairline"><span className="font-display-md text-[24px] block">96</span><span className="text-caption text-ink-muted">등록 참가기업 수</span></div>
-                <div className="bg-surface-pearl p-lg rounded-xl border border-hairline"><span className="font-display-md text-[24px] block">₩12.4M</span><span className="text-caption text-ink-muted">누적 광고 매출</span></div>
-              </div>
-            </section>
-          )}
+          {page === "stats" && <section className="space-y-lg"><div><h1 className="font-display-lg text-[26px]">통합 통계</h1><p className="mt-xs text-caption text-ink-muted">플랫폼에 저장된 운영 데이터를 실시간으로 집계합니다.</p></div><div className="grid grid-cols-1 gap-lg sm:grid-cols-2 xl:grid-cols-4">{[
+            ["공개 중인 행사", statistics?.activeEventCount, "event", "건"], ["판매된 입장권", statistics?.totalTicketQuantity, "confirmation_number", "매"], ["등록 참가기업", statistics?.exhibitorOrganizationCount, "storefront", "곳"], ["누적 광고 매출", statistics?.advertisementRevenue, "payments", "money"],
+          ].map(([label, value, icon, unit]) => <div key={label} className="rounded-xl border border-hairline bg-surface-pearl p-lg"><div className="mb-md flex justify-between"><span className="text-caption text-on-surface-variant">{label}</span><Icon name={icon} className="text-primary" /></div><span className="font-display-md text-[24px]">{loading || value == null ? "-" : unit === "money" ? formatMoney(value) : `${Number(value).toLocaleString()}${unit}`}</span></div>)}</div></section>}
 
-          {/* AUDIT */}
-          {page === "audit" && (
-            <section className="space-y-lg">
-              <h1 className="font-display-lg text-[26px]">감사 로그</h1>
-              <div className="bg-white border border-hairline rounded-xl divide-y divide-divider-soft text-caption">
-                <div className="flex gap-md p-lg"><span className="text-ink-muted w-24 flex-shrink-0">07.29 10:12</span>관리자(admin01)가 '친환경 에너지 컨퍼런스' 행사를 승인했습니다.</div>
-                <div className="flex gap-md p-lg"><span className="text-ink-muted w-24 flex-shrink-0">07.29 09:40</span>관리자(admin01)가 '무자격 팝업 마켓' 행사를 반려했습니다.</div>
-                <div className="flex gap-md p-lg"><span className="text-ink-muted w-24 flex-shrink-0">07.28 18:02</span>개최자(코엑스 이벤트)가 견적서 파일을 다운로드했습니다.</div>
-                <div className="flex gap-md p-lg"><span className="text-ink-muted w-24 flex-shrink-0">07.28 15:20</span>회원(김서연)에게 입장 QR이 발급되었습니다.</div>
-              </div>
-            </section>
-          )}
+          {page === "audit" && <section className="space-y-lg"><div><h1 className="font-display-lg text-[26px]">감사 로그</h1><p className="mt-xs text-caption text-ink-muted">행사와 광고의 실제 운영 상태 변경 내역입니다.</p></div><div className="overflow-hidden rounded-xl border border-hairline bg-white">{audit.length ? <div className="divide-y divide-divider-soft">{audit.map((entry) => <div key={entry.id} className="flex gap-md p-lg"><div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary"><Icon name={entry.category === "EVENT" ? "event" : "campaign"} className="text-[18px]" /></div><div className="min-w-0 flex-1"><p className="font-body-strong text-[14px]">{entry.target}</p><p className="text-caption text-ink-muted">{entry.action}{entry.detail ? ` · ${entry.detail}` : ""}</p></div><time className="text-[11px] text-ink-muted">{formatDateTime(entry.occurredAt)}</time></div>)}</div> : <Empty text="기록된 운영 활동이 없습니다." />}</div></section>}
         </div>
       </main>
     </div>
