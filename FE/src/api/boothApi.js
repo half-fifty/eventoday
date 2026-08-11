@@ -97,6 +97,10 @@ const addBoothInterest = (boothId) => apiRequest(`/booths/${boothId}/interests`,
 
 const removeBoothInterest = (boothId) => apiRequest(`/booths/${boothId}/interests`, { method: "DELETE" });
 
+// 이 엔드포인트는 다른 목록 API와 달리 ApiResponse({ data: ... }) 래핑 없이
+// 목록을 그대로 반환한다.
+const getMyInterests = async () => apiRequest("/booths/interests");
+
 export {
   listBooths,
   listPublicBooths,
@@ -113,4 +117,5 @@ export {
   getGuideBoothDetail,
   addBoothInterest,
   removeBoothInterest,
+  getMyInterests,
 };

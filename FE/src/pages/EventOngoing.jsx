@@ -6,7 +6,7 @@ import VenueMapPins from "../components/VenueMapPins.jsx";
 import { ApiError } from "../api/apiClient.js";
 import { eventApi } from "../api/eventApi.js";
 import { listPublicVenueMaps } from "../api/venueMapApi.js";
-import { listAllPublicBooths } from "../api/boothApi.js";
+import { listAllPublicBooths, addBoothInterest, removeBoothInterest, getMyInterests } from "../api/boothApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
 import useAuth from "../hooks/useAuth.js";
 
@@ -18,17 +18,18 @@ const formatEventPeriod = (event) => {
   return `${fmt(start)} – ${fmt(end)} · ${event.venueName ?? ""}`;
 };
 
+// 인기 부스 탭은 실시간 혼잡도/방문자 지표 API가 없어 여전히 mock 데이터를 사용한다.
 const initialBooths = [
-  { id: "A01", name: "맛있는 식탁", zone: "A구역 1층", congestion: 62, interest: false, icon: "lunch_dining" },
-  { id: "A02", name: "그린 키친랩", zone: "A구역 1층", congestion: 30, interest: false, icon: "blender" },
-  { id: "A03", name: "베이크하우스", zone: "A구역 1층", congestion: 88, interest: false, icon: "bakery_dining" },
-  { id: "A04", name: "브루잉 스튜디오", zone: "A구역 2층", congestion: 45, interest: false, icon: "coffee" },
-  { id: "A05", name: "스마트키친 로보틱스", zone: "A구역 2층", congestion: 71, interest: true, icon: "smart_toy" },
-  { id: "A06", name: "콜드체인 솔루션", zone: "A구역 2층", congestion: 20, interest: false, icon: "ac_unit" },
-  { id: "A07", name: "비건 델리", zone: "B구역 1층", congestion: 55, interest: false, icon: "eco" },
-  { id: "A08", name: "프레시 로스터리", zone: "B구역 1층", congestion: 40, interest: false, icon: "coffee_maker" },
-  { id: "A09", name: "패키징 이노베이션", zone: "B구역 2층", congestion: 66, interest: false, icon: "inventory_2" },
-  { id: "A10", name: "푸드 딜리버리 테크", zone: "B구역 2층", congestion: 33, interest: false, icon: "delivery_dining" },
+  { id: "A01", name: "맛있는 식탁", zone: "A구역 1층", congestion: 62, icon: "lunch_dining" },
+  { id: "A02", name: "그린 키친랩", zone: "A구역 1층", congestion: 30, icon: "blender" },
+  { id: "A03", name: "베이크하우스", zone: "A구역 1층", congestion: 88, icon: "bakery_dining" },
+  { id: "A04", name: "브루잉 스튜디오", zone: "A구역 2층", congestion: 45, icon: "coffee" },
+  { id: "A05", name: "스마트키친 로보틱스", zone: "A구역 2층", congestion: 71, icon: "smart_toy" },
+  { id: "A06", name: "콜드체인 솔루션", zone: "A구역 2층", congestion: 20, icon: "ac_unit" },
+  { id: "A07", name: "비건 델리", zone: "B구역 1층", congestion: 55, icon: "eco" },
+  { id: "A08", name: "프레시 로스터리", zone: "B구역 1층", congestion: 40, icon: "coffee_maker" },
+  { id: "A09", name: "패키징 이노베이션", zone: "B구역 2층", congestion: 66, icon: "inventory_2" },
+  { id: "A10", name: "푸드 딜리버리 테크", zone: "B구역 2층", congestion: 33, icon: "delivery_dining" },
 ];
 
 const levelLabel = (v) => (v >= 70 ? "혼잡" : v >= 40 ? "보통" : "여유");
@@ -58,19 +59,94 @@ export default function EventOngoing() {
   const [loadingVenueMaps, setLoadingVenueMaps] = useState(false);
   const [venueMapError, setVenueMapError] = useState("");
   const [mapPinBooth, setMapPinBooth] = useState(null);
-  // 배치도 핀은 참가 부스 목록(mock)에 없는 실제 부스라서 관심 상태를 boothId 기준으로 따로 들고 있는다.
-  const [mapBoothInterestIds, setMapBoothInterestIds] = useState(() => new Set());
 
   const [booths, setBooths] = useState(initialBooths);
   const [tab, setTab] = useState("map");
 
-  // 실제 배정 완료(ASSIGNED)된 참가 부스 목록. 인기/관심 부스 탭은 아직 mock(booths)을 그대로 쓴다.
+  // 실제 배정 완료(ASSIGNED)된 참가 부스 목록. 인기 부스 탭은 아직 mock(booths)을 그대로 쓴다.
   const [participatingBooths, setParticipatingBooths] = useState([]);
+  // 상태 필터링 전 전체 공개 부스 목록. 배치도 핀은 ASSIGNED가 아닌 부스도 찍힐 수 있어 대표이미지·소개 조회에 사용한다.
+  const [allPublicBooths, setAllPublicBooths] = useState([]);
   const [loadingParticipatingBooths, setLoadingParticipatingBooths] = useState(false);
   const [participatingBoothsError, setParticipatingBoothsError] = useState("");
   const [activeBoothId, setActiveBoothId] = useState(null);
   const [boothSheetOpen, setBoothSheetOpen] = useState(false);
   const [qrSheetOpen, setQrSheetOpen] = useState(false);
+
+  // 관심 부스: 실제 백엔드(GET /booths/interests)와 연동된다.
+  const [interestedBooths, setInterestedBooths] = useState([]);
+  const [loadingInterests, setLoadingInterests] = useState(false);
+  const [interestsError, setInterestsError] = useState("");
+  const [togglingInterestId, setTogglingInterestId] = useState(null);
+  const interestedBoothIds = useMemo(
+    () => new Set(interestedBooths.map((b) => b.boothId)),
+    [interestedBooths]
+  );
+
+  // toggleInterestFromSheet/관심 부스 탭의 삭제 버튼에서 뮤테이션 직후 호출하는 수동 새로고침.
+  const refreshInterests = () => {
+    if (!isAuthenticated) {
+      setInterestedBooths([]);
+      return;
+    }
+    setLoadingInterests(true);
+    setInterestsError("");
+    getMyInterests()
+      .then((data) => setInterestedBooths(Array.isArray(data) ? data : []))
+      .catch((error) => {
+        setInterestedBooths([]);
+        setInterestsError(error instanceof ApiError ? error.message : "관심 부스 목록을 불러오지 못했습니다.");
+      })
+      .finally(() => setLoadingInterests(false));
+  };
+
+  // 마운트/로그인 상태 변경 시 초기 조회. 다른 effect들과 마찬가지로 응답이 늦게 와서
+  // 최신 상태를 오래된 응답으로 덮어쓰지 않도록 cancelled 플래그로 보호한다.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setInterestedBooths([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingInterests(true);
+    setInterestsError("");
+    getMyInterests()
+      .then((data) => {
+        if (!cancelled) setInterestedBooths(Array.isArray(data) ? data : []);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setInterestedBooths([]);
+          setInterestsError(error instanceof ApiError ? error.message : "관심 부스 목록을 불러오지 못했습니다.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingInterests(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
+
+  // 관심 등록/해제 공통 처리 (배치도 핀 바텀시트, 관심 부스 탭 삭제 버튼에서 공유).
+  const setBoothInterest = async (boothId, shouldBeInterested) => {
+    if (togglingInterestId) return;
+    setTogglingInterestId(boothId);
+    try {
+      if (shouldBeInterested) {
+        await addBoothInterest(boothId);
+      } else {
+        await removeBoothInterest(boothId);
+      }
+      refreshInterests();
+    } catch (error) {
+      setInterestsError(error instanceof ApiError ? error.message : "관심 부스 처리에 실패했습니다.");
+    } finally {
+      setTogglingInterestId(null);
+    }
+  };
 
   // 진행 중인 실제 행사(PUBLISHED) 목록을 불러와 선택할 수 있게 한다.
   useEffect(() => {
@@ -168,11 +244,13 @@ export default function EventOngoing() {
     let cancelled = false;
 
     setParticipatingBooths([]);
+    setAllPublicBooths([]);
     setParticipatingBoothsError("");
     setLoadingParticipatingBooths(true);
     listAllPublicBooths(selectedEventId)
       .then((content) => {
         if (!cancelled) {
+          setAllPublicBooths(content);
           const assigned = content.filter((b) => b.status === "ASSIGNED");
           setParticipatingBooths(assigned);
         }
@@ -180,6 +258,7 @@ export default function EventOngoing() {
       .catch((error) => {
         if (!cancelled) {
           setParticipatingBooths([]);
+          setAllPublicBooths([]);
           setParticipatingBoothsError(error instanceof ApiError ? error.message : "참가 부스 목록을 불러오지 못했습니다.");
         }
       })
@@ -196,8 +275,10 @@ export default function EventOngoing() {
     () => [...booths].sort((a, b) => b.congestion - a.congestion).slice(0, 3),
     [booths]
   );
-  const interestList = booths.filter((b) => b.interest);
   const activeBooth = mapPinBooth || booths.find((b) => b.id === activeBoothId) || null;
+  // 인기 부스(mock)는 실제 boothId가 없어 관심 등록을 지원하지 않는다.
+  const activeBoothRealId = mapPinBooth?.boothId ?? null;
+  const activeBoothIsInterested = activeBoothRealId != null && interestedBoothIds.has(activeBoothRealId);
 
   const openBoothSheet = (id) => {
     setMapPinBooth(null);
@@ -208,33 +289,23 @@ export default function EventOngoing() {
   // 배치도 핀은 참가 부스 목록(mock)에 없는 실제 부스라서 같은 바텀시트를 재사용한다.
   // 혼잡도/대기시간/방문자 수는 실제 지표 API가 없어 표시하지 않는다(정보 없음 처리).
   const openMapBoothSheet = (position, venueMap) => {
+    const boothDetail = allPublicBooths.find((b) => b.id === position.boothId);
     setMapPinBooth({
       boothId: position.boothId,
       id: position.boothCode,
       name: position.displayName || position.boothCode,
       zone: venueMap.floorName,
-      interest: mapBoothInterestIds.has(position.boothId),
       icon: "storefront",
       isMapBooth: true,
+      representativeFileId: boothDetail?.representativeFileId ?? null,
+      shortIntro: boothDetail?.shortIntro ?? "",
     });
     setBoothSheetOpen(true);
   };
 
   const toggleInterestFromSheet = () => {
-    if (mapPinBooth) {
-      const { boothId } = mapPinBooth;
-      setMapBoothInterestIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(boothId)) next.delete(boothId);
-        else next.add(boothId);
-        return next;
-      });
-      setMapPinBooth((prev) => prev && { ...prev, interest: !prev.interest });
-      return;
-    }
-    setBooths((prev) =>
-      prev.map((b) => (b.id === activeBoothId ? { ...b, interest: !b.interest } : b))
-    );
+    if (!activeBoothRealId || !isAuthenticated) return;
+    setBoothInterest(activeBoothRealId, !interestedBoothIds.has(activeBoothRealId));
   };
 
   return (
@@ -410,27 +481,42 @@ export default function EventOngoing() {
         {tab === "interest" && (
           <section className="py-lg px-lg max-w-[900px] mx-auto">
             <h2 className="font-display-md text-[20px] mb-md">나의 관심 부스</h2>
-            {interestList.length === 0 ? (
+            {!isAuthenticated ? (
+              <p className="text-center text-ink-muted py-xxl">
+                <Icon name="favorite_border" className="text-[32px] block mb-sm" />
+                로그인 후 관심 부스를 확인할 수 있어요
+              </p>
+            ) : loadingInterests ? (
+              <p className="text-caption text-ink-muted">관심 부스를 불러오는 중입니다.</p>
+            ) : interestsError ? (
+              <p className="text-caption text-error">{interestsError}</p>
+            ) : interestedBooths.length === 0 ? (
               <p className="text-center text-ink-muted py-xxl">
                 <Icon name="favorite_border" className="text-[32px] block mb-sm" />
                 등록한 관심 부스가 없어요
               </p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-md">
-                {interestList.map((b) => (
-                  <div
-                    key={b.id}
-                    onClick={() => openBoothSheet(b.id)}
-                    className="bg-white border border-hairline rounded-xl overflow-hidden cursor-pointer hover:shadow-md transition-all-custom"
-                  >
-                    <div className="h-20 flex items-center justify-center bg-surface-container-low relative">
-                      <Icon name={b.icon} className="text-[26px] text-primary" />
-                      <span className="absolute top-1 right-1 text-primary"><Icon name="favorite" fill className="text-[16px]" /></span>
-                    </div>
-                    <div className="p-sm">
-                      <p className="text-caption font-body-strong truncate">{b.name}</p>
-                      <p className="text-[11px] text-ink-muted">{b.zone}</p>
-                    </div>
+                {interestedBooths.map((b) => (
+                  // 삭제 버튼은 Link(a 태그) 밖의 형제 요소로 둔다 - <a> 안에 <button>을 중첩하는 건
+                  // 유효하지 않은 HTML이라 접근성 트리/하이드레이션 문제를 일으킬 수 있다.
+                  <div key={b.boothId} className="relative bg-white border border-hairline rounded-xl overflow-hidden hover:shadow-md transition-all-custom">
+                    <Link to={`/booth-detail?eventId=${selectedEventId}&boothId=${b.boothId}`}>
+                      <div className="h-20 flex items-center justify-center bg-surface-container-low">
+                        <Icon name="storefront" className="text-[26px] text-primary" />
+                      </div>
+                      <div className="p-sm">
+                        <p className="text-caption font-body-strong truncate">{b.displayName}</p>
+                        <p className="text-[11px] text-ink-muted truncate">{b.shortIntro}</p>
+                      </div>
+                    </Link>
+                    <button
+                      onClick={() => setBoothInterest(b.boothId, false)}
+                      disabled={togglingInterestId === b.boothId}
+                      className="absolute top-1 right-1 text-primary"
+                    >
+                      <Icon name="favorite" fill className="text-[16px]" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -479,6 +565,24 @@ export default function EventOngoing() {
                   </span>
                 )}
               </div>
+              {activeBooth.isMapBooth && (
+                <div className="mb-lg">
+                  <div className="h-32 rounded-xl overflow-hidden bg-surface-container-low flex items-center justify-center mb-sm">
+                    {activeBooth.representativeFileId ? (
+                      <img
+                        src={fileDownloadUrl(activeBooth.representativeFileId)}
+                        alt={activeBooth.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Icon name="storefront" className="text-[32px] text-primary" />
+                    )}
+                  </div>
+                  {activeBooth.shortIntro && (
+                    <p className="text-caption text-on-surface-variant">{activeBooth.shortIntro}</p>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-sm mb-lg">
                 <div className="bg-surface-container-low p-md rounded-xl">
                   <p className="text-caption text-secondary mb-xs">실시간 대기</p>
@@ -493,9 +597,17 @@ export default function EventOngoing() {
                   </p>
                 </div>
               </div>
+              {interestsError && (
+                <p className="text-caption text-error mb-sm">{interestsError}</p>
+              )}
               <div className="flex gap-sm">
-                <button onClick={toggleInterestFromSheet} className="flex-1 border border-hairline rounded-xl py-md font-body-strong flex items-center justify-center gap-xs active:scale-95 transition-transform">
-                  {activeBooth.interest ? (
+                <button
+                  onClick={toggleInterestFromSheet}
+                  disabled={!activeBoothRealId || !isAuthenticated || togglingInterestId === activeBoothRealId}
+                  title={!activeBoothRealId ? "실제 부스 정보가 없어 관심 등록을 지원하지 않아요" : !isAuthenticated ? "로그인 후 이용할 수 있어요" : undefined}
+                  className="flex-1 border border-hairline rounded-xl py-md font-body-strong flex items-center justify-center gap-xs active:scale-95 transition-transform disabled:opacity-50"
+                >
+                  {activeBoothIsInterested ? (
                     <><Icon name="favorite" fill className="text-primary" /> 관심 등록됨</>
                   ) : (
                     <><Icon name="favorite_border" /> 관심 등록</>

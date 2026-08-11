@@ -22,6 +22,7 @@ export default function BoothDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [togglingInterest, setTogglingInterest] = useState(false);
+  const [interestError, setInterestError] = useState("");
 
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -102,6 +103,7 @@ export default function BoothDetail() {
   const toggleInterest = async () => {
     if (!booth || togglingInterest) return;
     setTogglingInterest(true);
+    setInterestError("");
     try {
       if (booth.isInterested) {
         await removeBoothInterest(boothId);
@@ -109,8 +111,8 @@ export default function BoothDetail() {
         await addBoothInterest(boothId);
       }
       setBooth((prev) => prev && { ...prev, isInterested: !prev.isInterested });
-    } catch {
-      // 조용히 무시: 관심 등록은 부가 기능이라 실패해도 상세 화면 표시에는 영향 없음
+    } catch (error) {
+      setInterestError(error.message || "관심 등록 처리에 실패했습니다.");
     } finally {
       setTogglingInterest(false);
     }
@@ -275,6 +277,9 @@ export default function BoothDetail() {
                         <><Icon name="favorite_border" /> 관심 등록</>
                       )}
                     </button>
+                    {interestError && (
+                      <p className="text-caption text-error mb-sm">{interestError}</p>
+                    )}
 
                     <div className="border-t border-hairline pt-lg">
                       <h3 className="font-body-strong text-body-strong mb-sm">부스 예약</h3>
@@ -304,6 +309,10 @@ export default function BoothDetail() {
                             {cancelling ? "취소 중..." : "예약 취소"}
                           </button>
                         </div>
+                      )}
+
+                      {isAuthenticated && !loadingSlots && !loadingReservation && myReservation && myReservation.status !== "RESERVED" && (
+                        <p className="text-caption text-ink-muted">이미 예약했던 부스라 다시 예약할 수 없어요.</p>
                       )}
 
                       {isAuthenticated && !loadingSlots && !loadingReservation && !myReservation && (
