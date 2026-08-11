@@ -8,6 +8,7 @@ import { eventApi } from "../api/eventApi.js";
 import { listPublicVenueMaps } from "../api/venueMapApi.js";
 import { listAllPublicBooths } from "../api/boothApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
+import useAuth from "../hooks/useAuth.js";
 
 const formatEventPeriod = (event) => {
   if (!event) return "";
@@ -44,6 +45,7 @@ const tabButtons = [
 const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 37 + 13) % 7 < 3);
 
 export default function EventOngoing() {
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [events, setEvents] = useState([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
@@ -448,6 +450,15 @@ export default function EventOngoing() {
             </button>
           );
         })}
+        {!authLoading && (
+          <Link
+            to={isAuthenticated ? "/mypage" : "/guest/orders"}
+            className="flex flex-col items-center text-secondary opacity-60"
+          >
+            <Icon name="person" className="text-[24px]" />
+            <span className="mt-1 text-[10px]">마이</span>
+          </Link>
+        )}
       </nav>
 
       {/* Booth detail bottom sheet */}
