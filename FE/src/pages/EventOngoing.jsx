@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
@@ -83,51 +83,39 @@ export default function EventOngoing() {
     [interestedBooths]
   );
 
-  // toggleInterestFromSheet/관심 부스 탭의 삭제 버튼에서 뮤테이션 직후 호출하는 수동 새로고침.
+  // 마운트 시 초기 조회와 toggleInterestFromSheet/관심 부스 탭 삭제 버튼의 뮤테이션 후 수동
+  // 새로고침이 같은 함수를 공유한다. 두 경로가 겹쳐서 요청하면(예: 초기 조회가 늦게 끝나서 방금
+  // 등록한 관심을 다시 덮어쓰는 경우) 오래된 응답이 최신 상태를 덮어쓸 수 있어, 요청마다 증가하는
+  // id를 매겨 가장 마지막에 시작된 요청의 응답만 반영한다.
+  const interestRequestIdRef = useRef(0);
   const refreshInterests = () => {
-    if (!isAuthenticated) {
-      setInterestedBooths([]);
-      return;
-    }
-    setLoadingInterests(true);
-    setInterestsError("");
-    getMyInterests()
-      .then((data) => setInterestedBooths(Array.isArray(data) ? data : []))
-      .catch((error) => {
-        setInterestedBooths([]);
-        setInterestsError(error instanceof ApiError ? error.message : "관심 부스 목록을 불러오지 못했습니다.");
-      })
-      .finally(() => setLoadingInterests(false));
-  };
+    const requestId = ++interestRequestIdRef.current;
 
-  // 마운트/로그인 상태 변경 시 초기 조회. 다른 effect들과 마찬가지로 응답이 늦게 와서
-  // 최신 상태를 오래된 응답으로 덮어쓰지 않도록 cancelled 플래그로 보호한다.
-  useEffect(() => {
     if (!isAuthenticated) {
       setInterestedBooths([]);
       return;
     }
 
-    let cancelled = false;
     setLoadingInterests(true);
     setInterestsError("");
     getMyInterests()
       .then((data) => {
-        if (!cancelled) setInterestedBooths(Array.isArray(data) ? data : []);
+        if (interestRequestIdRef.current !== requestId) return;
+        setInterestedBooths(Array.isArray(data) ? data : []);
       })
       .catch((error) => {
-        if (!cancelled) {
-          setInterestedBooths([]);
-          setInterestsError(error instanceof ApiError ? error.message : "관심 부스 목록을 불러오지 못했습니다.");
-        }
+        if (interestRequestIdRef.current !== requestId) return;
+        setInterestedBooths([]);
+        setInterestsError(error instanceof ApiError ? error.message : "관심 부스 목록을 불러오지 못했습니다.");
       })
       .finally(() => {
-        if (!cancelled) setLoadingInterests(false);
+        if (interestRequestIdRef.current === requestId) setLoadingInterests(false);
       });
+  };
 
-    return () => {
-      cancelled = true;
-    };
+  useEffect(() => {
+    refreshInterests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   // 관심 등록/해제 공통 처리 (배치도 핀 바텀시트, 관심 부스 탭 삭제 버튼에서 공유).
@@ -501,7 +489,7 @@ export default function EventOngoing() {
                   // 삭제 버튼은 Link(a 태그) 밖의 형제 요소로 둔다 - <a> 안에 <button>을 중첩하는 건
                   // 유효하지 않은 HTML이라 접근성 트리/하이드레이션 문제를 일으킬 수 있다.
                   <div key={b.boothId} className="relative bg-white border border-hairline rounded-xl overflow-hidden hover:shadow-md transition-all-custom">
-                    <Link to={`/booth-detail?eventId=${selectedEventId}&boothId=${b.boothId}`}>
+                    <Link to={`/booth-detail?eventId=${b.eventId}&boothId=${b.boothId}`}>
                       <div className="h-20 flex items-center justify-center bg-surface-container-low">
                         <Icon name="storefront" className="text-[26px] text-primary" />
                       </div>

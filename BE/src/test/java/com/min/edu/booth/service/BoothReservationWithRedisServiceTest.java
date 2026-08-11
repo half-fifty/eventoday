@@ -28,6 +28,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -154,5 +155,11 @@ class BoothReservationWithRedisServiceTest {
 
         assertThatThrownBy(() -> service.createReservationWithRedis(boothId, request, memberId))
                 .isInstanceOf(BusinessException.class);
+
+        // existsByMemberIdAndBoothId 없이도 reserveSlot()의 mockito 기본 반환값(false)이 같은
+        // BusinessException을 유발해 이 테스트가 잘못된 이유로 통과할 수 있으므로, 실제로 예약 이력
+        // 검사에서 막혔는지(그리고 그 이후 Redis 선점까지는 가지 않았는지) 명시적으로 검증한다.
+        verify(reservationRepository).existsByMemberIdAndBoothId(memberId, boothId);
+        verify(redisReservationService, never()).reserveSlot(boothId, slotId, memberId);
     }
 }
