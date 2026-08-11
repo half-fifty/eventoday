@@ -3,7 +3,7 @@ import useAuth from "../hooks/useAuth.js";
 
 // Full site footer used on the home page. Other pages use compact variants inline.
 export default function Footer() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const myPagePath = isAuthenticated ? "/mypage" : "/guest/orders";
 
   return (
@@ -23,9 +23,11 @@ export default function Footer() {
           <Link className="text-caption text-on-surface-variant hover:underline" to="/recruitments">
             부스 모집 공고
           </Link>
-          <Link className="text-caption text-on-surface-variant hover:underline" to={myPagePath}>
-            마이페이지
-          </Link>
+          {!loading && (
+            <Link className="text-caption text-on-surface-variant hover:underline" to={myPagePath}>
+              마이페이지
+            </Link>
+          )}
         </div>
         <div className="flex flex-col gap-sm">
           <h4 className="text-caption font-body-strong mb-xs">이용 안내</h4>
