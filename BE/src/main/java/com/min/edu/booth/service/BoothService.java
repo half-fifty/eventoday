@@ -246,7 +246,7 @@ public class BoothService {
         }
 
         if (request.getRepresentativeFileId() != null) {
-            fileService.assertAccessible(request.getRepresentativeFileId(), member.getMemberId());
+            fileService.assertPublicAccessible(request.getRepresentativeFileId());
         }
 
         booth.updateIntro(

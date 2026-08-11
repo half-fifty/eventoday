@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -23,6 +24,7 @@ public class BoothInterestService {
                         .memberId(memberId)
                         .boothId(boothId)
                         .vacancyNotificationEnabled(false)
+                        .createdAt(OffsetDateTime.now())
                         .build());
 
         boothInterestRepository.saveAndFlush(interest);
