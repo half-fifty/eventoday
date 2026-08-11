@@ -54,9 +54,6 @@ public class BoothReview {
     @Column(name = "member_name")
     private String memberName;
 
-    @Column(name = "member_profile")
-    private String memberProfile;
-
     // 1) 별점 수정
     public void updateRating(Short rating) {
         if (rating == null) {
@@ -67,8 +64,6 @@ public class BoothReview {
         }
         this.rating = rating;
     }
-
-
 
     // 2) 댓글 수정
     public void updateComment(String comment) {

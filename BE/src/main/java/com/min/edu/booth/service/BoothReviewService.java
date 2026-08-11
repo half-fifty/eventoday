@@ -1,24 +1,21 @@
 package com.min.edu.booth.service;
 
-import com.google.zxing.NotFoundException;
 import com.min.edu.booth.domain.BoothReview;
-import com.min.edu.booth.dto.BoothAverageRatingResponse;
 import com.min.edu.booth.dto.BoothReviewResponse;
 import com.min.edu.booth.dto.CreateBoothReviewRequest;
 import com.min.edu.booth.dto.UpdateBoothReviewRequest;
 import com.min.edu.booth.repository.BoothReviewRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.member.domain.Member;
 import com.min.edu.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
-import org.apache.coyote.BadRequestException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 
 @Service
@@ -27,7 +24,7 @@ import java.time.OffsetDateTime;
 public class BoothReviewService {
 
     private final BoothReviewRepository boothReviewRepository;
-
+    private final MemberRepository memberRepository;
 
     /**
      * 1. 리뷰 작성
@@ -45,10 +42,15 @@ public class BoothReviewService {
                     throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
                 });
 
-        // 2) 리뷰 객체 생성
+        // 2) Member 조회 (memberName 저장용)
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // 3) 리뷰 객체 생성
         BoothReview review = BoothReview.builder()
                 .boothId(boothId)
                 .memberId(memberId)
+                .memberName(member.getNickname())  // ✅ memberName 저장
                 .rating(request.getRating())
                 .comment(request.getComment())
                 .createdAt(now)
@@ -65,11 +67,9 @@ public class BoothReviewService {
     }
 
     /**
-     * 2. 평균 별점 조회 (✅ 반환 타입 Double로 수정)
+     * 2. 평균 별점 조회
      */
     public Double getAverageRating(Long boothId) {
-        // 1) 부스 평점 통계 조회
-        // (1) Optional<Double> → Double (orElse 처리)
         return boothReviewRepository.findAverageRatingByBoothId(boothId)
                 .orElse(0.0);
     }
@@ -78,15 +78,12 @@ public class BoothReviewService {
      * 3. 부스별 후기 목록 (WBS-159)
      */
     public Page<BoothReviewResponse> getBoothReviews(Long boothId, Pageable pageable) {
-        // 1) 부스의 모든 리뷰 조회
         Page<BoothReview> reviews = boothReviewRepository.findByBoothIdOrderByCreatedAtDesc(boothId, pageable);
-
-        // 2) DTO 변환
         return reviews.map(this::toResponse);
     }
 
     /**
-     * 3-1. ✅ Controller에서 호출하는 getReviews() 메서드 추가
+     * 3-1. Controller에서 호출하는 getReviews() 메서드
      */
     public Page<BoothReviewResponse> getReviews(Long boothId, Pageable pageable) {
         return getBoothReviews(boothId, pageable);
@@ -96,10 +93,7 @@ public class BoothReviewService {
      * 4. 내 작성 후기 목록 (WBS-160)
      */
     public Page<BoothReviewResponse> getMyReviews(Long memberId, Pageable pageable) {
-        // 1) 사용자의 모든 리뷰 조회
         Page<BoothReview> reviews = boothReviewRepository.findByMemberIdOrderByCreatedAtDesc(memberId, pageable);
-
-        // 2) DTO 변환
         return reviews.map(this::toResponse);
     }
 
@@ -108,12 +102,8 @@ public class BoothReviewService {
      */
     public Page<BoothReviewResponse> searchReviews(
             Long boothId, String keyword, Pageable pageable) {
-
-        // 1) 키워드로 리뷰 검색
         Page<BoothReview> reviews = boothReviewRepository
                 .findByBoothIdAndCommentContainingIgnoreCase(boothId, keyword, pageable);
-
-        // 2) DTO 변환
         return reviews.map(this::toResponse);
     }
 
@@ -140,14 +130,10 @@ public class BoothReviewService {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
 
-        Short ratingShort = request.getRating().shortValue();
-
-
         // 4) 리뷰 정보 업데이트
-        review.updateRating(ratingShort);
+        review.updateRating(request.getRating());
         review.updateComment(request.getContent());
         review.updateUpdatedAt(OffsetDateTime.now());
-
 
         // 5) DB 저장
         boothReviewRepository.saveAndFlush(review);
@@ -175,7 +161,6 @@ public class BoothReviewService {
      * BoothReview → BoothReviewResponse 변환
      */
     private BoothReviewResponse toResponse(BoothReview review) {
-
         return BoothReviewResponse.builder()
                 .id(review.getId())
                 .boothId(review.getBoothId())
@@ -183,6 +168,7 @@ public class BoothReviewService {
                 .rating(review.getRating())
                 .comment(review.getComment())
                 .createdAt(review.getCreatedAt())
+                .updatedAt(review.getUpdatedAt())
                 .build();
     }
 }
