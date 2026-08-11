@@ -186,7 +186,7 @@ export default function BoothManagementPanel({ eventId }) {
     setQrInfo(info);
     setQrImageUrl("");
     // 스캔하면 부스 상세 페이지로 이동하도록, 토큰 원문 대신 페이지 URL을 인코딩한다.
-    const scanUrl = `${window.location.origin}/booth-detail?boothId=${boothId}&qr=${info.qrToken}`;
+    const scanUrl = `${window.location.origin}/booth-detail?eventId=${eventId}&boothId=${boothId}&qr=${info.qrToken}`;
     try {
       const dataUrl = await QRCode.toDataURL(scanUrl, { width: 160, margin: 1 });
       setQrImageUrl(dataUrl);
@@ -503,13 +503,15 @@ export default function BoothManagementPanel({ eventId }) {
                           소개 관리
                         </button>
                       )}
-                      <button
-                        onClick={() => handleToggleQr(booth.id)}
-                        disabled={submitting}
-                        className="text-caption border border-hairline rounded-full px-md py-1"
-                      >
-                        {qrBoothId === booth.id ? "QR 닫기" : "QR 보기"}
-                      </button>
+                      {booth.status === "ASSIGNED" && (
+                        <button
+                          onClick={() => handleToggleQr(booth.id)}
+                          disabled={submitting}
+                          className="text-caption border border-hairline rounded-full px-md py-1"
+                        >
+                          {qrBoothId === booth.id ? "QR 닫기" : "QR 보기"}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDelete(booth.id)}
                         disabled={submitting || booth.status !== "AVAILABLE"}

@@ -18,6 +18,7 @@ public class MobileGuideBoothDetailResponse {
     private String description;        // 부스 설명
     private String boothType;          // 부스 타입 (category 대신)
     private String location;           // 부스 위치
+    private Long representativeFileId; // 대표 이미지
     private Double averageRating;      // 평균 별점
     private Long reviewCount;          // 리뷰 개수
     private Boolean isInterested;      // 관심 여부

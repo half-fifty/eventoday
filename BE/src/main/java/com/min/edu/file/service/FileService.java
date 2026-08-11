@@ -147,6 +147,19 @@ public class FileService {
     }
 
     /**
+     * 대표 이미지로 쓰기 위해 파일이 PUBLIC 상태인지 검증한다.
+     */
+    @Transactional(readOnly = true)
+    public void assertPublicAccessible(Long fileId) {
+        FileAsset fileAsset = fileAssetRepository.findById(fileId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.FILE_NOT_FOUND));
+
+        if (fileAsset.getAccessLevel() != FileAccessLevel.PUBLIC) {
+            throw new BusinessException(GlobalErrorCode.FILE_ACCESS_DENIED);
+        }
+    }
+
+    /**
      * 파일을 조회하고 접근 권한을 검증하는 공통 메서드.
      * PRIVATE 파일은 업로드한 본인만 접근 가능하다.
      */
