@@ -36,6 +36,7 @@ export default function EventDetail() {
   const [contents, setContents] = useState([]);
   const [expandedContentId, setExpandedContentId] = useState(null);
   const [completedOrderNo, setCompletedOrderNo] = useState("");
+  const [orderNoCopyMessage, setOrderNoCopyMessage] = useState("");
 
   const [venueMaps, setVenueMaps] = useState([]);
   const [loadingVenueMaps, setLoadingVenueMaps] = useState(false);
@@ -152,6 +153,17 @@ export default function EventDetail() {
     setPurchaseError("");
     setIssuedCodes([]);
     setCompletedOrderNo("");
+    setOrderNoCopyMessage("");
+  };
+
+  const copyCompletedOrderNo = async () => {
+    if (!completedOrderNo) return;
+    try {
+      await navigator.clipboard.writeText(completedOrderNo);
+      setOrderNoCopyMessage("주문번호를 복사했습니다.");
+    } catch {
+      setOrderNoCopyMessage("복사하지 못했습니다. 주문번호를 직접 선택해 복사해 주세요.");
+    }
   };
 
   const now = Date.now();
@@ -260,7 +272,7 @@ export default function EventDetail() {
       {purchaseOpen && event && <div className="fixed inset-0 z-50 bg-black/50 grid place-items-center p-lg" onMouseDown={(e) => e.target === e.currentTarget && closePurchase()}>
         <section role="dialog" aria-modal="true" aria-labelledby="ticket-title" className="w-full max-w-md bg-white rounded-2xl p-xl shadow-2xl">
           <div className="flex items-start justify-between gap-md mb-lg"><div><p className="text-caption text-primary">TICKET</p><h2 id="ticket-title" className="font-display-md text-[24px]">{issuedCodes.length ? "예매 완료" : "티켓 구매"}</h2></div><button type="button" onClick={closePurchase} aria-label="닫기"><Icon name="close" /></button></div>
-          {issuedCodes.length ? <div className="space-y-md"><p>무료 티켓이 발급되었습니다.</p>{issuedCodes.map((item, index) => <div key={item.exchangeCode || index} className="rounded-xl bg-surface-container p-md"><p className="text-caption text-ink-muted">입장 코드 {index + 1}</p><p className="font-mono font-bold text-lg break-all">{item.exchangeCode || item.code}</p></div>)}{completedOrderNo && <Link to={`/tickets/orders/${completedOrderNo}`} className="block w-full py-sm border border-hairline rounded-full text-center">주문 상세 보기</Link>}<button type="button" onClick={closePurchase} className="w-full py-sm bg-primary text-white rounded-full">확인</button></div> : <form onSubmit={submitTicketOrder} className="space-y-md">
+          {issuedCodes.length ? <div className="space-y-md"><p>무료 티켓이 발급되었습니다.</p>{!isAuthenticated && completedOrderNo && <div className="rounded-xl border border-primary/20 bg-primary/5 p-md text-left"><p className="text-caption text-ink-muted">주문번호</p><p className="mt-xs break-all font-mono text-lg font-bold text-on-surface">{completedOrderNo}</p><button type="button" onClick={copyCompletedOrderNo} className="mt-sm rounded-full border border-hairline px-md py-1.5 text-caption font-body-strong">주문번호 복사</button>{orderNoCopyMessage && <p className="mt-xs text-caption text-primary">{orderNoCopyMessage}</p>}<p className="mt-sm text-caption text-ink-muted">비회원 예매 조회 시 필요한 번호입니다. 주문번호 안내는 구매 시 입력한 이메일로도 전송됩니다.</p></div>}{issuedCodes.map((item, index) => <div key={item.exchangeCode || index} className="rounded-xl bg-surface-container p-md"><p className="text-caption text-ink-muted">입장 코드 {index + 1}</p><p className="font-mono font-bold text-lg break-all">{item.exchangeCode || item.code}</p></div>)}{completedOrderNo && <Link to={`/tickets/orders/${completedOrderNo}`} className="block w-full py-sm border border-hairline rounded-full text-center">주문 상세 보기</Link>}<button type="button" onClick={closePurchase} className="w-full py-sm bg-primary text-white rounded-full">확인</button></div> : <form onSubmit={submitTicketOrder} className="space-y-md">
             <div className="rounded-xl bg-surface-container p-md"><p className="font-body-strong">{event.name}</p><p className="text-caption text-ink-muted">1매 {Number(event.ticketPrice) === 0 ? "무료" : `${Number(event.ticketPrice).toLocaleString("ko-KR")}원`}</p></div>
             <label className="block">수량<input required min="1" max={event.ticketPurchaseLimit || 1} type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label>
             {!isAuthenticated && <div className="space-y-md border-t border-hairline pt-md"><p className="text-caption text-ink-muted">비회원 구매 정보</p><label className="block">이름<input required value={buyer.name} onChange={(e) => setBuyer({ ...buyer, name: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label><label className="block">이메일<input required type="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label><label className="block">전화번호<input required placeholder="010-1234-5678" value={buyer.phone} onChange={(e) => setBuyer({ ...buyer, phone: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label></div>}

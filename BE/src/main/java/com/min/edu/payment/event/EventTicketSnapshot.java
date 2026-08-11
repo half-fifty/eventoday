@@ -7,6 +7,7 @@ import com.min.edu.event.domain.EventStatus;
 
 public record EventTicketSnapshot(
         Long eventId,
+        String eventName,
         EventStatus status,
         BigDecimal ticketPrice,
         Integer ticketTotalQuantity,

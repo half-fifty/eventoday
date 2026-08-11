@@ -27,6 +27,7 @@ public class JpaEventTicketReader implements EventTicketReader {
 
         return new EventTicketSnapshot(
             event.getId(),
+            event.getName(),
             event.getStatus(),
             event.getTicketPrice(),
             event.getTicketTotalQuantity(),
