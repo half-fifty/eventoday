@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
 import { admissionApi } from "../api/admissionApi.js";
@@ -353,6 +353,23 @@ export default function MyPage() {
     `px-md py-1.5 rounded-full text-caption font-body-strong ${
       active ? "bg-black text-white" : "bg-white border border-hairline text-on-surface-variant"
     }`;
+
+  if (member.platformRole === "PLATFORM_ADMIN") {
+    return <Navigate to="/platform-admin" replace />;
+  }
+
+  if (isOrganizer) {
+    return (
+      <Navigate
+        to={`/organizer-admin?organizationId=${member.organization.organizationId}`}
+        replace
+      />
+    );
+  }
+
+  if (isExhibitor) {
+    return <Navigate to="/exhibitor-admin" replace />;
+  }
 
   return (
     <div className="bg-surface-container-low text-on-surface">

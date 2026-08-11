@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { paymentApi } from "../api/paymentApi.js";
 import TopNav from "../components/TopNav.jsx";
+import useAuth from "../hooks/useAuth.js";
 
 const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
@@ -21,6 +22,7 @@ const statusLabel = {
 
 export default function TicketOrderDetail() {
   const { orderNo } = useParams();
+  const { isAuthenticated } = useAuth();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -47,6 +49,9 @@ export default function TicketOrderDetail() {
   }, [orderNo]);
 
   const paymentId = order?.paymentId;
+  const hasGuestToken = Boolean(sessionStorage.getItem(`ticket-order-token:${orderNo}`));
+  const backPath = !isAuthenticated && hasGuestToken ? `/guest/orders/${encodeURIComponent(orderNo)}` : "/mypage";
+  const backLabel = !isAuthenticated && hasGuestToken ? "비회원 예매 관리" : "예매 내역";
 
   return (
     <div className="min-h-screen bg-surface-container-low text-on-surface">
@@ -57,8 +62,8 @@ export default function TicketOrderDetail() {
             <p className="text-caption text-primary">TICKET ORDER</p>
             <h1 className="font-display-lg text-[30px]">주문 상세</h1>
           </div>
-          <Link to="/mypage" className="rounded-full border border-hairline px-lg py-sm text-caption font-body-strong">
-            예매 내역
+          <Link to={backPath} className="rounded-full border border-hairline px-lg py-sm text-caption font-body-strong">
+            {backLabel}
           </Link>
         </div>
 

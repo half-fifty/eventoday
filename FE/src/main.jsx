@@ -16,6 +16,7 @@ import BoothApply from "./pages/BoothApply.jsx";
 import BoothApplicationList from "./pages/BoothApplicationList.jsx";
 import MyPage from "./pages/MyPage.jsx";
 import OrganizerAdmin from "./pages/OrganizerAdmin.jsx";
+import ExhibitorAdmin from "./pages/ExhibitorAdmin.jsx";
 import PlatformAdmin from "./pages/PlatformAdmin.jsx";
 import EventDetail from "./pages/EventDetail.jsx";
 import EventList from "./pages/EventList.jsx";
@@ -30,11 +31,19 @@ import PaymentDetail from "./pages/PaymentDetail.jsx";
 import RefundDetail from "./pages/RefundDetail.jsx";
 import AdmissionTicketDetail from "./pages/AdmissionTicketDetail.jsx";
 import EventAdmissionManagement from "./pages/EventAdmissionManagement.jsx";
+import GuestOrderAccess from "./pages/GuestOrderAccess.jsx";
+import GuestReservationManagement from "./pages/GuestReservationManagement.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import VenueGuide from "./pages/VenueGuide.jsx";
 import { AuthProvider } from "./auth/AuthProvider.jsx";
 import ProtectedRoute from "./auth/ProtectedRoute.jsx";
 import NotificationSseProvider from "./notifications/NotificationSseProvider.jsx";
+
+const organizerOnly = (element) => (
+  <ProtectedRoute roles={["USER"]} organizationTypes={["ORGANIZER"]}>
+    {element}
+  </ProtectedRoute>
+);
 
 const router = createBrowserRouter([
   { path: "/", element: <Home /> },
@@ -67,19 +76,36 @@ const router = createBrowserRouter([
       </ProtectedRoute>
     ),
   },
-  { path: "/organizer-admin", element: <OrganizerAdmin /> },
-  { path: "/organizer-admin/events/new", element: <EventForm /> },
-  { path: "/organizer-admin/events/:eventId/edit", element: <EventForm /> },
-  { path: "/organizer-admin/events/:eventId/members", element: <EventMembers /> },
-  { path: "/organizer-admin/advertisements", element: <OrganizerAdvertisements /> },
-  { path: "/organizer-admin/advertisements/payment/success", element: <AdvertisementPaymentResult /> },
-  { path: "/organizer-admin/advertisements/payment/fail", element: <AdvertisementPaymentResult failed /> },
+  {
+    path: "/organizer-admin",
+    element: (
+      <ProtectedRoute roles={["USER"]} organizationTypes={["ORGANIZER"]}>
+        <OrganizerAdmin />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: "/exhibitor-admin",
+    element: (
+      <ProtectedRoute roles={["USER"]} organizationTypes={["EXHIBITOR"]}>
+        <ExhibitorAdmin />
+      </ProtectedRoute>
+    ),
+  },
+  { path: "/organizer-admin/events/new", element: organizerOnly(<EventForm />) },
+  { path: "/organizer-admin/events/:eventId/edit", element: organizerOnly(<EventForm />) },
+  { path: "/organizer-admin/events/:eventId/members", element: organizerOnly(<EventMembers />) },
+  { path: "/organizer-admin/advertisements", element: organizerOnly(<OrganizerAdvertisements />) },
+  { path: "/organizer-admin/advertisements/payment/success", element: organizerOnly(<AdvertisementPaymentResult />) },
+  { path: "/organizer-admin/advertisements/payment/fail", element: organizerOnly(<AdvertisementPaymentResult failed />) },
   { path: "/tickets/payment/success", element: <TicketPaymentResult /> },
   { path: "/tickets/payment/fail", element: <TicketPaymentResult failed /> },
   { path: "/tickets/orders/:orderNo", element: <TicketOrderDetail /> },
   { path: "/payments/:paymentId", element: <PaymentDetail /> },
   { path: "/refunds/:refundId", element: <RefundDetail /> },
   { path: "/admission-tickets/:admissionTicketId", element: <AdmissionTicketDetail /> },
+  { path: "/guest/orders", element: <GuestOrderAccess /> },
+  { path: "/guest/orders/:orderNo", element: <GuestReservationManagement /> },
   {
     path: "/events/:eventId/admission",
     element: (

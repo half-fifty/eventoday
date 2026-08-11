@@ -103,6 +103,7 @@ public enum GlobalErrorCode implements ErrorCode {
     BOOTH_DELETE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "BOOTH_400_002", "사용 가능 상태인 부스만 삭제할 수 있습니다."),
     BOOTH_NOT_ASSIGNED(HttpStatus.BAD_REQUEST, "BOOTH_400_003", "배정된 부스만 소개를 등록할 수 있습니다."),
     BOOTH_STATUS_TRANSITION_INVALID(HttpStatus.BAD_REQUEST, "BOOTH_400_004", "허용되지 않는 부스 상태 변경입니다."),
+    BOOTH_EVENT_MISMATCH(HttpStatus.BAD_REQUEST, "BOOTH_400_005", "해당 모집 공고의 행사에 속한 부스가 아닙니다."),
     RESERVATION_SLOT_TIME_CONFLICT(HttpStatus.CONFLICT, "BOOTH_409_001", "이미 존재하는 시간대입니다."),
     BOOTH_CODE_ALREADY_EXISTS(HttpStatus.CONFLICT, "BOOTH_409_002", "이미 등록된 부스 번호입니다."),
     BOOTH_QR_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "BOOTH_500_001", "QR 토큰 생성에 실패했습니다."),
