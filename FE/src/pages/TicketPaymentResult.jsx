@@ -87,7 +87,9 @@ export default function TicketPaymentResult({ failed = false }) {
             </button>
             {copyState && <p className="mt-xs text-caption text-primary">{copyState}</p>}
             <p className="mt-md text-caption text-ink-muted">
-              비회원 예매 조회 시 필요한 번호입니다. 주문번호 안내는 구매 시 입력한 이메일로도 전송됩니다.
+              ※ 비회원 예매 조회 시 필요한 번호입니다.<br />
+              구매 시 입력한 이메일로 주문번호 안내 메일 발송을 시도합니다.<br />
+              메일을 받지 못할 수 있으니 현재 주문번호를 보관해주세요.
             </p>
           </div>
         )}

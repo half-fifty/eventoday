@@ -157,19 +157,26 @@ export default function AdmissionManagementPanel({ eventId }) {
   const [auxiliaryAccessDenied, setAuxiliaryAccessDenied] = useState(false);
   const [cancellingId, setCancellingId] = useState(null);
   const scanLockRef = useRef(false);
+  const requestGenerationRef = useRef(0);
+  const activeEventIdRef = useRef(eventId);
+  activeEventIdRef.current = eventId;
 
   const loadTickets = useCallback(() => {
-    if (!eventId) return Promise.resolve();
+    if (!eventId || auxiliaryAccessDenied) return Promise.resolve();
+    const generation = requestGenerationRef.current;
+    const loadingEventId = eventId;
     setTicketsLoading(true);
     setTicketsError("");
     const params = { page: ticketPage, size: 20 };
     if (ticketStatus) params.status = ticketStatus;
     return admissionApi.getEventAdmissionTickets(eventId, params)
       .then((result) => {
+        if (generation !== requestGenerationRef.current || loadingEventId !== activeEventIdRef.current) return;
         setTickets(pageContent(result));
         setTicketPageInfo(pageInfo(result));
       })
       .catch((error) => {
+        if (generation !== requestGenerationRef.current || loadingEventId !== activeEventIdRef.current) return;
         setTickets([]);
         if (error.status === 403) {
           setAuxiliaryAccessDenied(true);
@@ -178,11 +185,17 @@ export default function AdmissionManagementPanel({ eventId }) {
         }
         setTicketsError(error.message || "입장 티켓 목록을 불러오지 못했습니다.");
       })
-      .finally(() => setTicketsLoading(false));
-  }, [eventId, ticketPage, ticketStatus]);
+      .finally(() => {
+        if (generation === requestGenerationRef.current && loadingEventId === activeEventIdRef.current) {
+          setTicketsLoading(false);
+        }
+      });
+  }, [auxiliaryAccessDenied, eventId, ticketPage, ticketStatus]);
 
   const loadLogs = useCallback(() => {
-    if (!eventId) return Promise.resolve();
+    if (!eventId || auxiliaryAccessDenied) return Promise.resolve();
+    const generation = requestGenerationRef.current;
+    const loadingEventId = eventId;
     setLogsLoading(true);
     setLogsError("");
     const params = { page: logPage, size: 20 };
@@ -190,10 +203,12 @@ export default function AdmissionManagementPanel({ eventId }) {
     if (logResult) params.result = logResult;
     return admissionApi.getAdmissionLogs(eventId, params)
       .then((result) => {
+        if (generation !== requestGenerationRef.current || loadingEventId !== activeEventIdRef.current) return;
         setLogs(pageContent(result));
         setLogPageInfo(pageInfo(result));
       })
       .catch((error) => {
+        if (generation !== requestGenerationRef.current || loadingEventId !== activeEventIdRef.current) return;
         setLogs([]);
         if (error.status === 403) {
           setAuxiliaryAccessDenied(true);
@@ -202,11 +217,24 @@ export default function AdmissionManagementPanel({ eventId }) {
         }
         setLogsError(error.message || "입장 로그를 불러오지 못했습니다.");
       })
-      .finally(() => setLogsLoading(false));
-  }, [eventId, logAction, logPage, logResult]);
+      .finally(() => {
+        if (generation === requestGenerationRef.current && loadingEventId === activeEventIdRef.current) {
+          setLogsLoading(false);
+        }
+      });
+  }, [auxiliaryAccessDenied, eventId, logAction, logPage, logResult]);
 
   useEffect(() => {
+    requestGenerationRef.current += 1;
     setAuxiliaryAccessDenied(false);
+    setTickets([]);
+    setTicketPageInfo({ number: 0, totalPages: 1 });
+    setTicketsError("");
+    setTicketsLoading(false);
+    setLogs([]);
+    setLogPageInfo({ number: 0, totalPages: 1 });
+    setLogsError("");
+    setLogsLoading(false);
   }, [eventId]);
 
   useEffect(() => {
@@ -256,14 +284,14 @@ export default function AdmissionManagementPanel({ eventId }) {
       };
       const result = await admissionApi.checkIn(eventId, payload);
       setCheckInResult(result?.data || null);
-      await Promise.all([loadTickets(), loadLogs()]);
+      if (!auxiliaryAccessDenied) await Promise.all([loadTickets(), loadLogs()]);
     } catch (error) {
       setCheckInError(checkInMessage(error));
-      await loadLogs();
+      if (!auxiliaryAccessDenied) await loadLogs();
     } finally {
       setProcessing(false);
     }
-  }, [eventId, gateName, loadLogs, loadTickets, processing]);
+  }, [auxiliaryAccessDenied, eventId, gateName, loadLogs, loadTickets, processing]);
 
   const handleDetected = useCallback((value) => {
     submitCheckIn(value);
