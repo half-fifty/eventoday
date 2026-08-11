@@ -14,13 +14,15 @@ export default function TopNav({ active = "events" }) {
   const activeCls = "text-primary-on-dark font-bold border-b-2 border-primary-on-dark pb-1";
   const idleCls = "text-white/80 hover:text-white";
   const organizationType = member?.organization?.organizationType;
-  const accountCenter = member?.platformRole === "PLATFORM_ADMIN"
-    ? { label: "관리자센터", path: "/platform-admin", activeKey: "platform" }
-    : organizationType === "ORGANIZER"
-      ? { label: "개최자센터", path: `/organizer-admin?organizationId=${member.organization.organizationId}`, activeKey: "organizer" }
-      : organizationType === "EXHIBITOR"
-        ? { label: "부스 관리센터", path: "/exhibitor-admin", activeKey: "exhibitor" }
-        : { label: "마이페이지", path: "/mypage", activeKey: "mypage" };
+  const accountCenter = !isAuthenticated
+    ? { label: "마이페이지", path: "/guest/orders", activeKey: "mypage" }
+    : member?.platformRole === "PLATFORM_ADMIN"
+      ? { label: "관리자센터", path: "/platform-admin", activeKey: "platform" }
+      : organizationType === "ORGANIZER"
+        ? { label: "개최자센터", path: `/organizer-admin?organizationId=${member.organization.organizationId}`, activeKey: "organizer" }
+        : organizationType === "EXHIBITOR"
+          ? { label: "부스 관리센터", path: "/exhibitor-admin", activeKey: "exhibitor" }
+          : { label: "마이페이지", path: "/mypage", activeKey: "mypage" };
 
   const handleLogout = async () => {
     setLoggingOut(true);

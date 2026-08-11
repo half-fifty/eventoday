@@ -1,7 +1,11 @@
 import { Link } from "react-router-dom";
+import useAuth from "../hooks/useAuth.js";
 
 // Full site footer used on the home page. Other pages use compact variants inline.
 export default function Footer() {
+  const { isAuthenticated } = useAuth();
+  const myPagePath = isAuthenticated ? "/mypage" : "/guest/orders";
+
   return (
     <footer className="w-full py-section bg-surface-container-low border-t border-hairline">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-lg px-lg max-w-[1200px] mx-auto">
@@ -19,7 +23,7 @@ export default function Footer() {
           <Link className="text-caption text-on-surface-variant hover:underline" to="/recruitments">
             부스 모집 공고
           </Link>
-          <Link className="text-caption text-on-surface-variant hover:underline" to="/mypage">
+          <Link className="text-caption text-on-surface-variant hover:underline" to={myPagePath}>
             마이페이지
           </Link>
         </div>
