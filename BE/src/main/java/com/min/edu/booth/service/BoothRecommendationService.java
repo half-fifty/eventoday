@@ -24,12 +24,11 @@ public class BoothRecommendationService {
     private static final int CONGESTION_THRESHOLD = 3;  // 혼잡한 부스 TOP 3
 
     /**
-     * WBS-163: 혼잡도 기반 부스 추천 (최적화 버전)
+     * WBS-163: 혼잡도 기반 부스 추천
      * 1. 혼잡한 부스 파악 (상위 3개, INNER JOIN)
      * 2. 추천 부스 조회 (LEFT JOIN, 혼잡 부수는 DB에서 제외)
      * 3. in-memory 필터링 제거 → DB에서 직접 제외
-     * 4. 중복 쿼리 최적화: page=0 & size>=3이면 쿼리 1개로 처리
-     * 5. 추천 이유 포함
+     * 4. 추천 이유 포함
      */
     public RecommendedBoothsResponse getRecommendedBooths(Long eventId, Pageable pageable) {
         OffsetDateTime since = OffsetDateTime.now().minusMinutes(10);
@@ -53,48 +52,28 @@ public class BoothRecommendationService {
             congestedBoothIds.add(boothId);
         }
 
-        // 2️⃣ 추천 부스 조회
+        // 2️⃣ 추천 부스 조회 (항상 findRecommendedBooths 사용!)
         List<RecommendedBoothsResponse.RecommendedBooth> recommendedBooths = new ArrayList<>();
         int rank = 1;
 
-        // ⭐ 최적화: page가 0이고 size >= 3이면 findPopularBooths 결과 재사용
-        if (pageable.getPageNumber() == 0 && pageable.getPageSize() >= CONGESTION_THRESHOLD) {
-            // congestedPage 결과를 바로 사용 (추가 쿼리 스킵!)
-            for (Object[] row : congestedPage.getContent()) {
-                Long boothId = ((Number) row[0]).longValue();
-                long congestionCount = ((Number) row[1]).longValue();
+        // LEFT JOIN으로 모든 부수 조회, 혼잡한 부수는 DB에서 제외
+        var recommendedPage = qrScanRepository.findRecommendedBooths(
+                eventId,
+                since,
+                congestedBoothIds,  // ← DB NOT IN 절에서 제외
+                pageable
+        );
 
-                recommendedBooths.add(RecommendedBoothsResponse.RecommendedBooth.builder()
-                        .boothId(boothId)
-                        .congestionCount(congestionCount)
-                        .rank(rank++)
-                        .build());
-            }
-        } else {
-            // 일반적인 경우: findRecommendedBooths 쿼리 실행
-            var recommendedPage = qrScanRepository.findRecommendedBooths(
-                    eventId,
-                    since,
-                    congestedBoothIds,  // ← DB NOT IN 절에서 제외
-                    pageable
-            );
+        // 3️⃣ 추천 부수 (혼잡한 부수는 이미 DB에서 제외됨)
+        for (Object[] row : recommendedPage.getContent()) {
+            Long boothId = ((Number) row[0]).longValue();
+            long congestionCount = ((Number) row[1]).longValue();
 
-            // 3️⃣ 추천 부스 (in-memory 필터링 제거!)
-            // ⭐ 이미 DB에서 congestedBoothIds 제외되었으므로
-            //   모든 row는 추천 가능한 부수
-            for (Object[] row : recommendedPage.getContent()) {
-                Long boothId = ((Number) row[0]).longValue();
-                long congestionCount = ((Number) row[1]).longValue();
-
-                // ⭐ 제거됨: if (!congestedBoothIds.contains(boothId))
-                // → 이미 DB에서 제외됨!
-
-                recommendedBooths.add(RecommendedBoothsResponse.RecommendedBooth.builder()
-                        .boothId(boothId)
-                        .congestionCount(congestionCount)
-                        .rank(rank++)  // ← 가장 한산한 부스부터 rank 1
-                        .build());
-            }
+            recommendedBooths.add(RecommendedBoothsResponse.RecommendedBooth.builder()
+                    .boothId(boothId)
+                    .congestionCount(congestionCount)
+                    .rank(rank++)  // ← 가장 한산한 부수부터 rank 1
+                    .build());
         }
 
         // 4️⃣ 추천 메시지 생성
@@ -115,31 +94,31 @@ public class BoothRecommendationService {
             List<RecommendedBoothsResponse.RecommendedBooth> recommendedBooths) {
 
         if (congestedBooths.isEmpty()) {
-            return "현재 모든 부스가 한산합니다. 편안하게 방문해주세요.";
+            return "현재 모든 부수가 한산합니다. 편안하게 방문해주세요.";
         }
 
-        // 혼잡한 부스 ID 목록
+        // 혼잡한 부수 ID 목록
         String congestedList = congestedBooths.stream()
                 .map(b -> b.getBoothId().toString())
                 .collect(Collectors.joining(", "));
 
-        // 추천 부스가 없으면 혼잡도 메시지만 반환
+        // 추천 부수가 없으면 혼잡도 메시지만 반환
         if (recommendedBooths.isEmpty()) {
             return String.format(
-                    "%s 부스가 지금 이용객들이 많이 몰려있어 혼잡합니다.",
+                    "%s 부수가 지금 이용객들이 많이 몰려있어 혼잡합니다.",
                     congestedList
             );
         }
 
-        // 추천 부스 ID 목록 (상위 3개)
+        // 추천 부수 ID 목록 (상위 3개)
         String recommendedList = recommendedBooths.stream()
                 .limit(3)
                 .map(b -> b.getBoothId().toString())
                 .collect(Collectors.joining(", "));
 
         return String.format(
-                "%s 부스가 지금 이용객들이 많이 몰려있어 혼잡합니다. " +
-                        "비교적 한산한 %s 부스라인을 추천드립니다.",
+                "%s 부수가 지금 이용객들이 많이 몰려있어 혼잡합니다. " +
+                        "비교적 한산한 %s 부수라인을 추천드립니다.",
                 congestedList,
                 recommendedList
         );

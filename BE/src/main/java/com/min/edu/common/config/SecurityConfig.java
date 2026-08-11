@@ -80,7 +80,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/booths/*/reservations/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/booths/*/reviews").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/booths/*/reviews/**").authenticated()
+
                         .requestMatchers(HttpMethod.DELETE, "/booths/*/reviews/**").authenticated()
+
+                        .requestMatchers(HttpMethod.GET, "/booths/*/reservations/admin").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/booths/*/reservations/*/attendance").authenticated()
 
                         .requestMatchers(HttpMethod.GET, "/events/*/venue-maps/public").permitAll()
                         .requestMatchers("/events/*/venue-maps/**").authenticated()
