@@ -31,6 +31,8 @@ import PaymentDetail from "./pages/PaymentDetail.jsx";
 import RefundDetail from "./pages/RefundDetail.jsx";
 import AdmissionTicketDetail from "./pages/AdmissionTicketDetail.jsx";
 import EventAdmissionManagement from "./pages/EventAdmissionManagement.jsx";
+import GuestOrderAccess from "./pages/GuestOrderAccess.jsx";
+import GuestReservationManagement from "./pages/GuestReservationManagement.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import VenueGuide from "./pages/VenueGuide.jsx";
 import { AuthProvider } from "./auth/AuthProvider.jsx";
@@ -102,6 +104,8 @@ const router = createBrowserRouter([
   { path: "/payments/:paymentId", element: <PaymentDetail /> },
   { path: "/refunds/:refundId", element: <RefundDetail /> },
   { path: "/admission-tickets/:admissionTicketId", element: <AdmissionTicketDetail /> },
+  { path: "/guest/orders", element: <GuestOrderAccess /> },
+  { path: "/guest/orders/:orderNo", element: <GuestReservationManagement /> },
   {
     path: "/events/:eventId/admission",
     element: (

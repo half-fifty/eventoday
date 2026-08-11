@@ -14,6 +14,8 @@ import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
+import com.min.edu.payment.service.GuestOrderAccessService;
+import com.min.edu.payment.service.GuestTicketOrderAccess;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -37,16 +39,19 @@ public class ExchangeCodeQueryService {
     private final EventRepository eventRepository;
     private final EventMemberRepository eventMemberRepository;
     private final EventOrganizationMemberRepository organizationMemberRepository;
+    private final GuestOrderAccessService guestOrderAccessService;
 
     public ExchangeCodeQueryService(
             ExchangeCodeRepository exchangeCodeRepository,
             EventRepository eventRepository,
             EventMemberRepository eventMemberRepository,
-            EventOrganizationMemberRepository organizationMemberRepository) {
+            EventOrganizationMemberRepository organizationMemberRepository,
+            GuestOrderAccessService guestOrderAccessService) {
         this.exchangeCodeRepository = exchangeCodeRepository;
         this.eventRepository = eventRepository;
         this.eventMemberRepository = eventMemberRepository;
         this.organizationMemberRepository = organizationMemberRepository;
+        this.guestOrderAccessService = guestOrderAccessService;
     }
 
     public Page<ExchangeCodeDtos.EventListResponse> getEventExchangeCodes(
@@ -78,6 +83,20 @@ public class ExchangeCodeQueryService {
             .map(this::toMyListResponse);
     }
 
+    public List<ExchangeCodeDtos.GuestOrderResponse> getGuestOrderExchangeCodes(
+            String orderNo,
+            String orderAccessToken) {
+        GuestTicketOrderAccess access =
+            guestOrderAccessService.validateGuestTicketOrderAccess(orderNo, orderAccessToken);
+        Event event = getEvent(access.eventId());
+
+        return exchangeCodeRepository
+            .findAllByTicketOrderIdOrderByIdAsc(access.ticketOrderId())
+            .stream()
+            .map(exchangeCode -> toGuestOrderResponse(exchangeCode, event))
+            .toList();
+    }
+
     private ExchangeCodeDtos.EventListResponse toEventListResponse(ExchangeCodeView view) {
         return new ExchangeCodeDtos.EventListResponse(
             view.getExchangeCodeId(),
@@ -104,6 +123,21 @@ public class ExchangeCodeQueryService {
             view.getExpiresAt(),
             view.getRedeemedAt(),
             view.getCreatedAt()
+        );
+    }
+
+    private ExchangeCodeDtos.GuestOrderResponse toGuestOrderResponse(
+            com.min.edu.admission.domain.ExchangeCode exchangeCode,
+            Event event) {
+        return new ExchangeCodeDtos.GuestOrderResponse(
+            exchangeCode.getId(),
+            event.getId(),
+            event.getName(),
+            exchangeCode.getCode(),
+            exchangeCode.getStatus(),
+            exchangeCode.getExpiresAt(),
+            exchangeCode.getRedeemedAt(),
+            exchangeCode.getCreatedAt()
         );
     }
 

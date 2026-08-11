@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { paymentApi } from "../api/paymentApi.js";
 import TopNav from "../components/TopNav.jsx";
+import useAuth from "../hooks/useAuth.js";
 
 const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
@@ -23,10 +24,14 @@ const ticketStatusLabel = {
 };
 
 export default function RefundDetail() {
+  const { isAuthenticated } = useAuth();
   const { refundId } = useParams();
   const [params] = useSearchParams();
   const orderNo = params.get("orderNo");
   const orderAccessToken = orderNo ? sessionStorage.getItem(`ticket-order-token:${orderNo}`) : null;
+  const backPath = !isAuthenticated && orderNo && orderAccessToken
+    ? `/guest/orders/${encodeURIComponent(orderNo)}`
+    : "/mypage";
   const [refund, setRefund] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -59,8 +64,8 @@ export default function RefundDetail() {
             <p className="text-caption text-primary">REFUND</p>
             <h1 className="font-display-lg text-[30px]">환불 상세</h1>
           </div>
-          <Link to="/mypage" className="rounded-full border border-hairline px-lg py-sm text-caption font-body-strong">
-            마이페이지
+          <Link to={backPath} className="rounded-full border border-hairline px-lg py-sm text-caption font-body-strong">
+            {backPath === "/mypage" ? "마이페이지" : "비회원 예매 관리"}
           </Link>
         </div>
 

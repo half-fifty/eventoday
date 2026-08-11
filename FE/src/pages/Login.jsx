@@ -244,6 +244,12 @@ export default function Login() {
           <p className="mt-lg text-center text-[11px] leading-relaxed text-white/40">
             계속 진행 시 EvenToday의 <a href="#" className="underline">이용약관</a> 및 <a href="#" className="underline">개인정보처리방침</a>에 동의하는 것으로 간주됩니다.
           </p>
+          <p className="mt-md text-center text-caption text-white/60">
+            비회원으로 예매하셨나요?{" "}
+            <Link to="/guest/orders" className="font-semibold text-primary-on-dark hover:underline">
+              비회원 예매 조회
+            </Link>
+          </p>
         </div>
       </main>
 

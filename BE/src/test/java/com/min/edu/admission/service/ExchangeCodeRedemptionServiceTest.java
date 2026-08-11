@@ -24,6 +24,8 @@ import com.min.edu.event.domain.Event;
 import com.min.edu.event.domain.EventStatus;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.PlatformRole;
+import com.min.edu.payment.service.GuestOrderAccessService;
+import com.min.edu.payment.service.GuestTicketOrderAccess;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Optional;
@@ -49,6 +51,9 @@ class ExchangeCodeRedemptionServiceTest {
     @Mock
     private AdmissionQrTokenGenerator admissionQrTokenGenerator;
 
+    @Mock
+    private GuestOrderAccessService guestOrderAccessService;
+
     private ExchangeCodeRedemptionService service;
 
     @BeforeEach
@@ -57,7 +62,8 @@ class ExchangeCodeRedemptionServiceTest {
             exchangeCodeRepository,
             eventRepository,
             admissionTicketRepository,
-            admissionQrTokenGenerator
+            admissionQrTokenGenerator,
+            guestOrderAccessService
         );
     }
 
@@ -258,6 +264,61 @@ class ExchangeCodeRedemptionServiceTest {
 
         verify(admissionQrTokenGenerator, never()).generate();
         verify(admissionTicketRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void redeemGuestOrderExchangeCode_createsAdmissionTicketWithNullMemberId() {
+        ExchangeCode exchangeCode = ticketCode(ExchangeCodeStatus.ISSUED, null, null);
+        AdmissionTicket savedTicket = AdmissionTicket.builder()
+            .id(21L)
+            .exchangeCodeId(7L)
+            .memberId(null)
+            .qrToken("guest-qr-token")
+            .status(AdmissionTicketStatus.ISSUED)
+            .issuedAt(OffsetDateTime.now())
+            .build();
+        given(guestOrderAccessService.validateGuestTicketOrderAccess("ORDER-1", "guest-token"))
+            .willReturn(new GuestTicketOrderAccess(3L, 1L, "ORDER-1"));
+        given(exchangeCodeRepository.findByIdForUpdate(7L)).willReturn(Optional.of(exchangeCode));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event(EventStatus.PUBLISHED, 1)));
+        given(admissionQrTokenGenerator.generate()).willReturn("guest-qr-token");
+        given(admissionTicketRepository.saveAndFlush(any())).willReturn(savedTicket);
+
+        ExchangeCodeRedemptionDtos.RedemptionResponse response =
+            service.redeemGuestOrderExchangeCode("ORDER-1", "guest-token", 7L);
+
+        assertThat(response.admissionTicketId()).isEqualTo(21L);
+        assertThat(response.qrAvailable()).isTrue();
+        assertThat(exchangeCode.getStatus()).isEqualTo(ExchangeCodeStatus.REDEEMED);
+
+        ArgumentCaptor<AdmissionTicket> ticketCaptor =
+            ArgumentCaptor.forClass(AdmissionTicket.class);
+        verify(admissionTicketRepository).saveAndFlush(ticketCaptor.capture());
+        assertThat(ticketCaptor.getValue().getMemberId()).isNull();
+        assertThat(ticketCaptor.getValue().getExchangeCodeId()).isEqualTo(7L);
+    }
+
+    @Test
+    void redeemGuestOrderExchangeCode_rejectsOtherOrderCodeAndDuplicateRedemption() {
+        ExchangeCode otherOrderCode = exchangeCode(8L, 1L, null, 99L, null, ExchangeCodeStatus.ISSUED, null);
+        given(guestOrderAccessService.validateGuestTicketOrderAccess("ORDER-1", "guest-token"))
+            .willReturn(new GuestTicketOrderAccess(3L, 1L, "ORDER-1"));
+        given(exchangeCodeRepository.findByIdForUpdate(8L)).willReturn(Optional.of(otherOrderCode));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event(EventStatus.PUBLISHED, 1)));
+
+        assertThatThrownBy(() -> service.redeemGuestOrderExchangeCode("ORDER-1", "guest-token", 8L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.ORDER_ACCESS_DENIED);
+
+        ExchangeCode redeemedCode = ticketCode(ExchangeCodeStatus.ISSUED, null, null);
+        given(exchangeCodeRepository.findByIdForUpdate(7L)).willReturn(Optional.of(redeemedCode));
+        given(admissionTicketRepository.existsByExchangeCodeId(7L)).willReturn(true);
+
+        assertThatThrownBy(() -> service.redeemGuestOrderExchangeCode("ORDER-1", "guest-token", 7L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.ADMISSION_TICKET_ALREADY_EXISTS);
     }
 
     private void assertInvalidStatus(ExchangeCodeStatus status) {

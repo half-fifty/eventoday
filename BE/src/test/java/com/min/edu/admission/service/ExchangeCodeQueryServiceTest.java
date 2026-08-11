@@ -24,6 +24,8 @@ import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
+import com.min.edu.payment.service.GuestOrderAccessService;
+import com.min.edu.payment.service.GuestTicketOrderAccess;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -53,6 +55,9 @@ class ExchangeCodeQueryServiceTest {
     @Mock
     private EventOrganizationMemberRepository organizationMemberRepository;
 
+    @Mock
+    private GuestOrderAccessService guestOrderAccessService;
+
     private ExchangeCodeQueryService service;
 
     @BeforeEach
@@ -61,7 +66,8 @@ class ExchangeCodeQueryServiceTest {
             exchangeCodeRepository,
             eventRepository,
             eventMemberRepository,
-            organizationMemberRepository
+            organizationMemberRepository,
+            guestOrderAccessService
         );
     }
 
@@ -313,6 +319,35 @@ class ExchangeCodeQueryServiceTest {
         assertInvalidMyPage(0, 0);
         assertInvalidMyPage(0, -1);
         assertInvalidMyPage(0, 101);
+    }
+
+    @Test
+    void getGuestOrderExchangeCodes_returnsCodesOnlyAfterOrderScopedAccess() {
+        Event event = event();
+        com.min.edu.admission.domain.ExchangeCode exchangeCode =
+            com.min.edu.admission.domain.ExchangeCode.createForTicketOrder(
+                1L,
+                3L,
+                null,
+                "GUEST-CODE",
+                null,
+                OffsetDateTime.now()
+            );
+        given(guestOrderAccessService.validateGuestTicketOrderAccess("ORDER-1", "guest-token"))
+            .willReturn(new GuestTicketOrderAccess(3L, 1L, "ORDER-1"));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event));
+        given(exchangeCodeRepository.findAllByTicketOrderIdOrderByIdAsc(3L))
+            .willReturn(List.of(exchangeCode));
+
+        List<ExchangeCodeDtos.GuestOrderResponse> response =
+            service.getGuestOrderExchangeCodes("ORDER-1", "guest-token");
+
+        assertThat(response).hasSize(1);
+        assertThat(response.getFirst().eventId()).isEqualTo(1L);
+        assertThat(response.getFirst().eventName()).isEqualTo("event");
+        assertThat(response.getFirst().code()).isEqualTo("GUEST-CODE");
+        assertThat(response.getFirst().status()).isEqualTo(ExchangeCodeStatus.ISSUED);
+        verify(exchangeCodeRepository).findAllByTicketOrderIdOrderByIdAsc(3L);
     }
 
     private void assertForbidden(AuthenticatedMemberDto actor) {

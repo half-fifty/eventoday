@@ -14,6 +14,8 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.Event;
 import com.min.edu.event.domain.EventStatus;
 import com.min.edu.event.repository.EventRepository;
+import com.min.edu.payment.service.GuestOrderAccessService;
+import com.min.edu.payment.service.GuestTicketOrderAccess;
 import java.time.OffsetDateTime;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,16 +27,19 @@ public class ExchangeCodeRedemptionService {
     private final EventRepository eventRepository;
     private final AdmissionTicketRepository admissionTicketRepository;
     private final AdmissionQrTokenGenerator admissionQrTokenGenerator;
+    private final GuestOrderAccessService guestOrderAccessService;
 
     public ExchangeCodeRedemptionService(
             ExchangeCodeRepository exchangeCodeRepository,
             EventRepository eventRepository,
             AdmissionTicketRepository admissionTicketRepository,
-            AdmissionQrTokenGenerator admissionQrTokenGenerator) {
+            AdmissionQrTokenGenerator admissionQrTokenGenerator,
+            GuestOrderAccessService guestOrderAccessService) {
         this.exchangeCodeRepository = exchangeCodeRepository;
         this.eventRepository = eventRepository;
         this.admissionTicketRepository = admissionTicketRepository;
         this.admissionQrTokenGenerator = admissionQrTokenGenerator;
+        this.guestOrderAccessService = guestOrderAccessService;
     }
 
     @Transactional(readOnly = true)
@@ -76,27 +81,25 @@ public class ExchangeCodeRedemptionService {
         if (isExternalRequest(exchangeCode) && exchangeCode.getHolderMemberId() == null) {
             exchangeCode.assignHolder(actor.getMemberId(), now);
         }
-        transition(() -> exchangeCode.redeem(now));
 
-        AdmissionTicket admissionTicket = admissionTicketRepository.saveAndFlush(
-            AdmissionTicket.issue(
-                exchangeCode.getId(),
-                actor.getMemberId(),
-                admissionQrTokenGenerator.generate(),
-                now
-            )
-        );
+        return issueAdmissionTicket(exchangeCode, event, actor.getMemberId(), now);
+    }
 
-        return new ExchangeCodeRedemptionDtos.RedemptionResponse(
-            exchangeCode.getId(),
-            exchangeCode.getStatus(),
-            admissionTicket.getId(),
-            event.getId(),
-            event.getName(),
-            admissionTicket.getStatus(),
-            admissionTicket.getIssuedAt(),
-            admissionTicket.getQrToken() != null
-        );
+    @Transactional
+    public ExchangeCodeRedemptionDtos.RedemptionResponse redeemGuestOrderExchangeCode(
+            String orderNo,
+            String orderAccessToken,
+            Long exchangeCodeId) {
+        GuestTicketOrderAccess access =
+            guestOrderAccessService.validateGuestTicketOrderAccess(orderNo, orderAccessToken);
+        OffsetDateTime now = OffsetDateTime.now();
+        ExchangeCode exchangeCode = exchangeCodeRepository.findByIdForUpdate(exchangeCodeId)
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.EXCHANGE_CODE_NOT_FOUND));
+        Event event = findEvent(exchangeCode.getEventId());
+        validateGuestRedeemable(exchangeCode, access, event, now);
+        validateNoAdmissionTicket(exchangeCode.getId());
+
+        return issueAdmissionTicket(exchangeCode, event, null, now);
     }
 
     private void requireAuthenticated(AuthenticatedMemberDto actor) {
@@ -143,6 +146,55 @@ public class ExchangeCodeRedemptionService {
         }
 
         validateHolder(exchangeCode, actorMemberId);
+    }
+
+    private void validateGuestRedeemable(
+            ExchangeCode exchangeCode,
+            GuestTicketOrderAccess access,
+            Event event,
+            OffsetDateTime now) {
+        if (!isTicketOrder(exchangeCode)
+                || !access.ticketOrderId().equals(exchangeCode.getTicketOrderId())
+                || exchangeCode.getHolderMemberId() != null) {
+            throw new BusinessException(GlobalErrorCode.ORDER_ACCESS_DENIED);
+        }
+        if (exchangeCode.getStatus() != ExchangeCodeStatus.ISSUED) {
+            throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_INVALID_STATE);
+        }
+        if (exchangeCode.getExpiresAt() != null && !exchangeCode.getExpiresAt().isAfter(now)) {
+            throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_EXPIRED);
+        }
+        if (event.getStatus() != EventStatus.PUBLISHED || !event.getEndAt().isAfter(now)) {
+            throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_EVENT_NOT_REDEEMABLE);
+        }
+    }
+
+    private ExchangeCodeRedemptionDtos.RedemptionResponse issueAdmissionTicket(
+            ExchangeCode exchangeCode,
+            Event event,
+            Long memberId,
+            OffsetDateTime now) {
+        transition(() -> exchangeCode.redeem(now));
+
+        AdmissionTicket admissionTicket = admissionTicketRepository.saveAndFlush(
+            AdmissionTicket.issue(
+                exchangeCode.getId(),
+                memberId,
+                admissionQrTokenGenerator.generate(),
+                now
+            )
+        );
+
+        return new ExchangeCodeRedemptionDtos.RedemptionResponse(
+            exchangeCode.getId(),
+            exchangeCode.getStatus(),
+            admissionTicket.getId(),
+            event.getId(),
+            event.getName(),
+            admissionTicket.getStatus(),
+            admissionTicket.getIssuedAt(),
+            admissionTicket.getQrToken() != null
+        );
     }
 
     private void validateHolder(ExchangeCode exchangeCode, Long actorMemberId) {
