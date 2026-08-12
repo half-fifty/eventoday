@@ -27,13 +27,13 @@ public class BoothReservationCompletionService {
         List<BoothReservation> completableReservations = reservationRepository.findCompletableReservations(now);
 
         for (BoothReservation reservation : completableReservations) {
-            if (reservation.getStatus() != BoothReservationStatus.CHECKED_IN) {
-                continue;  // 다른 스레드가 이미 처리했으면 skip
-            }
-
-            reservation.updateStatus(BoothReservationStatus.COMPLETED);
-            reservation.updateUpdatedAt(now);
-            reservationRepository.saveAndFlush(reservation);
+            // 조회 후 저장 대신 조건부 UPDATE로 원자적으로 전환한다 - 실행이 겹쳐도
+            // 상태가 여전히 CHECKED_IN인 건만 정확히 한 번 갱신된다(갱신 건수 1).
+            reservationRepository.updateStatusIfCurrentStatus(
+                    reservation.getId(),
+                    BoothReservationStatus.CHECKED_IN,
+                    BoothReservationStatus.COMPLETED,
+                    now);
         }
     }
 }

@@ -92,7 +92,8 @@ public class BoothReviewService {
         Page<BoothReview> reviews = boothReviewRepository.findByBoothIdOrderByCreatedAtDesc(boothId, pageable);
         Booth booth = boothRepository.findById(boothId).orElse(null);
         Event event = booth != null ? eventRepository.findById(booth.getEventId()).orElse(null) : null;
-        return reviews.map(review -> toResponse(review, booth, event));
+        // 비로그인도 조회 가능한 공개 엔드포인트라 다른 사람의 memberId는 노출하지 않는다.
+        return reviews.map(review -> toResponse(review, booth, event, false));
     }
 
     /**
@@ -112,7 +113,8 @@ public class BoothReviewService {
         return reviews.map(review -> {
             Booth booth = boothsById.get(review.getBoothId());
             Event event = booth != null ? eventsById.get(booth.getEventId()) : null;
-            return toResponse(review, booth, event);
+            // 로그인한 본인의 후기 목록이라 본인 memberId 노출은 안전하다.
+            return toResponse(review, booth, event, true);
         });
     }
 
@@ -125,7 +127,8 @@ public class BoothReviewService {
                 .findByBoothIdAndCommentContainingIgnoreCase(boothId, keyword, pageable);
         Booth booth = boothRepository.findById(boothId).orElse(null);
         Event event = booth != null ? eventRepository.findById(booth.getEventId()).orElse(null) : null;
-        return reviews.map(review -> toResponse(review, booth, event));
+        // 비로그인도 조회 가능한 공개 엔드포인트라 다른 사람의 memberId는 노출하지 않는다.
+        return reviews.map(review -> toResponse(review, booth, event, false));
     }
 
     private Map<Long, Booth> boothsById(List<BoothReview> reviews) {
@@ -196,13 +199,17 @@ public class BoothReviewService {
     private BoothReviewResponse toResponse(BoothReview review) {
         Booth booth = boothRepository.findById(review.getBoothId()).orElse(null);
         Event event = booth != null ? eventRepository.findById(booth.getEventId()).orElse(null) : null;
-        return toResponse(review, booth, event);
+        // 작성/수정 직후 본인에게 돌려주는 응답이라 본인 memberId 노출은 안전하다.
+        return toResponse(review, booth, event, true);
     }
 
     /**
      * BoothReview → BoothReviewResponse 변환 (목록 조회 시 배치로 조회해둔 booth/event를 재사용한다)
+     *
+     * @param exposeMemberId 비로그인도 볼 수 있는 공개 목록(부스별 후기)에서는 false로 넘겨
+     *                       다른 회원의 memberId가 노출되지 않도록 한다.
      */
-    private BoothReviewResponse toResponse(BoothReview review, Booth booth, Event event) {
+    private BoothReviewResponse toResponse(BoothReview review, Booth booth, Event event, boolean exposeMemberId) {
         return BoothReviewResponse.builder()
                 .id(review.getId())
                 .boothId(review.getBoothId())
@@ -210,7 +217,7 @@ public class BoothReviewService {
                 .eventName(event != null ? event.getName() : null)
                 .boothDisplayName(booth != null ? booth.getDisplayName() : null)
                 .boothCode(booth != null ? booth.getBoothCode() : null)
-                .memberId(review.getMemberId())
+                .memberId(exposeMemberId ? review.getMemberId() : null)
                 .memberName(review.getMemberName())
                 .rating(review.getRating())
                 .comment(review.getComment())

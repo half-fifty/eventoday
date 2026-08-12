@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -59,6 +60,17 @@ public interface BoothReservationRepository extends JpaRepository<BoothReservati
     @Query("select r from BoothReservation r join BoothReservationSlot s on r.boothReservationSlotId = s.id " +
             "where s.endAt <= :now and r.status = 'CHECKED_IN'")
     List<BoothReservation> findCompletableReservations(@Param("now") OffsetDateTime now);
+
+    // 조회 후 저장(read-then-write) 대신 조건부 UPDATE로 원자적으로 상태를 전환한다.
+    // 여러 스케줄러 실행이 겹쳐도 정확히 하나의 실행만 갱신 건수 1을 받아 처리하게 된다.
+    @Modifying
+    @Query("update BoothReservation r set r.status = :newStatus, r.updatedAt = :now " +
+            "where r.id = :id and r.status = :expectedStatus")
+    int updateStatusIfCurrentStatus(
+            @Param("id") Long id,
+            @Param("expectedStatus") BoothReservationStatus expectedStatus,
+            @Param("newStatus") BoothReservationStatus newStatus,
+            @Param("now") OffsetDateTime now);
 
     // 회원의 마지막 방문 부스 조회 (가장 최근)
     Optional<BoothReservation> findFirstByMemberIdAndStatusOrderByCheckedInAtDesc(

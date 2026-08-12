@@ -47,6 +47,11 @@ const isoToTimeValue = (iso) => {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
+const isoToDateValue = (iso) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 const reservationStatusMeta = {
   RESERVED: ["예약중", "bg-status-available/10 text-status-available"],
   CHECKED_IN: ["입장 완료", "bg-primary/10 text-primary"],
@@ -285,6 +290,7 @@ export default function ExhibitorAdmin() {
     setConfirmingDeleteSlotId(null);
     setEditingSlotId(slot.id);
     setEditSlotForm({
+      date: isoToDateValue(slot.startAt),
       startTime: isoToTimeValue(slot.startAt),
       endTime: isoToTimeValue(slot.endAt),
       capacity: String(slot.capacity),
@@ -312,8 +318,7 @@ export default function ExhibitorAdmin() {
       setSlotError("정원은 1 이상의 숫자로 입력해 주세요.");
       return;
     }
-    const today = todayValue();
-    const { startAt: startAtIso, endAt: endAtIso } = buildReservationSlotRange(today, editSlotForm.startTime, editSlotForm.endTime);
+    const { startAt: startAtIso, endAt: endAtIso } = buildReservationSlotRange(editSlotForm.date, editSlotForm.startTime, editSlotForm.endTime);
     setSavingSlotEdit(true);
     setSlotError("");
     try {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
@@ -159,20 +159,28 @@ export default function BoothDetail() {
     return () => { cancelled = true; };
   }, [eventId, boothId]);
 
+  // 부스를 빠르게 전환하거나 페이지를 연속으로 넘기면 응답이 요청과 다른 순서로 도착할 수 있어,
+  // 매 요청마다 증가하는 id를 매겨 가장 마지막에 시작된 요청의 응답만 반영한다.
+  const reviewsRequestIdRef = useRef(0);
   const loadReviews = (page) => {
     if (!boothId) return;
+    const requestId = ++reviewsRequestIdRef.current;
     setLoadingReviews(true);
     setReviewsError("");
     listReviews(boothId, { page, size: REVIEW_PAGE_SIZE })
       .then((data) => {
+        if (reviewsRequestIdRef.current !== requestId) return;
         setReviews((prev) => (page === 0 ? (data?.content ?? []) : [...prev, ...(data?.content ?? [])]));
         setReviewsPage(page);
         setReviewsHasMore(data ? !data.last : false);
       })
       .catch((requestError) => {
+        if (reviewsRequestIdRef.current !== requestId) return;
         setReviewsError(requestError.message || "후기를 불러오지 못했습니다.");
       })
-      .finally(() => setLoadingReviews(false));
+      .finally(() => {
+        if (reviewsRequestIdRef.current === requestId) setLoadingReviews(false);
+      });
   };
 
   useEffect(() => {
@@ -183,18 +191,24 @@ export default function BoothDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boothId]);
 
+  const myReviewRequestIdRef = useRef(0);
   const refreshMyReview = () => {
     if (!isAuthenticated || !boothId) {
       setMyReviewForThisBooth(null);
       return;
     }
+    const requestId = ++myReviewRequestIdRef.current;
     // 전체 후기 목록은 페이지 단위라 내 후기가 다른 페이지에 있을 수 있어, 별도로 "내 후기 목록"에서 찾는다.
     getMyReviews({ size: 100 })
       .then((data) => {
+        if (myReviewRequestIdRef.current !== requestId) return;
         const mine = (data?.content ?? []).find((r) => String(r.boothId) === String(boothId));
         setMyReviewForThisBooth(mine ?? null);
       })
-      .catch(() => setMyReviewForThisBooth(null));
+      .catch(() => {
+        if (myReviewRequestIdRef.current !== requestId) return;
+        setMyReviewForThisBooth(null);
+      });
   };
 
   useEffect(() => {
@@ -216,9 +230,16 @@ export default function BoothDetail() {
   };
 
   // 후기 작성/수정/삭제는 부스의 평균 별점·후기 수에도 영향을 주므로 상단 요약도 함께 새로고침한다.
+  const boothSummaryRequestIdRef = useRef(0);
   const refreshBoothSummary = () => {
     if (!eventId || !boothId) return;
-    getGuideBoothDetail(eventId, boothId).then((data) => setBooth(data)).catch(() => {});
+    const requestId = ++boothSummaryRequestIdRef.current;
+    getGuideBoothDetail(eventId, boothId)
+      .then((data) => {
+        if (boothSummaryRequestIdRef.current !== requestId) return;
+        setBooth(data);
+      })
+      .catch(() => {});
   };
 
   const submitReview = async () => {
@@ -311,6 +332,10 @@ export default function BoothDetail() {
       setTogglingVacancyNotification(false);
     }
   };
+
+  // 알 수 없는 congestionLevel 값이면 congestionLevelMeta가 null을 반환할 수 있어,
+  // 뱃지를 그리기 전에 먼저 확인해 "정보 없음" 상태로 안전하게 대체한다.
+  const congestionMeta = congestionInfo ? congestionLevelMeta(congestionInfo.congestionLevel) : null;
 
   const isSlotBookable = (s) => s.status === "OPEN" && s.reservedCount < s.capacity;
   const selectedSlot = slots.find((s) => s.id === Number(selectedSlotId));
@@ -435,10 +460,10 @@ export default function BoothDetail() {
                   <h3 className="font-body-strong text-body-strong mb-sm">실시간 혼잡도</h3>
                   {loadingCongestion ? (
                     <p className="text-caption text-ink-muted">혼잡도 정보를 불러오는 중입니다.</p>
-                  ) : congestionInfo ? (
+                  ) : congestionInfo && congestionMeta ? (
                     <div className="flex items-center gap-sm">
-                      <span className={`px-md py-1 text-caption font-bold rounded-full bg-${congestionLevelMeta(congestionInfo.congestionLevel).colorClass}/10 text-${congestionLevelMeta(congestionInfo.congestionLevel).colorClass}`}>
-                        {congestionLevelMeta(congestionInfo.congestionLevel).label}
+                      <span className={`px-md py-1 text-caption font-bold rounded-full bg-${congestionMeta.colorClass}/10 text-${congestionMeta.colorClass}`}>
+                        {congestionMeta.label}
                       </span>
                       <span className="text-caption text-ink-muted">최근 10분 방문 {congestionInfo.congestionCount}명</span>
                     </div>

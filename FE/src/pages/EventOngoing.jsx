@@ -344,21 +344,29 @@ export default function EventOngoing() {
     return "LOW";
   }, [congestionByBoothId]);
 
+  // 연속으로 검색하거나 행사를 전환하면 이전 요청이 나중에 도착해 최신 검색어 결과를 덮어쓸 수 있어,
+  // 요청마다 증가하는 id를 매겨 가장 마지막에 시작된 요청의 응답만 반영한다.
+  const searchRequestIdRef = useRef(0);
   const runBoothSearch = () => {
     if (!selectedEventId) return;
+    const requestId = ++searchRequestIdRef.current;
     const keyword = searchKeyword.trim();
     setSearchSubmitted(true);
     setSearchLoading(true);
     setSearchError("");
     searchGuideBooths(selectedEventId, { keyword, page: 0, size: 20 })
       .then((data) => {
+        if (searchRequestIdRef.current !== requestId) return;
         setSearchResults(Array.isArray(data?.content) ? data.content : []);
       })
       .catch((error) => {
+        if (searchRequestIdRef.current !== requestId) return;
         setSearchResults([]);
         setSearchError(error instanceof ApiError ? error.message : "부스 검색에 실패했습니다.");
       })
-      .finally(() => setSearchLoading(false));
+      .finally(() => {
+        if (searchRequestIdRef.current === requestId) setSearchLoading(false);
+      });
   };
 
   const openSearchSheet = () => {
@@ -560,10 +568,11 @@ export default function EventOngoing() {
                     {congestedBooths.map((entry, i) => {
                       const meta = boothMetaById.get(entry.boothId);
                       return (
-                        <div
+                        <button
+                          type="button"
                           key={entry.boothId}
                           onClick={() => openRankedBoothSheet(entry)}
-                          className="flex gap-md bg-white p-md rounded-2xl border border-hairline shadow-sm cursor-pointer active:bg-surface-pearl transition-colors"
+                          className="w-full text-left flex gap-md bg-white p-md rounded-2xl border border-hairline shadow-sm cursor-pointer active:bg-surface-pearl transition-colors"
                         >
                           <div className="w-16 h-16 rounded-lg bg-surface-container-low flex items-center justify-center flex-shrink-0 border border-hairline overflow-hidden">
                             {meta?.representativeFileId ? (
@@ -581,7 +590,7 @@ export default function EventOngoing() {
                             <p className="text-caption text-secondary">최근 10분 방문 {entry.congestionCount ?? 0}명</p>
                           </div>
                           <div className="flex items-center"><Icon name="chevron_right" className="text-secondary" /></div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -597,10 +606,11 @@ export default function EventOngoing() {
                     {recommendedBooths.map((entry) => {
                       const meta = boothMetaById.get(entry.boothId);
                       return (
-                        <div
+                        <button
+                          type="button"
                           key={entry.boothId}
                           onClick={() => openRankedBoothSheet(entry)}
-                          className="flex gap-md bg-white p-md rounded-2xl border border-hairline shadow-sm cursor-pointer active:bg-surface-pearl transition-colors"
+                          className="w-full text-left flex gap-md bg-white p-md rounded-2xl border border-hairline shadow-sm cursor-pointer active:bg-surface-pearl transition-colors"
                         >
                           <div className="w-16 h-16 rounded-lg bg-surface-container-low flex items-center justify-center flex-shrink-0 border border-hairline overflow-hidden">
                             {meta?.representativeFileId ? (
@@ -618,7 +628,7 @@ export default function EventOngoing() {
                             <p className="text-caption text-secondary">최근 10분 방문 {entry.congestionCount ?? 0}명</p>
                           </div>
                           <div className="flex items-center"><Icon name="chevron_right" className="text-secondary" /></div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
