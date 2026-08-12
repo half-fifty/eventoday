@@ -23,6 +23,11 @@ export default function BoothDetail() {
   const boothId = params.get("boothId");
   const { isAuthenticated } = useAuth();
 
+  // 매 렌더마다 최신 boothId를 반영 - 비동기 응답이 도착했을 때 그 사이 부스가 바뀌었는지
+  // 판단하는 기준으로 쓴다 (요청 ID만으로는 같은 함수가 다시 호출되지 않는 한 부스 전환을 감지 못 함).
+  const currentBoothIdRef = useRef(boothId);
+  currentBoothIdRef.current = boothId;
+
   const [booth, setBooth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -165,21 +170,22 @@ export default function BoothDetail() {
   const loadReviews = (page) => {
     if (!boothId) return;
     const requestId = ++reviewsRequestIdRef.current;
+    const requestedBoothId = boothId;
     setLoadingReviews(true);
     setReviewsError("");
-    listReviews(boothId, { page, size: REVIEW_PAGE_SIZE })
+    listReviews(requestedBoothId, { page, size: REVIEW_PAGE_SIZE })
       .then((data) => {
-        if (reviewsRequestIdRef.current !== requestId) return;
+        if (reviewsRequestIdRef.current !== requestId || currentBoothIdRef.current !== requestedBoothId) return;
         setReviews((prev) => (page === 0 ? (data?.content ?? []) : [...prev, ...(data?.content ?? [])]));
         setReviewsPage(page);
         setReviewsHasMore(data ? !data.last : false);
       })
       .catch((requestError) => {
-        if (reviewsRequestIdRef.current !== requestId) return;
+        if (reviewsRequestIdRef.current !== requestId || currentBoothIdRef.current !== requestedBoothId) return;
         setReviewsError(requestError.message || "후기를 불러오지 못했습니다.");
       })
       .finally(() => {
-        if (reviewsRequestIdRef.current === requestId) setLoadingReviews(false);
+        if (reviewsRequestIdRef.current === requestId && currentBoothIdRef.current === requestedBoothId) setLoadingReviews(false);
       });
   };
 
@@ -193,20 +199,23 @@ export default function BoothDetail() {
 
   const myReviewRequestIdRef = useRef(0);
   const refreshMyReview = () => {
+    // 먼저 증가시켜, 로그아웃/부스 변경으로 인한 이 이른 반환 이후에도 이전에 날아간 요청이
+    // 뒤늦게 도착했을 때 무효화되도록 한다.
+    const requestId = ++myReviewRequestIdRef.current;
     if (!isAuthenticated || !boothId) {
       setMyReviewForThisBooth(null);
       return;
     }
-    const requestId = ++myReviewRequestIdRef.current;
+    const requestedBoothId = boothId;
     // 전체 후기 목록은 페이지 단위라 내 후기가 다른 페이지에 있을 수 있어, 별도로 "내 후기 목록"에서 찾는다.
     getMyReviews({ size: 100 })
       .then((data) => {
-        if (myReviewRequestIdRef.current !== requestId) return;
-        const mine = (data?.content ?? []).find((r) => String(r.boothId) === String(boothId));
+        if (myReviewRequestIdRef.current !== requestId || currentBoothIdRef.current !== requestedBoothId) return;
+        const mine = (data?.content ?? []).find((r) => String(r.boothId) === String(requestedBoothId));
         setMyReviewForThisBooth(mine ?? null);
       })
       .catch(() => {
-        if (myReviewRequestIdRef.current !== requestId) return;
+        if (myReviewRequestIdRef.current !== requestId || currentBoothIdRef.current !== requestedBoothId) return;
         setMyReviewForThisBooth(null);
       });
   };
@@ -234,9 +243,12 @@ export default function BoothDetail() {
   const refreshBoothSummary = () => {
     if (!eventId || !boothId) return;
     const requestId = ++boothSummaryRequestIdRef.current;
+    const requestedBoothId = boothId;
     getGuideBoothDetail(eventId, boothId)
       .then((data) => {
-        if (boothSummaryRequestIdRef.current !== requestId) return;
+        // refreshBoothSummary는 부스 전환 시 자동으로 다시 호출되지 않으므로(작성/삭제 후에만 수동 호출),
+        // 요청 id뿐 아니라 그 사이 실제로 보고 있는 부스가 바뀌었는지도 함께 확인해야 한다.
+        if (boothSummaryRequestIdRef.current !== requestId || currentBoothIdRef.current !== requestedBoothId) return;
         setBooth(data);
       })
       .catch(() => {});

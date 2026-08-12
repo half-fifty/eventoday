@@ -49,8 +49,10 @@ public interface BoothReservationRepository extends JpaRepository<BoothReservati
     // 운영자용 예약 목록 (부스별 전체 예약자 조회)
     List<BoothReservation> findAllByBoothIdOrderByReservedAtDesc(Long boothId);
 
-    // 회원의 모든 부스 예약 목록 (행사 전체에 걸쳐, 최신순, 페이징) - "내 예약 목록" 화면용
-    Page<BoothReservation> findAllByMemberIdOrderByReservedAtDesc(Long memberId, Pageable pageable);
+    // 회원의 모든 부스 예약 목록 (행사 전체에 걸쳐, 최신순, 페이징) - "내 예약 목록" 화면용.
+    // reservedAt만으로 정렬하면 같은 시각에 예약된 건들의 순서가 페이지마다 안정적이지 않을 수 있어
+    // id를 보조 정렬 키로 추가한다.
+    Page<BoothReservation> findAllByMemberIdOrderByReservedAtDescIdDesc(Long memberId, Pageable pageable);
 
     @Query("select r from BoothReservation r join BoothReservationSlot s on r.boothReservationSlotId = s.id " +
             "where s.endAt <= :now and r.status = 'RESERVED'")

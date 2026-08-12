@@ -90,7 +90,7 @@ public class BoothReservationWithRedisService {
     // 회원의 모든 부스 예약 목록 (행사 전체에 걸쳐, 최신순) - "내 예약 목록" 화면용
     @Transactional(readOnly = true)
     public Page<BoothReservationListResponse> listMyReservations(Long memberId, Pageable pageable) {
-        Page<BoothReservation> reservations = reservationRepository.findAllByMemberIdOrderByReservedAtDesc(memberId, pageable);
+        Page<BoothReservation> reservations = reservationRepository.findAllByMemberIdOrderByReservedAtDescIdDesc(memberId, pageable);
 
         List<Long> boothIds = reservations.getContent().stream()
                 .map(BoothReservation::getBoothId).distinct().toList();
