@@ -256,6 +256,7 @@ export default function BoothDetail() {
 
   const submitReview = async () => {
     if (submittingReview) return;
+    const requestedBoothId = boothId;
     setSubmittingReview(true);
     setReviewFormError("");
     try {
@@ -264,6 +265,7 @@ export default function BoothDetail() {
       } else {
         await createReview(boothId, { rating: reviewFormRating, comment: reviewFormComment });
       }
+      if (currentBoothIdRef.current !== requestedBoothId) return;
       setEditingReview(false);
       setReviewFormComment("");
       setReviewFormRating(5);
@@ -271,30 +273,35 @@ export default function BoothDetail() {
       refreshBoothSummary();
       loadReviews(0);
     } catch (requestError) {
+      if (currentBoothIdRef.current !== requestedBoothId) return;
       setReviewFormError(requestError.message || "후기 등록에 실패했습니다.");
     } finally {
-      setSubmittingReview(false);
+      if (currentBoothIdRef.current === requestedBoothId) setSubmittingReview(false);
     }
   };
 
   const handleDeleteReview = async () => {
     if (!myReviewForThisBooth || deletingReview) return;
     if (!window.confirm("후기를 삭제하시겠어요?")) return;
+    const requestedBoothId = boothId;
     setDeletingReview(true);
     try {
       await deleteReview(boothId, myReviewForThisBooth.id);
+      if (currentBoothIdRef.current !== requestedBoothId) return;
       setMyReviewForThisBooth(null);
       refreshBoothSummary();
       loadReviews(0);
     } catch (requestError) {
+      if (currentBoothIdRef.current !== requestedBoothId) return;
       setReviewFormError(requestError.message || "후기 삭제에 실패했습니다.");
     } finally {
-      setDeletingReview(false);
+      if (currentBoothIdRef.current === requestedBoothId) setDeletingReview(false);
     }
   };
 
   const toggleInterest = async () => {
     if (!booth || togglingInterest) return;
+    const requestedBoothId = boothId;
     setTogglingInterest(true);
     setInterestError("");
     try {
@@ -303,11 +310,13 @@ export default function BoothDetail() {
       } else {
         await addBoothInterest(boothId);
       }
+      if (currentBoothIdRef.current !== requestedBoothId) return;
       setBooth((prev) => prev && { ...prev, isInterested: !prev.isInterested });
     } catch (error) {
+      if (currentBoothIdRef.current !== requestedBoothId) return;
       setInterestError(error.message || "관심 등록 처리에 실패했습니다.");
     } finally {
-      setTogglingInterest(false);
+      if (currentBoothIdRef.current === requestedBoothId) setTogglingInterest(false);
     }
   };
 
@@ -332,16 +341,19 @@ export default function BoothDetail() {
 
   const toggleVacancyNotification = async () => {
     if (togglingVacancyNotification || vacancyNotificationEnabled == null) return;
+    const requestedBoothId = boothId;
     setTogglingVacancyNotification(true);
     setVacancyNotificationError("");
     const next = !vacancyNotificationEnabled;
     try {
       await updateVacancyNotification(boothId, next);
+      if (currentBoothIdRef.current !== requestedBoothId) return;
       setVacancyNotificationEnabled(next);
     } catch (error) {
+      if (currentBoothIdRef.current !== requestedBoothId) return;
       setVacancyNotificationError(error.message || "빈자리 알림 설정에 실패했습니다.");
     } finally {
-      setTogglingVacancyNotification(false);
+      if (currentBoothIdRef.current === requestedBoothId) setTogglingVacancyNotification(false);
     }
   };
 
@@ -368,32 +380,38 @@ export default function BoothDetail() {
 
   const handleReserve = async () => {
     if (!selectedSlotId || reserving) return;
+    const requestedBoothId = boothId;
     setReserving(true);
     setReservationError("");
     try {
       await createReservation(boothId, { slotId: Number(selectedSlotId), partySize: Number(partySize) });
+      if (currentBoothIdRef.current !== requestedBoothId) return;
       loadReservationInfo();
       setSelectedSlotId("");
       setPartySize(1);
     } catch (requestError) {
+      if (currentBoothIdRef.current !== requestedBoothId) return;
       setReservationError(requestError.message || "예약에 실패했습니다.");
     } finally {
-      setReserving(false);
+      if (currentBoothIdRef.current === requestedBoothId) setReserving(false);
     }
   };
 
   const handleCancelReservation = async () => {
     if (!myReservation || cancelling) return;
     if (!window.confirm("예약을 취소하시겠어요?")) return;
+    const requestedBoothId = boothId;
     setCancelling(true);
     setReservationError("");
     try {
       await cancelReservation(boothId, myReservation.id);
+      if (currentBoothIdRef.current !== requestedBoothId) return;
       loadReservationInfo();
     } catch (requestError) {
+      if (currentBoothIdRef.current !== requestedBoothId) return;
       setReservationError(requestError.message || "예약 취소에 실패했습니다.");
     } finally {
-      setCancelling(false);
+      if (currentBoothIdRef.current === requestedBoothId) setCancelling(false);
     }
   };
 
