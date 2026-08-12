@@ -201,9 +201,9 @@ export default function BoothManagementPanel({ eventId }) {
     try {
       const dataUrl = await QRCode.toDataURL(scanUrl, { width: 160, margin: 1 });
       setQrImageUrl(dataUrl);
-    } catch {
+    } catch (err) {
       setQrImageUrl("");
-      setQrError("QR 이미지를 생성하지 못했습니다.");
+      setQrError(err instanceof Error && err.message ? err.message : "QR 이미지를 생성하지 못했습니다.");
     }
   };
 

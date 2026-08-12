@@ -8,6 +8,14 @@
 -- 무관하게 나중에 만들어진 행을 게시할 수 있어서, 단순히 created_at 기준으로만 남기면 이미
 -- 공개된 평면도와 그 좌표(booth_map_positions)가 삭제될 수 있다. PUBLISHED를 최우선으로,
 -- 그다음 created_at, id 순으로 각 조합에서 한 행만 남긴다.
+--
+-- 두 DELETE와 ADD CONSTRAINT는 같은 Flyway 트랜잭션 안에서 실행되지만, 트랜잭션만으로는
+-- 그 사이에 다른 트랜잭션이 커밋한 새 쓰기를 막지 못한다. 첫 DELETE 이후 두 번째 DELETE
+-- 전에 새 booth_map_positions가 들어오면 venue_maps 삭제가 FK 위반으로 실패할 수 있고,
+-- 정리 이후 제약 추가 전에 새 중복 venue_maps 행이 들어와도 마찬가지다. 두 테이블에
+-- SHARE ROW EXCLUSIVE 잠금을 걸어 정리·제약 추가가 끝날 때까지 쓰기를 막는다.
+LOCK TABLE venue_maps, booth_map_positions IN SHARE ROW EXCLUSIVE MODE;
+
 DELETE FROM booth_map_positions
     WHERE venue_map_id IN (
         SELECT id
