@@ -27,7 +27,7 @@ const navItems = [
   { key: "applications", label: "부스 신청서 검토", icon: "assignment" },
   { key: "assignment", label: "부스 관리", icon: "grid_view" },
   { key: "floorplan", label: "평면도 관리", icon: "map" },
-  { key: "exchange-codes", label: "교환 코드 요청", icon: "key" },
+  { key: "exchange-codes", label: "외부 예매 티켓 연동", icon: "key" },
   { key: "approval", label: "행사 등록 승인 요청", icon: "verified" },
 ];
 
