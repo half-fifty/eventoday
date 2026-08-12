@@ -173,7 +173,7 @@ export default function BoothDetail() {
         <Link to="/" className="font-hero-display text-tagline text-white">EvenToday</Link>
         <div className="flex items-center gap-sm">
           <NotificationBell />
-          <Link to={eventId ? `/event-ongoing?eventId=${eventId}` : "/"} className="text-white/80 hover:text-white text-nav-link font-nav-link flex items-center gap-1">
+          <Link to={eventId ? `/events/${eventId}/ongoing` : "/"} className="text-white/80 hover:text-white text-nav-link font-nav-link flex items-center gap-1">
             <Icon name="arrow_back" className="text-[18px]" /> 행사로 돌아가기
           </Link>
         </div>

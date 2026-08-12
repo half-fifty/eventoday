@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
 import VenueMapPins from "../components/VenueMapPins.jsx";
@@ -47,12 +47,10 @@ const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 37 + 13) % 7 < 3);
 
 export default function EventOngoing() {
   const { isAuthenticated, loading: authLoading } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [events, setEvents] = useState([]);
-  const [loadingEvents, setLoadingEvents] = useState(true);
-  const [eventsError, setEventsError] = useState("");
-  const [selectedEventId, setSelectedEventId] = useState(searchParams.get("eventId") || "");
+  const { eventId } = useParams();
+  const selectedEventId = eventId || "";
   const [eventDetail, setEventDetail] = useState(null);
+  const [loadingEventDetail, setLoadingEventDetail] = useState(false);
   const [eventDetailError, setEventDetailError] = useState("");
 
   const [venueMaps, setVenueMaps] = useState([]);
@@ -142,45 +140,12 @@ export default function EventOngoing() {
     }
   };
 
-  // 진행 중인 실제 행사(PUBLISHED) 목록을 불러와 선택할 수 있게 한다.
-  useEffect(() => {
-    eventApi.list({ size: 100, sort: "startAt,asc" })
-      .then((result) => {
-        const list = result?.data?.content || [];
-        setEvents(list);
-        // selectedEventId를 클로저로 참조하면 응답이 늦게 도착했을 때 그 사이 URL로
-        // 바뀐 선택을 덮어쓸 수 있어, 그 시점의 실제 URL을 기준으로 판단한다.
-        const currentUrlEventId = new URLSearchParams(window.location.search).get("eventId");
-        if (!currentUrlEventId && list.length > 0) {
-          setSelectedEventId(String(list[0].id));
-        }
-      })
-      .catch((error) => setEventsError(error.message || "행사 목록을 불러오지 못했습니다."))
-      .finally(() => setLoadingEvents(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (selectedEventId) {
-      setSearchParams({ eventId: selectedEventId }, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEventId]);
-
-  // 뒤로가기·앞으로가기 등 외부 내비게이션으로 URL의 eventId가 바뀌면 선택 상태도 맞춘다.
-  useEffect(() => {
-    const urlEventId = searchParams.get("eventId") || "";
-    if (urlEventId && urlEventId !== selectedEventId) {
-      setSelectedEventId(urlEventId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
-
   useEffect(() => {
     if (!selectedEventId) return;
     let cancelled = false;
 
     setEventDetail(null);
+    setLoadingEventDetail(true);
     setEventDetailError("");
     eventApi.detail(selectedEventId)
       .then((result) => {
@@ -191,6 +156,9 @@ export default function EventOngoing() {
           setEventDetail(null);
           setEventDetailError(error instanceof ApiError ? error.message : "행사 정보를 불러오지 못했습니다.");
         }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingEventDetail(false);
       });
 
     return () => {
@@ -335,34 +303,17 @@ export default function EventOngoing() {
       <main className="pt-[44px] md:ml-[220px] pb-[90px] md:pb-xl">
         {/* App Header & QR */}
         <section className="pt-lg pb-md px-lg bg-surface-container-low">
-          <div className="max-w-[900px] mx-auto mb-md">
-            {loadingEvents ? (
-              <p className="text-caption text-ink-muted">진행 중인 행사를 불러오는 중입니다.</p>
-            ) : eventsError ? (
-              <p className="text-caption text-error">{eventsError}</p>
-            ) : events.length === 0 ? (
-              <p className="text-caption text-ink-muted">공개된 행사가 없습니다.</p>
-            ) : (
-              <select
-                value={selectedEventId}
-                onChange={(e) => setSelectedEventId(e.target.value)}
-                className="h-[36px] rounded-full border border-hairline px-md text-caption bg-white outline-none focus:border-primary-focus"
-              >
-                {events.map((event) => (
-                  <option key={event.id} value={event.id}>{event.name}</option>
-                ))}
-              </select>
-            )}
-          </div>
           <div className="max-w-[900px] mx-auto flex justify-between items-end">
             <div>
-              {eventDetailError ? (
+              {loadingEventDetail ? (
+                <p className="text-caption text-ink-muted mb-1">행사 정보를 불러오는 중입니다.</p>
+              ) : eventDetailError ? (
                 <p className="text-caption text-error mb-1">{eventDetailError}</p>
               ) : (
                 <p className="text-caption text-secondary mb-1">{formatEventPeriod(eventDetail)}</p>
               )}
               <h1 className="font-display-lg-mobile md:font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface">
-                {eventDetail?.name ?? "행사를 선택해 주세요"}
+                {eventDetail?.name ?? "행사 정보를 확인할 수 없습니다"}
               </h1>
             </div>
             <button onClick={() => setQrSheetOpen(true)} className="hidden md:flex bg-primary-container text-white px-lg py-sm rounded-full items-center gap-xs font-body-strong active:scale-95 transition-transform flex-shrink-0">

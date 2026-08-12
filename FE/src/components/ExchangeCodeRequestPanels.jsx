@@ -39,7 +39,7 @@ function RequestRow({ request, onSelect }) {
       <div className="min-w-0 flex-1">
         <p className="font-body-strong truncate">{request.eventName}</p>
         <p className="text-caption text-ink-muted">
-          요청 #{request.requestId} · {request.requestedQuantity}개 · {request.requesterNickname || `회원 #${request.requestedBy}`}
+          {request.requestedQuantity}개 · {request.requesterNickname || `회원 #${request.requestedBy}`}
         </p>
         <p className="text-[11px] text-ink-muted">요청 {formatDateTime(request.createdAt)}</p>
       </div>
@@ -61,7 +61,6 @@ function RequestDetail({ request, admin, actionBusy, rejectionReason, onRejectio
       <div className="mb-md flex flex-wrap items-start justify-between gap-md">
         <div>
           <p className="font-body-strong">{request.eventName}</p>
-          <p className="text-caption text-ink-muted">요청 #{request.requestId} · 행사 #{request.eventId}</p>
         </div>
         <span className={`rounded-full px-sm py-1 text-[11px] font-bold ${statusClass(request.status)}`}>
           {statusLabel[request.status] || request.status}
@@ -157,7 +156,7 @@ function Info({ label, value, danger = false }) {
 export function OrganizerExchangeCodeRequestPanel({ eventId }) {
   const [requests, setRequests] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [quantity, setQuantity] = useState("1");
+  const [quantity, setQuantity] = useState("");
   const [purpose, setPurpose] = useState("");
   const [page, setPage] = useState(0);
   const [requestPageInfo, setRequestPageInfo] = useState({ number: 0, totalPages: 1 });
@@ -248,13 +247,13 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
     if (trimmedPurpose.length > 500) return setError("요청 목적은 500자 이하로 입력하세요.");
     setSubmitting(true);
     try {
-      const result = await exchangeCodeApi.createExchangeCodeRequest(eventId, {
+      await exchangeCodeApi.createExchangeCodeRequest(eventId, {
         requestedQuantity,
         purpose: trimmedPurpose,
       });
-      setQuantity("1");
+      setQuantity("");
       setPurpose("");
-      setMessage({ ok: true, text: `교환 코드 발급 요청이 접수되었습니다. 요청 #${result?.data?.requestId || ""}` });
+      setMessage({ ok: true, text: "교환 코드 발급 요청이 접수되었습니다." });
       await loadRequests();
     } catch (requestError) {
       setMessage({ ok: false, text: requestError.message || "교환 코드 발급 요청에 실패했습니다." });
@@ -278,14 +277,16 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
         <p className="mt-xs text-caption text-ink-muted">행사 관리자 권한으로 교환 코드 발급을 요청합니다.</p>
       </div>
       <div className="rounded-xl border border-hairline bg-white p-lg">
-        <div className="grid gap-sm sm:grid-cols-[140px_1fr_auto]">
+        <div className="grid gap-sm sm:grid-cols-[160px_1fr_auto]">
           <input
-            type="number"
-            min="1"
-            max="1000"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-            className="h-[42px] rounded-lg border border-hairline px-sm text-caption outline-none focus:border-primary-focus"
+            onChange={(event) => setQuantity(event.target.value.replace(/\D/g, "").slice(0, 4))}
+            placeholder="티켓 매 수"
+            aria-label="티켓 매 수"
+            className="h-[44px] w-full rounded-lg border border-hairline bg-white px-md text-caption text-ink outline-none transition-colors placeholder:text-ink-muted focus:border-primary-focus focus:ring-1 focus:ring-primary-focus/20"
           />
           <input
             type="text"
@@ -293,13 +294,13 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
             value={purpose}
             onChange={(event) => setPurpose(event.target.value)}
             placeholder="요청 목적"
-            className="h-[42px] rounded-lg border border-hairline px-sm text-caption outline-none focus:border-primary-focus"
+            className="h-[44px] w-full rounded-lg border border-hairline bg-white px-md text-caption text-ink outline-none transition-colors placeholder:text-ink-muted focus:border-primary-focus focus:ring-1 focus:ring-primary-focus/20"
           />
           <button
             type="button"
             onClick={submitRequest}
             disabled={submitting}
-            className="h-[42px] rounded-lg bg-primary px-lg text-caption font-body-strong text-white disabled:opacity-50"
+            className="h-[44px] rounded-lg bg-primary px-xl text-caption font-body-strong text-white transition-colors hover:bg-primary-focus disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? "요청 중" : "요청"}
           </button>
