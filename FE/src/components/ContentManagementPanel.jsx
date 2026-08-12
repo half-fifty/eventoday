@@ -73,8 +73,13 @@ export default function ContentManagementPanel({ eventId }) {
 
   // showLoading: 최초 조회에만 로딩 문구를 띄우고, 변경 후 재조회에서는 목록이 깜빡이지 않게 한다
   const loadContents = useCallback(async (targetEventId, targetTab, { showLoading = true } = {}) => {
-    if (!targetEventId) return;
+    // 행사 선택이 해제된 경우에도 세대를 먼저 올려, 진행 중이던 이전 행사의 조회 결과가
+    // 비어 있어야 할 화면에 뒤늦게 표시되는 것을 막는다.
     const generation = ++listGenerationRef.current;
+    if (!targetEventId) {
+      if (showLoading) setLoading(false);
+      return;
+    }
     if (showLoading) setLoading(true);
     try {
       const data = await listContents(targetEventId, targetTab);
