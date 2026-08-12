@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import FileDownloadLink from "./FileDownloadLink.jsx";
 import Icon from "./Icon.jsx";
 import { ApiError } from "../api/apiClient.js";
 import { createContent, deleteContent, listContents, updateContent } from "../api/contentApi.js";
+import useModalFocusTrap from "../hooks/useModalFocusTrap.js";
 
 // CONTENT-API-001/003/004/005 기반 공지·자료 관리 패널
 // 관련 요구사항: CONTENT-001~006
@@ -34,7 +35,7 @@ const EMPTY_FORM = {
 const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
 
-// 서버 정렬(pinned DESC, publishedAt DESC)과 동일한 기준으로 낙관적 갱신 후 재정렬한다
+// 서버 정렬(pinned DESC, publishedAt DESC)과 동일한 기준
 const sortContents = (list) =>
   (list || []).slice().sort((a, b) => {
     if (b.pinned !== a.pinned) return b.pinned ? 1 : -1;
@@ -61,31 +62,43 @@ export default function ContentManagementPanel({ eventId }) {
   const [formError, setFormError] = useState("");
   const fileInputRef = useRef(null);
 
+  // 삭제
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // 목록 조회 세대 카운터.
+  // 조회 응답이 도착했을 때 값이 바뀌어 있으면(탭 전환·행사 변경·등록/수정/삭제 후 재조회)
+  // 그 응답은 낡은 것이므로 버린다. 늦게 도착한 이전 목록이 최신 상태를 덮어쓰는 것을 막는다.
+  const listGenerationRef = useRef(0);
+
+  // showLoading: 최초 조회에만 로딩 문구를 띄우고, 변경 후 재조회에서는 목록이 깜빡이지 않게 한다
+  const loadContents = useCallback(async (targetEventId, targetTab, { showLoading = true } = {}) => {
+    if (!targetEventId) return;
+    const generation = ++listGenerationRef.current;
+    if (showLoading) setLoading(true);
+    try {
+      const data = await listContents(targetEventId, targetTab);
+      if (generation !== listGenerationRef.current) return; // 낡은 응답 폐기
+      setItems(sortContents(data));
+      setError("");
+    } catch (err) {
+      if (generation !== listGenerationRef.current) return;
+      setError(toErrorMessage(err, "공지·자료를 불러오지 못했습니다."));
+    } finally {
+      if (showLoading && generation === listGenerationRef.current) setLoading(false);
+    }
+  }, []);
 
   // 탭 또는 행사가 바뀌면 목록을 다시 조회한다.
   // contentType 필터는 서버(CONTENT-API-001)에서 처리한다 — 전체를 받아 클라이언트에서 거르지 않는다.
   useEffect(() => {
     setFormOpen(false);
+    setDeleteTarget(null);
     setMessage("");
     setError("");
     setItems([]);
-    if (!eventId) return;
-
-    let active = true;
-    setLoading(true);
-    listContents(eventId, tab)
-      .then((data) => {
-        if (active) setItems(sortContents(data));
-      })
-      .catch((err) => {
-        if (active) setError(toErrorMessage(err, "공지·자료를 불러오지 못했습니다."));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => { active = false; };
-  }, [eventId, tab]);
+    loadContents(eventId, tab);
+  }, [eventId, tab, loadContents]);
 
   const resetFileInput = () => {
     setFile(null);
@@ -117,42 +130,51 @@ export default function ContentManagementPanel({ eventId }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (submitting) return;
     if (!form.title.trim()) {
       setFormError("제목을 입력하세요.");
       return;
     }
 
+    // 요청 시작 시점의 행사·탭을 캡처한다.
+    // 저장 중에 사용자가 탭이나 행사를 바꾸면 응답을 현재 화면에 반영하면 안 된다.
+    const requestEventId = eventId;
+    const requestTab = tab;
+
     // 서버 DTO(CreateRequest/UpdateRequest)와 동일한 형태로 구성한다.
     // contentType·audience는 수정 시에도 필수값이므로 항상 함께 보낸다.
     const payload = {
-      contentType: tab,
+      contentType: requestTab,
       audience: form.audience,
       title: form.title.trim(),
       content: form.content.trim() || null,
       // 자료 분류·버전은 자료 보관실에서만 사용한다
-      resourceType: tab === "RESOURCE" ? (form.resourceType || null) : null,
-      version: tab === "RESOURCE" ? (form.version.trim() || null) : null,
+      resourceType: requestTab === "RESOURCE" ? (form.resourceType || null) : null,
+      version: requestTab === "RESOURCE" ? (form.version.trim() || null) : null,
       pinned: form.pinned,
     };
     // 첨부파일은 자료 보관실에서만 전송한다
-    const attachment = tab === "RESOURCE" ? (file || undefined) : undefined;
+    const attachment = requestTab === "RESOURCE" ? (file || undefined) : undefined;
 
     setSubmitting(true);
     setFormError("");
     try {
       if (editTarget) {
-        const updated = await updateContent(editTarget.contentId, payload, attachment);
-        setItems((prev) =>
-          sortContents(prev.map((item) => (item.contentId === editTarget.contentId ? updated : item)))
-        );
-        setMessage("수정되었습니다.");
+        await updateContent(editTarget.contentId, payload, attachment);
       } else {
-        const created = await createContent(eventId, payload, attachment);
-        setItems((prev) => sortContents([created, ...prev]));
-        setMessage("등록되었습니다.");
+        await createContent(requestEventId, payload, attachment);
       }
       setFormOpen(false);
       resetFileInput();
+
+      // 저장 중에 컨텍스트가 바뀌었으면 현재 화면은 이미 다른 목록을 보고 있으므로 건드리지 않는다
+      if (requestEventId !== eventId || requestTab !== tab) return;
+
+      setMessage(editTarget ? "수정되었습니다." : "등록되었습니다.");
+      setError("");
+      // 상단 고정 여부에 따라 순서가 바뀌므로 서버 정렬 결과를 다시 받아온다.
+      // 이 호출이 세대를 올려 진행 중이던 낡은 목록 조회를 무효화한다.
+      await loadContents(requestEventId, requestTab, { showLoading: false });
     } catch (err) {
       setFormError(toErrorMessage(err, "저장에 실패했습니다."));
     } finally {
@@ -161,17 +183,35 @@ export default function ContentManagementPanel({ eventId }) {
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    // 중복 클릭 시 DELETE가 두 번 나가 두 번째가 404로 실패하는 것을 막는다
+    if (!deleteTarget || deleting) return;
+    const requestEventId = eventId;
+    const requestTab = tab;
+
+    setDeleting(true);
     try {
       await deleteContent(deleteTarget.contentId);
-      setItems((prev) => prev.filter((item) => item.contentId !== deleteTarget.contentId));
+      setDeleteTarget(null);
+      if (requestEventId !== eventId || requestTab !== tab) return;
+
       setMessage("삭제되었습니다.");
+      setError("");
+      await loadContents(requestEventId, requestTab, { showLoading: false });
     } catch (err) {
       setError(toErrorMessage(err, "삭제에 실패했습니다."));
-    } finally {
+      setMessage("");
       setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
     }
   };
+
+  // 삭제 중에는 모달이 닫히지 않도록 한다 (Escape·취소 공통)
+  const closeDeleteModal = useCallback(() => {
+    if (!deleting) setDeleteTarget(null);
+  }, [deleting]);
+  const { panelRef: deleteModalRef, initialFocusRef: deleteCancelRef } =
+    useModalFocusTrap(Boolean(deleteTarget), closeDeleteModal);
 
   const tabLabel = tab === "NOTICE" ? "공지" : "자료";
 
@@ -436,23 +476,33 @@ export default function ContentManagementPanel({ eventId }) {
 
       {/* 삭제 확인 모달 (CONTENT-API-005) */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-xl shadow-2xl">
-            <h3 className="font-body-strong text-[16px]">삭제 확인</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-lg">
+          <div
+            ref={deleteModalRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="content-delete-title"
+            className="w-full max-w-sm rounded-2xl bg-white p-xl shadow-2xl"
+          >
+            <h3 id="content-delete-title" className="font-body-strong text-[16px]">삭제 확인</h3>
             <p className="mt-sm text-caption text-ink-muted">
               <span className="font-body-strong text-on-surface">&quot;{deleteTarget.title}&quot;</span>을(를) 삭제하시겠습니까?
             </p>
             <div className="mt-lg flex justify-end gap-sm">
               <button
+                ref={deleteCancelRef}
                 type="button"
-                onClick={() => setDeleteTarget(null)}
-                className="rounded-full border border-hairline px-lg py-sm text-caption"
+                onClick={closeDeleteModal}
+                disabled={deleting}
+                className="rounded-full border border-hairline px-lg py-sm text-caption disabled:opacity-40"
               >취소</button>
               <button
                 type="button"
                 onClick={handleDelete}
-                className="rounded-full bg-error px-lg py-sm font-body-strong text-caption text-white"
-              >삭제</button>
+                disabled={deleting}
+                className="rounded-full bg-error px-lg py-sm font-body-strong text-caption text-white disabled:opacity-40"
+              >{deleting ? "삭제 중..." : "삭제"}</button>
             </div>
           </div>
         </div>
