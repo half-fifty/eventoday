@@ -19,7 +19,7 @@ export default function NotificationBell() {
     <button
       type="button"
       onClick={togglePanel}
-      className="relative flex h-8 w-8 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark"
+      className="relative flex h-8 w-8 items-center justify-center rounded-full text-status-pending transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark"
       aria-label={`알림${unreadCount > 0 ? `, 읽지 않은 알림 ${unreadCount}개` : ""}`}
       aria-expanded={isPanelOpen}
       aria-haspopup="dialog"

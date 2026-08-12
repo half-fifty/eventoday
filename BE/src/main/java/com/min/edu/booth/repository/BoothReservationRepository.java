@@ -3,8 +3,11 @@ package com.min.edu.booth.repository;
 import com.min.edu.booth.domain.BoothReservation;
 import com.min.edu.booth.domain.BoothReservationStatus;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -46,9 +49,30 @@ public interface BoothReservationRepository extends JpaRepository<BoothReservati
     // 운영자용 예약 목록 (부스별 전체 예약자 조회)
     List<BoothReservation> findAllByBoothIdOrderByReservedAtDesc(Long boothId);
 
+    // 회원의 모든 부스 예약 목록 (행사 전체에 걸쳐, 최신순, 페이징) - "내 예약 목록" 화면용.
+    // reservedAt만으로 정렬하면 같은 시각에 예약된 건들의 순서가 페이지마다 안정적이지 않을 수 있어
+    // id를 보조 정렬 키로 추가한다.
+    Page<BoothReservation> findAllByMemberIdOrderByReservedAtDescIdDesc(Long memberId, Pageable pageable);
+
     @Query("select r from BoothReservation r join BoothReservationSlot s on r.boothReservationSlotId = s.id " +
             "where s.endAt <= :now and r.status = 'RESERVED'")
     List<BoothReservation> findExpiredReservations(@Param("now") OffsetDateTime now);
+
+    // 체크인은 했지만 예약 시간대가 끝난 예약 (이용 완료 자동 전환 대상)
+    @Query("select r from BoothReservation r join BoothReservationSlot s on r.boothReservationSlotId = s.id " +
+            "where s.endAt <= :now and r.status = 'CHECKED_IN'")
+    List<BoothReservation> findCompletableReservations(@Param("now") OffsetDateTime now);
+
+    // 조회 후 저장(read-then-write) 대신 조건부 UPDATE로 원자적으로 상태를 전환한다.
+    // 여러 스케줄러 실행이 겹쳐도 정확히 하나의 실행만 갱신 건수 1을 받아 처리하게 된다.
+    @Modifying
+    @Query("update BoothReservation r set r.status = :newStatus, r.updatedAt = :now " +
+            "where r.id = :id and r.status = :expectedStatus")
+    int updateStatusIfCurrentStatus(
+            @Param("id") Long id,
+            @Param("expectedStatus") BoothReservationStatus expectedStatus,
+            @Param("newStatus") BoothReservationStatus newStatus,
+            @Param("now") OffsetDateTime now);
 
     // 회원의 마지막 방문 부스 조회 (가장 최근)
     Optional<BoothReservation> findFirstByMemberIdAndStatusOrderByCheckedInAtDesc(

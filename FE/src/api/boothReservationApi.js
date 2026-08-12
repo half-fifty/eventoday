@@ -16,6 +16,10 @@ const listReservationSlots = async (boothId) => {
 const createReservationSlot = async (boothId, payload) =>
   apiRequest(`/booths/${boothId}/reservation-slots`, json("POST", payload));
 
+// 운영자: 예약 시간대 수정 (시작/종료 시간, 정원).
+const updateReservationSlot = async (boothId, slotId, payload) =>
+  apiRequest(`/booths/${boothId}/reservation-slots/${slotId}`, json("PATCH", payload));
+
 // 운영자: 예약 시간대 끄기(비활성화).
 const closeReservationSlot = async (boothId, slotId) =>
   apiRequest(`/booths/${boothId}/reservation-slots/${slotId}/close`, json("PATCH"));
@@ -49,9 +53,20 @@ const cancelReservation = async (boothId, reservationId) =>
 const markReservationAttendance = async (boothId, reservationId, attended) =>
   apiRequest(`/booths/${boothId}/reservations/${reservationId}/attendance`, json("PATCH", { attended }));
 
+// 내 부스 예약 목록: 행사 전체에 걸쳐 내가 예약한 모든 부스 예약 (최신순, 페이징).
+// ApiResponse 래핑 없이 Page를 그대로 반환한다.
+const listMyReservations = async (params = {}) => {
+  const query = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, value]) => value !== "" && value != null))
+  );
+  const queryString = query.toString();
+  return apiRequest(`/members/me/booth-reservations${queryString ? `?${queryString}` : ""}`);
+};
+
 export {
   listReservationSlots,
   createReservationSlot,
+  updateReservationSlot,
   closeReservationSlot,
   reopenReservationSlot,
   deleteReservationSlot,
@@ -60,4 +75,5 @@ export {
   markReservationAttendance,
   createReservation,
   cancelReservation,
+  listMyReservations,
 };
