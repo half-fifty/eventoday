@@ -1,6 +1,5 @@
 package com.min.edu.booth.dto;
 
-import com.min.edu.booth.domain.BoothReview;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -18,6 +17,16 @@ public class BoothReviewResponse {
 
     private Long boothId;
 
+    private Long eventId;           // 부스가 속한 행사 (내 후기 목록에서 행사/부스를 구분하기 위함)
+
+    private String eventName;
+
+    private String boothDisplayName;
+
+    private String boothCode;
+
+    private Long memberId;          // 로그인한 회원 본인 후기인지 프론트에서 판별하는 용도
+
     private String memberName;  // 사용자 닉네임/이름
 
     private Short rating;
@@ -27,17 +36,4 @@ public class BoothReviewResponse {
     private OffsetDateTime createdAt;
 
     private OffsetDateTime updatedAt;  // ✅ 추가!
-
-    // ✅ 정적 팩토리 메서드
-    public static BoothReviewResponse from(BoothReview review) {
-        return BoothReviewResponse.builder()
-                .id(review.getId())
-                .boothId(review.getBoothId())
-                .memberName(review.getMemberName())
-                .rating(review.getRating())
-                .comment(review.getComment())
-                .createdAt(review.getCreatedAt())
-                .updatedAt(review.getUpdatedAt())
-                .build();
-    }
 }

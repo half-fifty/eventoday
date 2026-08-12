@@ -3,6 +3,8 @@ package com.min.edu.booth.repository;
 import com.min.edu.booth.domain.BoothReservation;
 import com.min.edu.booth.domain.BoothReservationStatus;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -46,9 +48,17 @@ public interface BoothReservationRepository extends JpaRepository<BoothReservati
     // 운영자용 예약 목록 (부스별 전체 예약자 조회)
     List<BoothReservation> findAllByBoothIdOrderByReservedAtDesc(Long boothId);
 
+    // 회원의 모든 부스 예약 목록 (행사 전체에 걸쳐, 최신순, 페이징) - "내 예약 목록" 화면용
+    Page<BoothReservation> findAllByMemberIdOrderByReservedAtDesc(Long memberId, Pageable pageable);
+
     @Query("select r from BoothReservation r join BoothReservationSlot s on r.boothReservationSlotId = s.id " +
             "where s.endAt <= :now and r.status = 'RESERVED'")
     List<BoothReservation> findExpiredReservations(@Param("now") OffsetDateTime now);
+
+    // 체크인은 했지만 예약 시간대가 끝난 예약 (이용 완료 자동 전환 대상)
+    @Query("select r from BoothReservation r join BoothReservationSlot s on r.boothReservationSlotId = s.id " +
+            "where s.endAt <= :now and r.status = 'CHECKED_IN'")
+    List<BoothReservation> findCompletableReservations(@Param("now") OffsetDateTime now);
 
     // 회원의 마지막 방문 부스 조회 (가장 최근)
     Optional<BoothReservation> findFirstByMemberIdAndStatusOrderByCheckedInAtDesc(

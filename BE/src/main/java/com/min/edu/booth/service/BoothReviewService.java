@@ -1,14 +1,23 @@
 package com.min.edu.booth.service;
 
+import com.min.edu.booth.domain.Booth;
 import com.min.edu.booth.domain.BoothReview;
 import com.min.edu.booth.dto.BoothReviewResponse;
 import com.min.edu.booth.dto.CreateBoothReviewRequest;
 import com.min.edu.booth.dto.UpdateBoothReviewRequest;
+import com.min.edu.booth.repository.BoothRepository;
 import com.min.edu.booth.repository.BoothReviewRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.domain.Event;
+import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.Member;
 import com.min.edu.member.repository.MemberRepository;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -25,6 +34,8 @@ public class BoothReviewService {
 
     private final BoothReviewRepository boothReviewRepository;
     private final MemberRepository memberRepository;
+    private final BoothRepository boothRepository;
+    private final EventRepository eventRepository;
 
     /**
      * 1. 리뷰 작성
@@ -79,7 +90,9 @@ public class BoothReviewService {
      */
     public Page<BoothReviewResponse> getBoothReviews(Long boothId, Pageable pageable) {
         Page<BoothReview> reviews = boothReviewRepository.findByBoothIdOrderByCreatedAtDesc(boothId, pageable);
-        return reviews.map(this::toResponse);
+        Booth booth = boothRepository.findById(boothId).orElse(null);
+        Event event = booth != null ? eventRepository.findById(booth.getEventId()).orElse(null) : null;
+        return reviews.map(review -> toResponse(review, booth, event));
     }
 
     /**
@@ -90,11 +103,17 @@ public class BoothReviewService {
     }
 
     /**
-     * 4. 내 작성 후기 목록 (WBS-160)
+     * 4. 내 작성 후기 목록 (WBS-160) - 여러 부스에 걸쳐 조회되므로 부스 정보를 배치로 가져온다.
      */
     public Page<BoothReviewResponse> getMyReviews(Long memberId, Pageable pageable) {
         Page<BoothReview> reviews = boothReviewRepository.findByMemberIdOrderByCreatedAtDesc(memberId, pageable);
-        return reviews.map(this::toResponse);
+        Map<Long, Booth> boothsById = boothsById(reviews.getContent());
+        Map<Long, Event> eventsById = eventsById(boothsById.values());
+        return reviews.map(review -> {
+            Booth booth = boothsById.get(review.getBoothId());
+            Event event = booth != null ? eventsById.get(booth.getEventId()) : null;
+            return toResponse(review, booth, event);
+        });
     }
 
     /**
@@ -104,7 +123,21 @@ public class BoothReviewService {
             Long boothId, String keyword, Pageable pageable) {
         Page<BoothReview> reviews = boothReviewRepository
                 .findByBoothIdAndCommentContainingIgnoreCase(boothId, keyword, pageable);
-        return reviews.map(this::toResponse);
+        Booth booth = boothRepository.findById(boothId).orElse(null);
+        Event event = booth != null ? eventRepository.findById(booth.getEventId()).orElse(null) : null;
+        return reviews.map(review -> toResponse(review, booth, event));
+    }
+
+    private Map<Long, Booth> boothsById(List<BoothReview> reviews) {
+        List<Long> boothIds = reviews.stream().map(BoothReview::getBoothId).distinct().toList();
+        return boothRepository.findAllById(boothIds).stream()
+                .collect(Collectors.toMap(Booth::getId, Function.identity()));
+    }
+
+    private Map<Long, Event> eventsById(Collection<Booth> booths) {
+        List<Long> eventIds = booths.stream().map(Booth::getEventId).distinct().toList();
+        return eventRepository.findAllById(eventIds).stream()
+                .collect(Collectors.toMap(Event::getId, Function.identity()));
     }
 
     /**
@@ -158,12 +191,26 @@ public class BoothReviewService {
     }
 
     /**
-     * BoothReview → BoothReviewResponse 변환
+     * BoothReview → BoothReviewResponse 변환 (부스·행사 단건 조회를 곁들인다)
      */
     private BoothReviewResponse toResponse(BoothReview review) {
+        Booth booth = boothRepository.findById(review.getBoothId()).orElse(null);
+        Event event = booth != null ? eventRepository.findById(booth.getEventId()).orElse(null) : null;
+        return toResponse(review, booth, event);
+    }
+
+    /**
+     * BoothReview → BoothReviewResponse 변환 (목록 조회 시 배치로 조회해둔 booth/event를 재사용한다)
+     */
+    private BoothReviewResponse toResponse(BoothReview review, Booth booth, Event event) {
         return BoothReviewResponse.builder()
                 .id(review.getId())
                 .boothId(review.getBoothId())
+                .eventId(booth != null ? booth.getEventId() : null)
+                .eventName(event != null ? event.getName() : null)
+                .boothDisplayName(booth != null ? booth.getDisplayName() : null)
+                .boothCode(booth != null ? booth.getBoothCode() : null)
+                .memberId(review.getMemberId())
                 .memberName(review.getMemberName())
                 .rating(review.getRating())
                 .comment(review.getComment())

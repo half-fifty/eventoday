@@ -44,4 +44,8 @@ public class BoothInterest {
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    public void updateVacancyNotificationEnabled(boolean enabled) {
+        this.vacancyNotificationEnabled = enabled;
+    }
 }
