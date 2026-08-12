@@ -157,26 +157,28 @@ export default function AdmissionManagementPanel({ eventId }) {
   const [auxiliaryAccessDenied, setAuxiliaryAccessDenied] = useState(false);
   const [cancellingId, setCancellingId] = useState(null);
   const scanLockRef = useRef(false);
-  const requestGenerationRef = useRef(0);
+  const ticketRequestGenerationRef = useRef(0);
+  const logRequestGenerationRef = useRef(0);
+  const checkInRequestGenerationRef = useRef(0);
   const activeEventIdRef = useRef(eventId);
   activeEventIdRef.current = eventId;
 
   const loadTickets = useCallback(() => {
     if (!eventId || auxiliaryAccessDenied) return Promise.resolve();
-    const generation = requestGenerationRef.current;
-    const loadingEventId = eventId;
+    const generation = ++ticketRequestGenerationRef.current;
+    const requestingEventId = eventId;
     setTicketsLoading(true);
     setTicketsError("");
     const params = { page: ticketPage, size: 20 };
     if (ticketStatus) params.status = ticketStatus;
     return admissionApi.getEventAdmissionTickets(eventId, params)
       .then((result) => {
-        if (generation !== requestGenerationRef.current || loadingEventId !== activeEventIdRef.current) return;
+        if (generation !== ticketRequestGenerationRef.current || requestingEventId !== activeEventIdRef.current) return;
         setTickets(pageContent(result));
         setTicketPageInfo(pageInfo(result));
       })
       .catch((error) => {
-        if (generation !== requestGenerationRef.current || loadingEventId !== activeEventIdRef.current) return;
+        if (generation !== ticketRequestGenerationRef.current || requestingEventId !== activeEventIdRef.current) return;
         setTickets([]);
         if (error.status === 403) {
           setAuxiliaryAccessDenied(true);
@@ -186,7 +188,7 @@ export default function AdmissionManagementPanel({ eventId }) {
         setTicketsError(error.message || "입장 티켓 목록을 불러오지 못했습니다.");
       })
       .finally(() => {
-        if (generation === requestGenerationRef.current && loadingEventId === activeEventIdRef.current) {
+        if (generation === ticketRequestGenerationRef.current && requestingEventId === activeEventIdRef.current) {
           setTicketsLoading(false);
         }
       });
@@ -194,8 +196,8 @@ export default function AdmissionManagementPanel({ eventId }) {
 
   const loadLogs = useCallback(() => {
     if (!eventId || auxiliaryAccessDenied) return Promise.resolve();
-    const generation = requestGenerationRef.current;
-    const loadingEventId = eventId;
+    const generation = ++logRequestGenerationRef.current;
+    const requestingEventId = eventId;
     setLogsLoading(true);
     setLogsError("");
     const params = { page: logPage, size: 20 };
@@ -203,12 +205,12 @@ export default function AdmissionManagementPanel({ eventId }) {
     if (logResult) params.result = logResult;
     return admissionApi.getAdmissionLogs(eventId, params)
       .then((result) => {
-        if (generation !== requestGenerationRef.current || loadingEventId !== activeEventIdRef.current) return;
+        if (generation !== logRequestGenerationRef.current || requestingEventId !== activeEventIdRef.current) return;
         setLogs(pageContent(result));
         setLogPageInfo(pageInfo(result));
       })
       .catch((error) => {
-        if (generation !== requestGenerationRef.current || loadingEventId !== activeEventIdRef.current) return;
+        if (generation !== logRequestGenerationRef.current || requestingEventId !== activeEventIdRef.current) return;
         setLogs([]);
         if (error.status === 403) {
           setAuxiliaryAccessDenied(true);
@@ -218,15 +220,19 @@ export default function AdmissionManagementPanel({ eventId }) {
         setLogsError(error.message || "입장 로그를 불러오지 못했습니다.");
       })
       .finally(() => {
-        if (generation === requestGenerationRef.current && loadingEventId === activeEventIdRef.current) {
+        if (generation === logRequestGenerationRef.current && requestingEventId === activeEventIdRef.current) {
           setLogsLoading(false);
         }
       });
   }, [auxiliaryAccessDenied, eventId, logAction, logPage, logResult]);
 
   useEffect(() => {
-    requestGenerationRef.current += 1;
+    ticketRequestGenerationRef.current += 1;
+    logRequestGenerationRef.current += 1;
+    checkInRequestGenerationRef.current += 1;
     setAuxiliaryAccessDenied(false);
+    setTicketPage(0);
+    setLogPage(0);
     setTickets([]);
     setTicketPageInfo({ number: 0, totalPages: 1 });
     setTicketsError("");
@@ -235,6 +241,10 @@ export default function AdmissionManagementPanel({ eventId }) {
     setLogPageInfo({ number: 0, totalPages: 1 });
     setLogsError("");
     setLogsLoading(false);
+    setCheckInResult(null);
+    setCheckInError("");
+    setProcessing(false);
+    scanLockRef.current = false;
   }, [eventId]);
 
   useEffect(() => {
@@ -272,6 +282,8 @@ export default function AdmissionManagementPanel({ eventId }) {
       return;
     }
     if (processing || scanLockRef.current) return;
+    const generation = ++checkInRequestGenerationRef.current;
+    const submittingEventId = eventId;
     scanLockRef.current = true;
     setProcessing(true);
     setCheckInResult(null);
@@ -283,13 +295,17 @@ export default function AdmissionManagementPanel({ eventId }) {
         gateName: normalizedGateName || null,
       };
       const result = await admissionApi.checkIn(eventId, payload);
+      if (generation !== checkInRequestGenerationRef.current || submittingEventId !== activeEventIdRef.current) return;
       setCheckInResult(result?.data || null);
       if (!auxiliaryAccessDenied) await Promise.all([loadTickets(), loadLogs()]);
     } catch (error) {
+      if (generation !== checkInRequestGenerationRef.current || submittingEventId !== activeEventIdRef.current) return;
       setCheckInError(checkInMessage(error));
       if (!auxiliaryAccessDenied) await loadLogs();
     } finally {
-      setProcessing(false);
+      if (generation === checkInRequestGenerationRef.current && submittingEventId === activeEventIdRef.current) {
+        setProcessing(false);
+      }
     }
   }, [auxiliaryAccessDenied, eventId, gateName, loadLogs, loadTickets, processing]);
 

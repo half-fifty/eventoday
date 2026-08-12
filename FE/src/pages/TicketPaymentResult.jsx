@@ -101,7 +101,7 @@ export default function TicketPaymentResult({ failed = false }) {
             </Link>
           )}
           {state === "success" && confirmedOrderNo && (
-            <Link to={`/tickets/orders/${confirmedOrderNo}`} className="rounded-full border border-hairline px-lg py-sm">
+            <Link to={`/tickets/orders/${encodeURIComponent(confirmedOrderNo)}`} className="rounded-full border border-hairline px-lg py-sm">
               주문 상세 보기
             </Link>
           )}
