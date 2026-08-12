@@ -1,6 +1,7 @@
 package com.min.edu.payment.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -19,6 +20,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.min.edu.admission.repository.ExchangeCodeRepository;
+import com.min.edu.common.exception.BusinessException;
+import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.PaymentOrder;
@@ -84,12 +88,89 @@ class RefundFinalizerTest {
             ticketOrderRepository,
             paymentRefundRepository,
             exchangeCodeRepository,
-            ticketInventoryGateway
+            ticketInventoryGateway,
+            new EventOperationDeadlinePolicy()
         );
 
         given(entityManager.createNativeQuery(any(String.class))).willReturn(query);
         given(query.setParameter(eq("timeout"), any())).willReturn(query);
         given(query.getSingleResult()).willReturn("");
+    }
+
+    @Test
+    void finalizeRefund_failsAtOperationCutoff() {
+        OffsetDateTime now = OffsetDateTime.now();
+        RefundPaymentProjection projection = projection(
+            PaymentStatus.PAID.name(),
+            PaymentOrderStatus.PAID.name(),
+            TicketOrderStatus.CONFIRMED.name(),
+            now.minusHours(2),
+            now.plusHours(1)
+        );
+        PaymentOrder paymentOrder = paidPaymentOrder();
+        Payment payment = paidPayment();
+        TicketOrder ticketOrder = confirmedTicketOrder();
+        PaymentRefund refund = requestedRefund();
+
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(projection));
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.findById(1L)).willReturn(Optional.of(payment));
+        given(ticketOrderRepository.findByPaymentOrderId(11L)).willReturn(Optional.of(ticketOrder));
+        given(paymentRefundRepository.findById(7L)).willReturn(Optional.of(refund));
+
+        assertThatThrownBy(() -> refundFinalizer.finalizeRefund(
+            7L,
+            1L,
+            10L,
+            new CreateRefundRequest("reason"),
+            tossResponse()
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.REFUND_NOT_ALLOWED);
+
+        verify(exchangeCodeRepository, never()).existsByTicketOrderIdAndStatus(any(), any());
+        verifyNoInteractions(ticketInventoryGateway);
+        verify(paymentRefundRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void finalizeRefund_failsAfterOperationCutoff() {
+        OffsetDateTime now = OffsetDateTime.now();
+        RefundPaymentProjection projection = projection(
+            PaymentStatus.PAID.name(),
+            PaymentOrderStatus.PAID.name(),
+            TicketOrderStatus.CONFIRMED.name(),
+            now.minusHours(2),
+            now.plusMinutes(30)
+        );
+        PaymentOrder paymentOrder = paidPaymentOrder();
+        Payment payment = paidPayment();
+        TicketOrder ticketOrder = confirmedTicketOrder();
+        PaymentRefund refund = requestedRefund();
+
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(projection));
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.findById(1L)).willReturn(Optional.of(payment));
+        given(ticketOrderRepository.findByPaymentOrderId(11L)).willReturn(Optional.of(ticketOrder));
+        given(paymentRefundRepository.findById(7L)).willReturn(Optional.of(refund));
+
+        assertThatThrownBy(() -> refundFinalizer.finalizeRefund(
+            7L,
+            1L,
+            10L,
+            new CreateRefundRequest("reason"),
+            tossResponse()
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.REFUND_NOT_ALLOWED);
+
+        verify(exchangeCodeRepository, never()).existsByTicketOrderIdAndStatus(any(), any());
+        verifyNoInteractions(ticketInventoryGateway);
+        verify(paymentRefundRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -123,23 +204,82 @@ class RefundFinalizerTest {
     }
 
     private RefundPaymentProjection projection() {
+        return projection(
+            PaymentStatus.REFUNDED.name(),
+            PaymentOrderStatus.REFUNDED.name(),
+            TicketOrderStatus.REFUNDED.name(),
+            OffsetDateTime.now().plusDays(1),
+            OffsetDateTime.now().plusDays(2)
+        );
+    }
+
+    private RefundPaymentProjection projection(
+            String paymentStatus,
+            String paymentOrderStatus,
+            String ticketOrderStatus,
+            OffsetDateTime eventStartAt,
+            OffsetDateTime eventEndAt) {
         return new RefundPaymentProjection() {
             @Override public Long getPaymentId() { return 1L; }
             @Override public Long getPaymentOrderId() { return 11L; }
             @Override public String getPaymentKey() { return "payment-key"; }
             @Override public BigDecimal getPaymentAmount() { return BigDecimal.valueOf(10000); }
-            @Override public String getPaymentStatus() { return PaymentStatus.REFUNDED.name(); }
+            @Override public String getPaymentStatus() { return paymentStatus; }
             @Override public String getOrderNo() { return "ORDER-1"; }
             @Override public Long getBuyerMemberId() { return 10L; }
             @Override public BigDecimal getTotalAmount() { return BigDecimal.valueOf(10000); }
-            @Override public String getPaymentOrderStatus() { return PaymentOrderStatus.REFUNDED.name(); }
+            @Override public String getPaymentOrderStatus() { return paymentOrderStatus; }
             @Override public Long getTicketOrderId() { return 2L; }
             @Override public Long getEventId() { return 3L; }
             @Override public String getEventName() { return "event"; }
-            @Override public OffsetDateTime getEventStartAt() { return OffsetDateTime.now().plusDays(1); }
+            @Override public OffsetDateTime getEventStartAt() { return eventStartAt; }
+            @Override public OffsetDateTime getEventEndAt() { return eventEndAt; }
             @Override public Integer getQuantity() { return 2; }
-            @Override public String getTicketOrderStatus() { return TicketOrderStatus.REFUNDED.name(); }
+            @Override public String getTicketOrderStatus() { return ticketOrderStatus; }
         };
+    }
+
+    private PaymentOrder paidPaymentOrder() {
+        return PaymentOrder.builder()
+            .id(11L)
+            .orderNo("ORDER-1")
+            .buyerMemberId(10L)
+            .orderType(PaymentOrderType.EVENT_TICKET)
+            .totalAmount(BigDecimal.valueOf(10000))
+            .status(PaymentOrderStatus.PAID.name())
+            .expiresAt(OffsetDateTime.now().plusMinutes(10))
+            .createdAt(OffsetDateTime.now())
+            .updatedAt(OffsetDateTime.now())
+            .build();
+    }
+
+    private Payment paidPayment() {
+        return Payment.builder()
+            .id(1L)
+            .paymentOrderId(11L)
+            .pgProvider(PaymentProvider.TOSS_PAYMENTS)
+            .paymentKey("payment-key")
+            .method("CARD")
+            .amount(BigDecimal.valueOf(10000))
+            .status(PaymentStatus.PAID.name())
+            .requestedAt(OffsetDateTime.now())
+            .approvedAt(OffsetDateTime.now())
+            .updatedAt(OffsetDateTime.now())
+            .build();
+    }
+
+    private TicketOrder confirmedTicketOrder() {
+        return TicketOrder.builder()
+            .id(2L)
+            .paymentOrderId(11L)
+            .eventId(3L)
+            .unitPrice(BigDecimal.valueOf(10000))
+            .totalQuantity(2)
+            .status(TicketOrderStatus.CONFIRMED.name())
+            .confirmedAt(OffsetDateTime.now())
+            .createdAt(OffsetDateTime.now())
+            .updatedAt(OffsetDateTime.now())
+            .build();
     }
 
     private PaymentOrder refundedPaymentOrder() {
@@ -186,7 +326,13 @@ class RefundFinalizerTest {
     }
 
     private PaymentRefund completedRefund() {
-        PaymentRefund refund = PaymentRefund.builder()
+        PaymentRefund refund = requestedRefund();
+        refund.complete("cancel-key", OffsetDateTime.now());
+        return refund;
+    }
+
+    private PaymentRefund requestedRefund() {
+        return PaymentRefund.builder()
             .id(7L)
             .paymentId(1L)
             .requesterMemberId(10L)
@@ -195,8 +341,6 @@ class RefundFinalizerTest {
             .status(com.min.edu.payment.domain.PaymentRefundStatus.REQUESTED)
             .requestedAt(OffsetDateTime.now())
             .build();
-        refund.complete("cancel-key", OffsetDateTime.now());
-        return refund;
     }
 
     private TossCancelResponse tossResponse() {

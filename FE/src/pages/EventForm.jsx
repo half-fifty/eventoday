@@ -26,6 +26,7 @@ const toInputDateTime = (value) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 const toOffsetDateTime = (value) => value ? new Date(value).toISOString() : null;
+const OPERATION_CUTOFF_MS = 60 * 60 * 1000;
 
 export default function EventForm() {
   const { eventId } = useParams();
@@ -150,6 +151,11 @@ export default function EventForm() {
     if (!form.representativeFileId) { setError("행사 포스터를 등록해 주세요."); return; }
     if (!form.exhibitCategoryCodes.length) { setError("전시품목을 하나 이상 선택해 주세요."); return; }
     if (new Date(form.startAt) >= new Date(form.endAt)) { setError("행사 종료는 시작 이후여야 합니다."); return; }
+    if (form.ticketSalesEndAt
+        && new Date(form.ticketSalesEndAt).getTime() > new Date(form.endAt).getTime() - OPERATION_CUTOFF_MS) {
+      setError("티켓 판매 종료는 행사 종료 1시간 전까지로 설정해 주세요.");
+      return;
+    }
     setSaving(true); setError("");
     const payload = { ...form, ticketPrice: Number(form.ticketPrice),
       ticketTotalQuantity: Number(form.ticketTotalQuantity), ticketPurchaseLimit: Number(form.ticketPurchaseLimit),

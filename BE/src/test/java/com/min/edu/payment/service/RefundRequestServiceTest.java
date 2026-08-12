@@ -25,6 +25,7 @@ import com.min.edu.admission.domain.ExchangeCodeStatus;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.payment.domain.PaymentRefund;
 import com.min.edu.payment.dto.request.CreateRefundRequest;
 import com.min.edu.payment.dto.response.CreateRefundResponse;
@@ -67,7 +68,8 @@ class RefundRequestServiceTest {
             tossPaymentClient,
             refundAttemptRecorder,
             refundFinalizer,
-            exceptionTranslator
+            exceptionTranslator,
+            new EventOperationDeadlinePolicy()
         );
     }
 
@@ -186,14 +188,73 @@ class RefundRequestServiceTest {
     }
 
     @Test
-    void refund_failsWhenEventAlreadyStarted() {
+    void refund_succeedsAfterEventStartBeforeOperationCutoff() {
+        OffsetDateTime now = OffsetDateTime.now();
+        RefundPaymentProjection payment = projection(
+            10L,
+            "PAID",
+            "PAID",
+            "CONFIRMED",
+            now.minusHours(1),
+            now.plusHours(3)
+        );
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        PaymentRefund preparedRefund = requestedRefund();
+        given(refundAttemptRecorder.prepare(any(), any(), any()))
+            .willReturn(preparedRefund);
+        given(tossPaymentClient.cancel(any())).willReturn(tossResponse());
+        given(refundFinalizer.finalizeRefund(any(), any(), any(), any(), any()))
+            .willReturn(refundResponse());
+
+        CreateRefundResponse response = service.refund(
+            10L,
+            null,
+            1L,
+            new CreateRefundRequest("reason")
+        );
+
+        assertThat(response.getRefundStatus()).isEqualTo("COMPLETED");
+        verify(refundAttemptRecorder).prepare(eq(payment), eq(10L), any());
+    }
+
+    @Test
+    void refund_failsAtOperationCutoff() {
+        OffsetDateTime now = OffsetDateTime.now();
         given(paymentRepository.findRefundPaymentById(1L))
             .willReturn(Optional.of(projection(
                 10L,
                 "PAID",
                 "PAID",
                 "CONFIRMED",
-                OffsetDateTime.now().minusMinutes(1)
+                now.minusHours(2),
+                now.plusHours(1)
+            )));
+
+        assertThatThrownBy(() -> service.refund(
+            10L,
+            null,
+            1L,
+            new CreateRefundRequest("reason")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.REFUND_NOT_ALLOWED);
+
+        verify(tossPaymentClient, never()).cancel(any());
+        verify(refundAttemptRecorder, never()).prepare(any(), any(), any());
+    }
+
+    @Test
+    void refund_failsAfterOperationCutoff() {
+        OffsetDateTime now = OffsetDateTime.now();
+        given(paymentRepository.findRefundPaymentById(1L))
+            .willReturn(Optional.of(projection(
+                10L,
+                "PAID",
+                "PAID",
+                "CONFIRMED",
+                now.minusHours(2),
+                now.plusMinutes(30)
             )));
 
         assertThatThrownBy(() -> service.refund(
@@ -240,7 +301,8 @@ class RefundRequestServiceTest {
             "REFUNDED",
             "REFUNDED",
             "REFUNDED",
-            OffsetDateTime.now().plusDays(1)
+            OffsetDateTime.now().plusDays(1),
+            OffsetDateTime.now().plusDays(2)
         );
         PaymentRefund refund = PaymentRefund.requested(
             1L,
@@ -567,7 +629,8 @@ class RefundRequestServiceTest {
             "PAID",
             "PAID",
             "CONFIRMED",
-            OffsetDateTime.now().plusDays(1)
+            OffsetDateTime.now().plusDays(1),
+            OffsetDateTime.now().plusDays(2)
         );
     }
 
@@ -576,7 +639,8 @@ class RefundRequestServiceTest {
             String paymentStatus,
             String paymentOrderStatus,
             String ticketOrderStatus,
-            OffsetDateTime eventStartAt) {
+            OffsetDateTime eventStartAt,
+            OffsetDateTime eventEndAt) {
         return new RefundPaymentProjection() {
             @Override public Long getPaymentId() { return 1L; }
             @Override public Long getPaymentOrderId() { return 11L; }
@@ -591,6 +655,7 @@ class RefundRequestServiceTest {
             @Override public Long getEventId() { return 3L; }
             @Override public String getEventName() { return "event name"; }
             @Override public OffsetDateTime getEventStartAt() { return eventStartAt; }
+            @Override public OffsetDateTime getEventEndAt() { return eventEndAt; }
             @Override public Integer getQuantity() { return 2; }
             @Override public String getTicketOrderStatus() { return ticketOrderStatus; }
         };

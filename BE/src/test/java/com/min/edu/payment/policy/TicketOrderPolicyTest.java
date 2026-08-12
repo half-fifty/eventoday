@@ -11,13 +11,15 @@ import org.junit.jupiter.api.Test;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.EventStatus;
+import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.payment.dto.request.CreateTicketOrderRequest;
 import com.min.edu.payment.dto.request.GuestBuyerRequest;
 import com.min.edu.payment.event.EventTicketSnapshot;
 
 class TicketOrderPolicyTest {
 
-    private final TicketOrderPolicy ticketOrderPolicy = new TicketOrderPolicy();
+    private final TicketOrderPolicy ticketOrderPolicy =
+        new TicketOrderPolicy(new EventOperationDeadlinePolicy());
 
     @Test
     void validate_failsWhenQuantityIsZero() {
@@ -67,10 +69,12 @@ class TicketOrderPolicyTest {
 
     @Test
     void validate_failsAtOrAfterSalesEnd() {
+        OffsetDateTime now = OffsetDateTime.now();
         EventTicketSnapshot event = event(
             EventStatus.PUBLISHED,
-            OffsetDateTime.now().minusHours(1),
-            OffsetDateTime.now().minusSeconds(1),
+            now.minusHours(1),
+            now,
+            now.plusDays(1),
             10
         );
 
@@ -78,10 +82,90 @@ class TicketOrderPolicyTest {
                 1L,
                 new CreateTicketOrderRequest(1, null),
                 event,
-                OffsetDateTime.now()))
+                now))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.TICKET_SALES_NOT_OPEN);
+    }
+
+    @Test
+    void validate_usesExplicitSalesEndWhenBeforeOperationCutoff() {
+        OffsetDateTime now = OffsetDateTime.now();
+        EventTicketSnapshot event = event(
+            EventStatus.PUBLISHED,
+            now.minusHours(1),
+            now.plusHours(1),
+            now.plusDays(1),
+            10
+        );
+
+        assertThatCode(() -> ticketOrderPolicy.validate(
+                1L,
+                new CreateTicketOrderRequest(1, null),
+                event,
+                now))
+            .doesNotThrowAnyException();
+    }
+
+    @Test
+    void validate_usesOperationCutoffWhenExplicitSalesEndIsAfterCutoff() {
+        OffsetDateTime now = OffsetDateTime.now();
+        EventTicketSnapshot event = event(
+            EventStatus.PUBLISHED,
+            now.minusHours(1),
+            now.plusDays(1),
+            now.plusHours(1),
+            10
+        );
+
+        assertThatThrownBy(() -> ticketOrderPolicy.validate(
+                1L,
+                new CreateTicketOrderRequest(1, null),
+                event,
+                now))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.TICKET_SALES_NOT_OPEN);
+    }
+
+    @Test
+    void validate_usesOperationCutoffWhenSalesEndIsNull() {
+        OffsetDateTime now = OffsetDateTime.now();
+        EventTicketSnapshot event = event(
+            EventStatus.PUBLISHED,
+            now.minusHours(1),
+            null,
+            now.plusHours(1),
+            10
+        );
+
+        assertThatThrownBy(() -> ticketOrderPolicy.validate(
+                1L,
+                new CreateTicketOrderRequest(1, null),
+                event,
+                now))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.TICKET_SALES_NOT_OPEN);
+    }
+
+    @Test
+    void validate_passesAfterEventStartBeforeOperationCutoff() {
+        OffsetDateTime now = OffsetDateTime.now();
+        EventTicketSnapshot event = event(
+            EventStatus.PUBLISHED,
+            now.minusHours(2),
+            null,
+            now.plusHours(3),
+            10
+        );
+
+        assertThatCode(() -> ticketOrderPolicy.validate(
+                1L,
+                new CreateTicketOrderRequest(1, null),
+                event,
+                now))
+            .doesNotThrowAnyException();
     }
 
     @Test
@@ -251,6 +335,21 @@ class TicketOrderPolicyTest {
             OffsetDateTime salesStartAt,
             OffsetDateTime salesEndAt,
             int remainingQuantity) {
+        return event(
+            status,
+            salesStartAt,
+            salesEndAt,
+            OffsetDateTime.now().plusDays(1),
+            remainingQuantity
+        );
+    }
+
+    private EventTicketSnapshot event(
+            EventStatus status,
+            OffsetDateTime salesStartAt,
+            OffsetDateTime salesEndAt,
+            OffsetDateTime endAt,
+            int remainingQuantity) {
         return new EventTicketSnapshot(
             1L,
             "테스트 행사",
@@ -261,7 +360,7 @@ class TicketOrderPolicyTest {
             5,
             salesStartAt,
             salesEndAt,
-            OffsetDateTime.now().plusDays(1)
+            endAt
         );
     }
 }

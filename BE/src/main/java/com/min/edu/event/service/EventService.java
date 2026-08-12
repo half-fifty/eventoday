@@ -21,6 +21,7 @@ import com.min.edu.event.repository.EventOrganizationRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.event.repository.EventExhibitCategoryRepository;
 import com.min.edu.event.repository.ExhibitCategoryRepository;
+import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
@@ -55,6 +56,7 @@ public class EventService {
     private final EventExhibitCategoryRepository eventExhibitCategoryRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final PlatformAuditService platformAuditService;
+    private final EventOperationDeadlinePolicy deadlinePolicy;
 
     public EventService(EventRepository eventRepository, EventMemberRepository eventMemberRepository,
             EventOrganizationMemberRepository organizationMemberRepository,
@@ -63,7 +65,8 @@ public class EventService {
             ExhibitCategoryRepository exhibitCategoryRepository,
             EventExhibitCategoryRepository eventExhibitCategoryRepository,
             ApplicationEventPublisher applicationEventPublisher,
-            PlatformAuditService platformAuditService) {
+            PlatformAuditService platformAuditService,
+            EventOperationDeadlinePolicy deadlinePolicy) {
         this.eventRepository = eventRepository;
         this.eventMemberRepository = eventMemberRepository;
         this.organizationMemberRepository = organizationMemberRepository;
@@ -73,6 +76,7 @@ public class EventService {
         this.eventExhibitCategoryRepository = eventExhibitCategoryRepository;
         this.applicationEventPublisher = applicationEventPublisher;
         this.platformAuditService = platformAuditService;
+        this.deadlinePolicy = deadlinePolicy;
     }
 
     public List<EventDtos.ManagedOrganization> findManagedOrganizations(AuthenticatedMemberDto actor) {
@@ -338,6 +342,9 @@ public class EventService {
         if (!request.startAt().isBefore(request.endAt())) throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         if (request.ticketSalesStartAt() != null && request.ticketSalesEndAt() != null
                 && !request.ticketSalesStartAt().isBefore(request.ticketSalesEndAt()))
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        if (request.ticketSalesEndAt() != null
+                && request.ticketSalesEndAt().isAfter(deadlinePolicy.operationCutoff(request.endAt())))
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         if (request.ticketTotalQuantity() < request.ticketPurchaseLimit())
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);

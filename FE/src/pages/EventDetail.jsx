@@ -19,6 +19,7 @@ const formatDateTime = (value) => value
   : "미정";
 
 const emptyBuyer = { name: "", email: "", phone: "" };
+const OPERATION_CUTOFF_MS = 60 * 60 * 1000;
 
 export default function EventDetail() {
   const { eventId } = useParams();
@@ -168,7 +169,14 @@ export default function EventDetail() {
 
   const now = Date.now();
   const salesNotStarted = event?.ticketSalesStartAt && new Date(event.ticketSalesStartAt).getTime() > now;
-  const salesEnded = event?.ticketSalesEndAt && new Date(event.ticketSalesEndAt).getTime() < now;
+  const operationCutoffTime = event?.endAt ? new Date(event.endAt).getTime() - OPERATION_CUTOFF_MS : null;
+  const configuredSalesEndTime = event?.ticketSalesEndAt ? new Date(event.ticketSalesEndAt).getTime() : null;
+  const effectiveSalesEndTime = operationCutoffTime == null
+    ? configuredSalesEndTime
+    : configuredSalesEndTime == null
+      ? operationCutoffTime
+      : Math.min(configuredSalesEndTime, operationCutoffTime);
+  const salesEnded = effectiveSalesEndTime != null && now >= effectiveSalesEndTime;
   const ticketButtonLabel = salesNotStarted
     ? `${formatDateTime(event.ticketSalesStartAt)} 판매 시작`
     : salesEnded ? "티켓 판매 종료" : "티켓 구매하기";

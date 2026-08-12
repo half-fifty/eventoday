@@ -8,6 +8,7 @@ import com.min.edu.admin.service.PlatformAuditService;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.dto.EventDtos;
+import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.event.repository.AdmissionEventProjection;
 import com.min.edu.event.repository.EventBoothRecruitmentRepository;
 import com.min.edu.event.repository.EventExhibitCategoryRepository;
@@ -93,7 +94,8 @@ class EventServiceTest {
     private EventService service() {
         return new EventService(eventRepository, eventMemberRepository, organizationMemberRepository,
                 organizationRepository, boothRecruitmentRepository, exhibitCategoryRepository,
-                eventExhibitCategoryRepository, applicationEventPublisher, platformAuditService);
+                eventExhibitCategoryRepository, applicationEventPublisher, platformAuditService,
+                new EventOperationDeadlinePolicy());
     }
 
     private AuthenticatedMemberDto actor(Long memberId) {

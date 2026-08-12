@@ -14,6 +14,7 @@ import com.min.edu.event.domain.EventStatus;
 import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventRepository;
+import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
@@ -45,18 +46,21 @@ public class ExchangeCodeRequestService {
     private final EventMemberRepository eventMemberRepository;
     private final EventOrganizationMemberRepository organizationMemberRepository;
     private final ExchangeCodeRequestExceptionTranslator exceptionTranslator;
+    private final EventOperationDeadlinePolicy deadlinePolicy;
 
     public ExchangeCodeRequestService(
             ExchangeCodeRequestRepository exchangeCodeRequestRepository,
             EventRepository eventRepository,
             EventMemberRepository eventMemberRepository,
             EventOrganizationMemberRepository organizationMemberRepository,
-            ExchangeCodeRequestExceptionTranslator exceptionTranslator) {
+            ExchangeCodeRequestExceptionTranslator exceptionTranslator,
+            EventOperationDeadlinePolicy deadlinePolicy) {
         this.exchangeCodeRequestRepository = exchangeCodeRequestRepository;
         this.eventRepository = eventRepository;
         this.eventMemberRepository = eventMemberRepository;
         this.organizationMemberRepository = organizationMemberRepository;
         this.exceptionTranslator = exceptionTranslator;
+        this.deadlinePolicy = deadlinePolicy;
     }
 
     @Transactional
@@ -160,7 +164,7 @@ public class ExchangeCodeRequestService {
         if (event.getStatus() != EventStatus.PUBLISHED) {
             throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EVENT_NOT_OPEN);
         }
-        if (!now.isBefore(event.getStartAt())) {
+        if (!deadlinePolicy.isBeforeOperationCutoff(now, event.getEndAt())) {
             throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EVENT_ALREADY_STARTED);
         }
     }

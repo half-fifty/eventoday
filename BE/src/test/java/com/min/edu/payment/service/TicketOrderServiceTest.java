@@ -28,6 +28,7 @@ import com.min.edu.admission.support.ExchangeCodeGenerator;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.EventStatus;
+import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderStatus;
 import com.min.edu.payment.domain.TicketOrder;
@@ -82,7 +83,7 @@ class TicketOrderServiceTest {
 
     @BeforeEach
     void setUp() {
-        ticketOrderPolicy = new TicketOrderPolicy();
+        ticketOrderPolicy = new TicketOrderPolicy(new EventOperationDeadlinePolicy());
         ticketOrderService = new TicketOrderService(
             eventTicketReader,
             ticketInventoryGateway,

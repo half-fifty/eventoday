@@ -9,6 +9,7 @@ import com.min.edu.admission.domain.ExchangeCodeStatus;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.payment.domain.PaymentOrderStatus;
 import com.min.edu.payment.domain.PaymentRefund;
 import com.min.edu.payment.domain.PaymentStatus;
@@ -43,6 +44,7 @@ public class RefundRequestService {
     private final RefundAttemptRecorder refundAttemptRecorder;
     private final RefundFinalizer refundFinalizer;
     private final RefundFinalizationExceptionTranslator exceptionTranslator;
+    private final EventOperationDeadlinePolicy deadlinePolicy;
 
     public CreateRefundResponse refund(
             Long memberId,
@@ -147,7 +149,7 @@ public class RefundRequestService {
             throw new BusinessException(GlobalErrorCode.REFUND_NOT_ALLOWED);
         }
 
-        if (!payment.getEventStartAt().isAfter(OffsetDateTime.now())) {
+        if (!deadlinePolicy.isBeforeOperationCutoff(OffsetDateTime.now(), payment.getEventEndAt())) {
             throw new BusinessException(GlobalErrorCode.REFUND_NOT_ALLOWED);
         }
 
