@@ -3,29 +3,46 @@
 -- 두 행이 생길 수 있다. 유니크 제약을 추가해 이런 경우 INSERT가 실패하도록 한다.
 --
 -- 제약을 걸기 전에 이미 같은 (event_id, map_type, floor_name, version) 조합의 중복 행이
--- 있으면 ADD CONSTRAINT 자체가 실패하므로, 각 조합에서 가장 먼저 만들어진 행(created_at 기준,
--- 동률이면 id 기준)만 남기고 정리한다. 삭제 대상 평면도를 참조하는 booth_map_positions가
--- 있으면 FK 위반이 나므로 좌표도 함께 지운다 (같은 조합의 중복 평면도는 좌표까지 정확히
--- 같다고 보장할 수 없어, 남기는 행 기준으로 좌표를 다시 등록해야 한다).
+-- 있으면 ADD CONSTRAINT 자체가 실패하므로 정리가 필요하다. 이때 "먼저 만들어진 행"이 아니라
+-- "PUBLISHED 상태인 행"을 우선 보존해야 한다 - VenueMapService.publish()는 생성 순서와
+-- 무관하게 나중에 만들어진 행을 게시할 수 있어서, 단순히 created_at 기준으로만 남기면 이미
+-- 공개된 평면도와 그 좌표(booth_map_positions)가 삭제될 수 있다. PUBLISHED를 최우선으로,
+-- 그다음 created_at, id 순으로 각 조합에서 한 행만 남긴다.
 DELETE FROM booth_map_positions
     WHERE venue_map_id IN (
-        SELECT dup.id
-        FROM venue_maps dup
-        JOIN venue_maps keep
-            ON dup.event_id = keep.event_id
-           AND dup.map_type = keep.map_type
-           AND dup.floor_name = keep.floor_name
-           AND dup.version = keep.version
-        WHERE (dup.created_at, dup.id) > (keep.created_at, keep.id)
+        SELECT id
+        FROM (
+            SELECT
+                id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY event_id, map_type, floor_name, version
+                    ORDER BY
+                        CASE WHEN status = 'PUBLISHED' THEN 0 ELSE 1 END,
+                        created_at,
+                        id
+                ) AS rn
+            FROM venue_maps
+        ) ranked
+        WHERE rn > 1
     );
 
-DELETE FROM venue_maps dup
-    USING venue_maps keep
-    WHERE dup.event_id = keep.event_id
-      AND dup.map_type = keep.map_type
-      AND dup.floor_name = keep.floor_name
-      AND dup.version = keep.version
-      AND (dup.created_at, dup.id) > (keep.created_at, keep.id);
+DELETE FROM venue_maps
+    WHERE id IN (
+        SELECT id
+        FROM (
+            SELECT
+                id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY event_id, map_type, floor_name, version
+                    ORDER BY
+                        CASE WHEN status = 'PUBLISHED' THEN 0 ELSE 1 END,
+                        created_at,
+                        id
+                ) AS rn
+            FROM venue_maps
+        ) ranked
+        WHERE rn > 1
+    );
 
 ALTER TABLE venue_maps
     ADD CONSTRAINT uk_venue_maps_event_type_floor_version

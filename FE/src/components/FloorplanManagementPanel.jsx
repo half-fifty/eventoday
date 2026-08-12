@@ -66,6 +66,12 @@ export default function FloorplanManagementPanel({ eventId }) {
   const draggingBoothIdRef = useRef(null);
   // 행사를 빠르게 전환할 때 이전 요청의 응답이 늦게 도착해 현재 화면을 덮어쓰는 것을 막기 위한 버전 가드.
   const requestVersionRef = useRef(0);
+  // runAction 안에서 "이 액션이 시작된 뒤 행사가 바뀌었는가"를 판단하기 위한 세대 카운터.
+  // eventId는 컴포넌트 prop이라 runAction 클로저 안에서 캡처한 값과 나중에 다시 읽는 값이
+  // 항상 같은 렌더의 값이라 절대 달라지지 않는다(클로저이므로) - 그래서 eventId를 직접
+  // 비교하면 항상 "안 바뀜"으로 나온다. eventId가 실제로 바뀔 때만 증가하는 이 ref로 비교해야
+  // 진짜 세대 변화를 감지할 수 있다.
+  const eventGenerationRef = useRef(0);
 
   // 호출할 때마다 새 버전을 발급해, 나중에 시작됐지만 먼저 끝난 요청만 반영되도록 한다.
   // eventId가 바뀌는 effect도 결국 이 함수를 호출하므로 행사 전환도 자연히 최신 버전으로 갱신된다.
@@ -92,6 +98,7 @@ export default function FloorplanManagementPanel({ eventId }) {
   };
 
   useEffect(() => {
+    eventGenerationRef.current += 1;
     setUploadForm(EMPTY_UPLOAD_FORM);
     setFileInputKey((prev) => prev + 1);
     setSelectedMapId(null);
@@ -100,6 +107,10 @@ export default function FloorplanManagementPanel({ eventId }) {
     setError("");
     setMaps([]);
     setBooths([]);
+    // 이전 행사에서 진행 중이던 액션이 있었다면 그 결과는 이제 무의미하다 - runAction의
+    // 가드가 후속 상태 변경은 막아주지만 submitting 자체는 그 액션의 finally가(가드 때문에)
+    // 건드리지 않으므로 여기서 직접 꺼줘야 다음 행사에서 버튼이 계속 비활성화된 채로 남지 않는다.
+    setSubmitting(false);
     if (eventId) {
       loadAll(eventId);
     } else {
@@ -125,25 +136,29 @@ export default function FloorplanManagementPanel({ eventId }) {
     );
   };
 
-  const runAction = async (actionFn, successMessage) => {
+  // onSuccess: 재조회/메시지 표시와 마찬가지로 "행사가 안 바뀐 경우에만" 실행되어야 하는
+  // 부수 효과(예: 업로드 폼 초기화)를 넘긴다. actionFn 안에서 바로 호출하면 이 가드를 우회하게 된다.
+  const runAction = async (actionFn, successMessage, onSuccess) => {
     if (submitting) return;
-    // 이 액션이 시작된 시점의 행사를 기억해뒀다가, 완료 시점에 사용자가 이미 다른 행사로
-    // 넘어갔으면(=eventId가 달라졌으면) 그 행사 데이터를 재조회/메시지 표시하지 않는다.
-    // 안 그러면 이전 행사 재조회가 최신 버전을 새로 받아 지금 보고 있는 행사 데이터를 덮어쓴다.
-    const actionEventId = eventId;
+    // 이 액션이 시작된 시점의 "행사 세대"를 기억해뒀다가, 완료 시점에 사용자가 이미 다른
+    // 행사로 넘어갔으면(=세대가 달라졌으면) 그 행사 데이터를 재조회/메시지 표시하지 않는다.
+    // eventId 값 자체를 비교하면 안 된다 - eventId는 이 클로저가 만들어진 렌더의 값을
+    // 그대로 캡처하고 있어서 나중에 다시 읽어도 항상 같은 값이라 절대 안 바뀐 것처럼 보인다.
+    const actionGeneration = eventGenerationRef.current;
     setSubmitting(true);
     setError("");
     setMessage("");
     try {
       await actionFn();
-      if (eventId !== actionEventId) return;
+      if (eventGenerationRef.current !== actionGeneration) return;
+      onSuccess?.();
       setMessage(successMessage);
       await loadAll(eventId);
     } catch (err) {
-      if (eventId !== actionEventId) return;
+      if (eventGenerationRef.current !== actionGeneration) return;
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : err.message || "요청에 실패했습니다.");
     } finally {
-      if (eventId === actionEventId) {
+      if (eventGenerationRef.current === actionGeneration) {
         setSubmitting(false);
       }
     }
@@ -168,9 +183,10 @@ export default function FloorplanManagementPanel({ eventId }) {
         originalWidth: dimensions.width,
         originalHeight: dimensions.height,
       });
+    }, "평면도를 업로드했습니다.", () => {
       setUploadForm(EMPTY_UPLOAD_FORM);
       setFileInputKey((prev) => prev + 1);
-    }, "평면도를 업로드했습니다.");
+    });
 
   const handlePublish = (mapId) => runAction(() => publishVenueMap(eventId, mapId), "게시했습니다.");
 
