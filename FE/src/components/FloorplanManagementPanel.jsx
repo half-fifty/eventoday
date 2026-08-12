@@ -56,6 +56,9 @@ export default function FloorplanManagementPanel({ eventId }) {
   const [message, setMessage] = useState("");
 
   const [uploadForm, setUploadForm] = useState(EMPTY_UPLOAD_FORM);
+  // <input type="file">는 uncontrolled라 uploadForm.file을 null로 되돌려도 브라우저가 보여주는
+  // 파일명은 그대로 남는다. key를 바꿔 매 업로드 후 input을 새로 마운트해서 강제로 비운다.
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [selectedMapId, setSelectedMapId] = useState(null);
   const [positions, setPositions] = useState([]);
 
@@ -88,6 +91,7 @@ export default function FloorplanManagementPanel({ eventId }) {
   useEffect(() => {
     const version = ++requestVersionRef.current;
     setUploadForm(EMPTY_UPLOAD_FORM);
+    setFileInputKey((prev) => prev + 1);
     setSelectedMapId(null);
     setPositions([]);
     setMessage("");
@@ -150,6 +154,7 @@ export default function FloorplanManagementPanel({ eventId }) {
         originalHeight: dimensions.height,
       });
       setUploadForm(EMPTY_UPLOAD_FORM);
+      setFileInputKey((prev) => prev + 1);
     }, "평면도를 업로드했습니다.");
 
   const handlePublish = (mapId) => runAction(() => publishVenueMap(eventId, mapId), "게시했습니다.");
@@ -288,7 +293,13 @@ export default function FloorplanManagementPanel({ eventId }) {
                   </option>
                 ))}
               </select>
-              <input type="file" accept="image/*" onChange={handleFileChange} className="text-caption md:col-span-1" />
+              <input
+                key={fileInputKey}
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="text-caption md:col-span-1"
+              />
               <button
                 onClick={handleUpload}
                 disabled={submitting}
