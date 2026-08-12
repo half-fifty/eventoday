@@ -93,9 +93,31 @@ const getGuideBoothDetail = async (eventId, boothId) => {
   return response;
 };
 
+// 혼잡도 기반 부스 추천 (한산한 추천 부스 + 혼잡한 부스). ApiResponse 래핑 없이 그대로 반환한다.
+const getRecommendedBooths = async (eventId, params = {}) => {
+  const query = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, value]) => value !== "" && value != null))
+  );
+  const queryString = query.toString();
+  return apiRequest(`/events/${eventId}/recommended-booths${queryString ? `?${queryString}` : ""}`);
+};
+
+// 모바일 부스 검색 (비로그인도 조회 가능, 로그인 시 isInterested 포함). ApiResponse 래핑 없이 Page를 그대로 반환한다.
+const searchGuideBooths = async (eventId, params = {}) => {
+  const query = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, value]) => value !== "" && value != null))
+  );
+  const queryString = query.toString();
+  return apiRequest(`/events/${eventId}/guide/booths${queryString ? `?${queryString}` : ""}`);
+};
+
 const addBoothInterest = (boothId) => apiRequest(`/booths/${boothId}/interests`, json("POST"));
 
 const removeBoothInterest = (boothId) => apiRequest(`/booths/${boothId}/interests`, { method: "DELETE" });
+
+// 관심 등록한 부스의 빈자리 알림 수신 여부 켜기/끄기 (관심 등록이 먼저 되어 있어야 함).
+const updateVacancyNotification = (boothId, enabled) =>
+  apiRequest(`/booths/${boothId}/interests/vacancy-notification`, json("PATCH", { enabled }));
 
 // 이 엔드포인트는 다른 목록 API와 달리 ApiResponse({ data: ... }) 래핑 없이
 // 목록을 그대로 반환한다.
@@ -115,7 +137,10 @@ export {
   issueBoothQr,
   getBoothQr,
   getGuideBoothDetail,
+  getRecommendedBooths,
+  searchGuideBooths,
   addBoothInterest,
   removeBoothInterest,
+  updateVacancyNotification,
   getMyInterests,
 };

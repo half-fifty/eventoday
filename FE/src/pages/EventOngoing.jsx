@@ -5,10 +5,18 @@ import NotificationBell from "../components/NotificationBell.jsx";
 import VenueMapPins from "../components/VenueMapPins.jsx";
 import { ApiError } from "../api/apiClient.js";
 import { eventApi } from "../api/eventApi.js";
-import { listPublicVenueMaps } from "../api/venueMapApi.js";
-import { listAllPublicBooths, addBoothInterest, removeBoothInterest, getMyInterests } from "../api/boothApi.js";
+import { listPublicVenueMaps, getVenueMapMarkersWithCongestion } from "../api/venueMapApi.js";
+import {
+  listAllPublicBooths,
+  addBoothInterest,
+  removeBoothInterest,
+  getMyInterests,
+  getRecommendedBooths,
+  searchGuideBooths,
+} from "../api/boothApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
 import useAuth from "../hooks/useAuth.js";
+import { congestionLevelMeta, congestionLevelFromCount } from "../utils/congestion.js";
 
 const formatEventPeriod = (event) => {
   if (!event) return "";
@@ -17,23 +25,6 @@ const formatEventPeriod = (event) => {
   const fmt = (d) => `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
   return `${fmt(start)} – ${fmt(end)} · ${event.venueName ?? ""}`;
 };
-
-// 인기 부스 탭은 실시간 혼잡도/방문자 지표 API가 없어 여전히 mock 데이터를 사용한다.
-const initialBooths = [
-  { id: "A01", name: "맛있는 식탁", zone: "A구역 1층", congestion: 62, icon: "lunch_dining" },
-  { id: "A02", name: "그린 키친랩", zone: "A구역 1층", congestion: 30, icon: "blender" },
-  { id: "A03", name: "베이크하우스", zone: "A구역 1층", congestion: 88, icon: "bakery_dining" },
-  { id: "A04", name: "브루잉 스튜디오", zone: "A구역 2층", congestion: 45, icon: "coffee" },
-  { id: "A05", name: "스마트키친 로보틱스", zone: "A구역 2층", congestion: 71, icon: "smart_toy" },
-  { id: "A06", name: "콜드체인 솔루션", zone: "A구역 2층", congestion: 20, icon: "ac_unit" },
-  { id: "A07", name: "비건 델리", zone: "B구역 1층", congestion: 55, icon: "eco" },
-  { id: "A08", name: "프레시 로스터리", zone: "B구역 1층", congestion: 40, icon: "coffee_maker" },
-  { id: "A09", name: "패키징 이노베이션", zone: "B구역 2층", congestion: 66, icon: "inventory_2" },
-  { id: "A10", name: "푸드 딜리버리 테크", zone: "B구역 2층", congestion: 33, icon: "delivery_dining" },
-];
-
-const levelLabel = (v) => (v >= 70 ? "혼잡" : v >= 40 ? "보통" : "여유");
-const levelColor = (v) => (v >= 70 ? "status-visited" : v >= 40 ? "status-pending" : "status-available");
 
 const tabButtons = [
   { key: "map", label: "행사장 평면도", mobile: "평면도", icon: "map" },
@@ -56,20 +47,36 @@ export default function EventOngoing() {
   const [venueMaps, setVenueMaps] = useState([]);
   const [loadingVenueMaps, setLoadingVenueMaps] = useState(false);
   const [venueMapError, setVenueMapError] = useState("");
-  const [mapPinBooth, setMapPinBooth] = useState(null);
+  // 평면도 핀별 혼잡도(최근 10분 QR스캔 수 기준). boothId -> { congestionCount, congestionLevel }
+  const [congestionByBoothId, setCongestionByBoothId] = useState(new Map());
 
-  const [booths, setBooths] = useState(initialBooths);
   const [tab, setTab] = useState("map");
 
-  // 실제 배정 완료(ASSIGNED)된 참가 부스 목록. 인기 부스 탭은 아직 mock(booths)을 그대로 쓴다.
+  // 실제 배정 완료(ASSIGNED)된 참가 부스 목록.
   const [participatingBooths, setParticipatingBooths] = useState([]);
-  // 상태 필터링 전 전체 공개 부스 목록. 배치도 핀은 ASSIGNED가 아닌 부스도 찍힐 수 있어 대표이미지·소개 조회에 사용한다.
+  // 상태 필터링 전 전체 공개 부스 목록. 배치도 핀·인기 부스 탭은 ASSIGNED가 아닌 부스도 찍힐 수 있어 대표이미지·소개 조회에 사용한다.
   const [allPublicBooths, setAllPublicBooths] = useState([]);
   const [loadingParticipatingBooths, setLoadingParticipatingBooths] = useState(false);
   const [participatingBoothsError, setParticipatingBoothsError] = useState("");
-  const [activeBoothId, setActiveBoothId] = useState(null);
+  // 바텀시트에 표시할 부스 (평면도 핀 클릭 / 인기·추천 부스 탭 항목 클릭이 공용으로 사용)
+  const [activeBooth, setActiveBooth] = useState(null);
   const [boothSheetOpen, setBoothSheetOpen] = useState(false);
   const [qrSheetOpen, setQrSheetOpen] = useState(false);
+
+  // 혼잡도 기반 추천/혼잡 부스
+  const [recommendedBooths, setRecommendedBooths] = useState([]);
+  const [congestedBooths, setCongestedBooths] = useState([]);
+  const [recommendationMessage, setRecommendationMessage] = useState("");
+  const [loadingRecommendation, setLoadingRecommendation] = useState(false);
+  const [recommendationError, setRecommendationError] = useState("");
+
+  // 모바일 부스 검색
+  const [searchSheetOpen, setSearchSheetOpen] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [searchSubmitted, setSearchSubmitted] = useState(false);
 
   // 관심 부스: 실제 백엔드(GET /booths/interests)와 연동된다.
   const [interestedBooths, setInterestedBooths] = useState([]);
@@ -174,6 +181,7 @@ export default function EventOngoing() {
       setVenueMaps([]);
       setVenueMapError("");
       setLoadingVenueMaps(false);
+      setCongestionByBoothId(new Map());
       return;
     }
 
@@ -181,9 +189,24 @@ export default function EventOngoing() {
     setVenueMaps([]);
     setVenueMapError("");
     setLoadingVenueMaps(true);
-    listPublicVenueMaps(selectedEventId, "VISITOR")
-      .then((data) => {
-        if (!cancelled) setVenueMaps(data ?? []);
+    Promise.all([
+      listPublicVenueMaps(selectedEventId, "VISITOR"),
+      // 혼잡도는 부가 정보라 실패해도 평면도 자체는 보여줘야 하므로 별도로 흡수한다.
+      getVenueMapMarkersWithCongestion(selectedEventId, "VISITOR").catch(() => []),
+    ])
+      .then(([maps, markerFloors]) => {
+        if (cancelled) return;
+        setVenueMaps(maps ?? []);
+        const nextCongestionByBoothId = new Map();
+        (markerFloors ?? []).forEach((floor) => {
+          (floor.positions ?? []).forEach((position) => {
+            nextCongestionByBoothId.set(position.boothId, {
+              congestionCount: position.congestionCount,
+              congestionLevel: position.congestionLevel,
+            });
+          });
+        });
+        setCongestionByBoothId(nextCongestionByBoothId);
       })
       .catch((error) => {
         if (!cancelled) {
@@ -199,6 +222,35 @@ export default function EventOngoing() {
       cancelled = true;
     };
   }, [selectedEventId, eventDetail]);
+
+  // 혼잡도 기반 추천/혼잡 부스
+  useEffect(() => {
+    if (!selectedEventId) return;
+    let cancelled = false;
+
+    setLoadingRecommendation(true);
+    setRecommendationError("");
+    getRecommendedBooths(selectedEventId, { size: 5 })
+      .then((data) => {
+        if (cancelled) return;
+        setRecommendedBooths(data?.recommendedBooths ?? []);
+        setCongestedBooths(data?.congestedBooths ?? []);
+        setRecommendationMessage(data?.recommendation ?? "");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setRecommendedBooths([]);
+        setCongestedBooths([]);
+        setRecommendationError(error instanceof ApiError ? error.message : "혼잡도 정보를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRecommendation(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEventId]);
 
   // 참가 부스: 공개 목록(AVAILABLE/ASSIGNED)에서 실제 배정 완료된 부스만 골라 보여준다.
   useEffect(() => {
@@ -233,41 +285,88 @@ export default function EventOngoing() {
     };
   }, [selectedEventId]);
 
-  const top3 = useMemo(
-    () => [...booths].sort((a, b) => b.congestion - a.congestion).slice(0, 3),
-    [booths]
-  );
-  const activeBooth = mapPinBooth || booths.find((b) => b.id === activeBoothId) || null;
-  // 인기 부스(mock)는 실제 boothId가 없어 관심 등록을 지원하지 않는다.
-  const activeBoothRealId = mapPinBooth?.boothId ?? null;
-  const activeBoothIsInterested = activeBoothRealId != null && interestedBoothIds.has(activeBoothRealId);
+  // 인기·추천 부스 탭에서 boothId로 대표이미지·구역 등 상세 정보를 찾을 때 사용.
+  const boothMetaById = useMemo(() => {
+    const map = new Map();
+    allPublicBooths.forEach((b) => map.set(b.id, b));
+    return map;
+  }, [allPublicBooths]);
 
-  const openBoothSheet = (id) => {
-    setMapPinBooth(null);
-    setActiveBoothId(id);
+  const activeBoothIsInterested = activeBooth?.boothId != null && interestedBoothIds.has(activeBooth.boothId);
+
+  const openBoothDetailSheet = (boothInfo) => {
+    setActiveBooth(boothInfo);
     setBoothSheetOpen(true);
   };
 
-  // 배치도 핀은 참가 부스 목록(mock)에 없는 실제 부스라서 같은 바텀시트를 재사용한다.
-  // 혼잡도/대기시간/방문자 수는 실제 지표 API가 없어 표시하지 않는다(정보 없음 처리).
+  // 배치도 핀 클릭 시 바텀시트에 표시할 정보 구성 (평면도 마커 API의 혼잡도를 함께 붙인다).
   const openMapBoothSheet = (position, venueMap) => {
     const boothDetail = allPublicBooths.find((b) => b.id === position.boothId);
-    setMapPinBooth({
+    const congestion = congestionByBoothId.get(position.boothId) ?? null;
+    openBoothDetailSheet({
       boothId: position.boothId,
-      id: position.boothCode,
+      code: position.boothCode,
       name: position.displayName || position.boothCode,
       zone: venueMap.floorName,
-      icon: "storefront",
-      isMapBooth: true,
       representativeFileId: boothDetail?.representativeFileId ?? null,
       shortIntro: boothDetail?.shortIntro ?? "",
+      congestionCount: congestion?.congestionCount ?? null,
+      congestionLevel: congestion?.congestionLevel ?? null,
     });
-    setBoothSheetOpen(true);
+  };
+
+  // 인기·추천 부스 탭 항목 클릭 시 바텀시트에 표시할 정보 구성.
+  const openRankedBoothSheet = (entry) => {
+    const boothDetail = boothMetaById.get(entry.boothId);
+    openBoothDetailSheet({
+      boothId: entry.boothId,
+      code: boothDetail?.boothCode ?? "",
+      name: boothDetail?.displayName || boothDetail?.boothCode || `부스 #${entry.boothId}`,
+      zone: [boothDetail?.floorName, boothDetail?.zoneName].filter(Boolean).join(" · "),
+      representativeFileId: boothDetail?.representativeFileId ?? null,
+      shortIntro: boothDetail?.shortIntro ?? "",
+      congestionCount: entry.congestionCount ?? null,
+      congestionLevel: congestionLevelFromCount(entry.congestionCount),
+    });
   };
 
   const toggleInterestFromSheet = () => {
-    if (!activeBoothRealId || !isAuthenticated) return;
-    setBoothInterest(activeBoothRealId, !interestedBoothIds.has(activeBoothRealId));
+    if (!activeBooth?.boothId || !isAuthenticated) return;
+    setBoothInterest(activeBooth.boothId, !interestedBoothIds.has(activeBooth.boothId));
+  };
+
+  // 상단 배너에 쓸 행사장 전체 혼잡도 요약 (평면도 핀 혼잡도 중 최댓값 기준).
+  const overallCongestionLevel = useMemo(() => {
+    const levels = Array.from(congestionByBoothId.values()).map((v) => v.congestionLevel);
+    if (levels.length === 0) return null;
+    if (levels.includes("HIGH")) return "HIGH";
+    if (levels.includes("MEDIUM")) return "MEDIUM";
+    return "LOW";
+  }, [congestionByBoothId]);
+
+  const runBoothSearch = () => {
+    if (!selectedEventId) return;
+    const keyword = searchKeyword.trim();
+    setSearchSubmitted(true);
+    setSearchLoading(true);
+    setSearchError("");
+    searchGuideBooths(selectedEventId, { keyword, page: 0, size: 20 })
+      .then((data) => {
+        setSearchResults(Array.isArray(data?.content) ? data.content : []);
+      })
+      .catch((error) => {
+        setSearchResults([]);
+        setSearchError(error instanceof ApiError ? error.message : "부스 검색에 실패했습니다.");
+      })
+      .finally(() => setSearchLoading(false));
+  };
+
+  const openSearchSheet = () => {
+    setSearchKeyword("");
+    setSearchResults([]);
+    setSearchError("");
+    setSearchSubmitted(false);
+    setSearchSheetOpen(true);
   };
 
   return (
@@ -276,9 +375,24 @@ export default function EventOngoing() {
       <header className="fixed top-0 w-full h-[44px] z-[100] bg-black flex justify-between items-center px-lg">
         <Link to="/" className="font-hero-display text-tagline text-white">EvenToday</Link>
         <div className="flex items-center gap-sm">
-          <button className="text-white/80 hover:text-white transition-colors"><Icon name="search" className="text-[20px]" /></button>
+          <button
+            onClick={openSearchSheet}
+            aria-label="부스 검색"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
+          >
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </button>
           <NotificationBell />
-          <button onClick={() => setQrSheetOpen(true)} className="text-white/80 hover:text-white transition-colors"><Icon name="qr_code_2" className="text-[20px]" /></button>
+          <button
+            onClick={() => setQrSheetOpen(true)}
+            aria-label="입장 QR 보기"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-status-available transition-colors hover:bg-white/10"
+          >
+            <Icon name="qr_code_2" fill className="text-[20px]" />
+          </button>
         </div>
       </header>
 
@@ -322,8 +436,14 @@ export default function EventOngoing() {
           </div>
           <div className="max-w-[900px] mx-auto mt-lg glass-nav border border-hairline rounded-xl p-md flex items-center justify-between flex-wrap gap-sm">
             <div className="flex items-center gap-sm">
-              <div className="w-3 h-3 rounded-full dot-normal pulse" />
-              <span className="font-body-strong">실시간 행사장 혼잡도: 보통</span>
+              <div
+                className={`w-3 h-3 rounded-full pulse ${
+                  overallCongestionLevel ? `bg-${congestionLevelMeta(overallCongestionLevel).colorClass}` : "dot-normal"
+                }`}
+              />
+              <span className="font-body-strong">
+                실시간 행사장 혼잡도: {overallCongestionLevel ? congestionLevelMeta(overallCongestionLevel).label : "정보 없음"}
+              </span>
             </div>
             <div className="flex gap-xs text-caption">
               <span className="px-sm py-1 bg-status-available/10 text-status-available font-bold rounded-full">여유</span>
@@ -344,11 +464,32 @@ export default function EventOngoing() {
             )}
             {!loadingVenueMaps && venueMaps.length > 0 && (
               <div className="space-y-lg">
+                <div className="flex flex-wrap items-center gap-md text-caption text-ink-muted">
+                  <span>범례</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-available" />여유</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-pending" />보통</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-visited" />혼잡</span>
+                  {isAuthenticated && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-primary ring-2 ring-primary ring-offset-1" />내 관심 부스
+                    </span>
+                  )}
+                </div>
                 {venueMaps.map((venueMap) => (
                   <div key={venueMap.id}>
                     <h3 className="font-body-strong text-body mb-sm">{venueMap.floorName}</h3>
                     <div className="bg-surface-pearl border border-hairline rounded-2xl p-lg">
-                      <VenueMapPins venueMap={venueMap} onPinClick={(p) => openMapBoothSheet(p, venueMap)} />
+                      <VenueMapPins
+                        venueMap={venueMap}
+                        onPinClick={(p) => openMapBoothSheet(p, venueMap)}
+                        pinClassName={(p) => {
+                          const congestion = congestionByBoothId.get(p.boothId);
+                          const meta = congestion ? congestionLevelMeta(congestion.congestionLevel) : null;
+                          const baseColor = meta ? `bg-${meta.colorClass}` : "bg-primary";
+                          const interestedRing = interestedBoothIds.has(p.boothId) ? " ring-2 ring-primary ring-offset-1" : "";
+                          return baseColor + interestedRing;
+                        }}
+                      />
                     </div>
                   </div>
                 ))}
@@ -396,29 +537,94 @@ export default function EventOngoing() {
         {/* TAB: Popular */}
         {tab === "popular" && (
           <section className="py-lg px-lg max-w-[900px] mx-auto">
-            <h2 className="font-display-md text-[20px] mb-md">인기 부스 TOP 3</h2>
-            <div className="space-y-md">
-              {top3.map((b, i) => (
-                <div
-                  key={b.id}
-                  onClick={() => openBoothSheet(b.id)}
-                  className="flex gap-md bg-white p-md rounded-2xl border border-hairline shadow-sm cursor-pointer active:bg-surface-pearl transition-colors"
-                >
-                  <div className="w-16 h-16 rounded-lg bg-surface-container-low flex items-center justify-center flex-shrink-0 border border-hairline">
-                    <Icon name={b.icon} className="text-primary" />
+            <h2 className="font-display-md text-[20px] mb-md">인기·추천 부스</h2>
+            {loadingRecommendation && <p className="text-caption text-ink-muted">혼잡도 정보를 불러오는 중입니다.</p>}
+            {recommendationError && <p className="text-caption text-error">{recommendationError}</p>}
+
+            {!loadingRecommendation && !recommendationError && (
+              <>
+                {recommendationMessage && (
+                  <div className="bg-primary-container/10 border border-primary-container/30 rounded-xl p-md mb-lg flex items-start gap-sm">
+                    <Icon name="lightbulb" className="text-primary flex-shrink-0" />
+                    <p className="text-caption text-on-surface-variant">{recommendationMessage}</p>
                   </div>
-                  <div className="flex-grow flex flex-col justify-center">
-                    <div className="flex items-center gap-xs mb-1">
-                      <span className="bg-primary text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded">{i + 1}</span>
-                      <span className="text-caption text-secondary">{b.zone}</span>
-                    </div>
-                    <h3 className="font-body-strong">{b.name}</h3>
-                    <p className="text-caption text-secondary">방문자 {1200 - i * 300}명</p>
+                )}
+
+                <h3 className="font-body-strong text-body mb-sm flex items-center gap-xs">
+                  <Icon name="local_fire_department" className="text-status-visited text-[18px]" /> 지금 붐비는 부스
+                </h3>
+                {congestedBooths.length === 0 ? (
+                  <p className="text-caption text-ink-muted mb-lg">아직 집계된 혼잡도 데이터가 없어요.</p>
+                ) : (
+                  <div className="space-y-md mb-lg">
+                    {congestedBooths.map((entry, i) => {
+                      const meta = boothMetaById.get(entry.boothId);
+                      return (
+                        <div
+                          key={entry.boothId}
+                          onClick={() => openRankedBoothSheet(entry)}
+                          className="flex gap-md bg-white p-md rounded-2xl border border-hairline shadow-sm cursor-pointer active:bg-surface-pearl transition-colors"
+                        >
+                          <div className="w-16 h-16 rounded-lg bg-surface-container-low flex items-center justify-center flex-shrink-0 border border-hairline overflow-hidden">
+                            {meta?.representativeFileId ? (
+                              <img src={fileDownloadUrl(meta.representativeFileId)} alt={meta.displayName || meta.boothCode} className="w-full h-full object-cover" />
+                            ) : (
+                              <Icon name="storefront" className="text-primary" />
+                            )}
+                          </div>
+                          <div className="flex-grow flex flex-col justify-center">
+                            <div className="flex items-center gap-xs mb-1">
+                              <span className="bg-status-visited text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded">{i + 1}</span>
+                              <span className="text-caption text-secondary">{[meta?.floorName, meta?.zoneName].filter(Boolean).join(" · ")}</span>
+                            </div>
+                            <h3 className="font-body-strong">{meta?.displayName || meta?.boothCode || `부스 #${entry.boothId}`}</h3>
+                            <p className="text-caption text-secondary">최근 10분 방문 {entry.congestionCount ?? 0}명</p>
+                          </div>
+                          <div className="flex items-center"><Icon name="chevron_right" className="text-secondary" /></div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="flex items-center"><Icon name="chevron_right" className="text-secondary" /></div>
-                </div>
-              ))}
-            </div>
+                )}
+
+                <h3 className="font-body-strong text-body mb-sm flex items-center gap-xs">
+                  <Icon name="eco" className="text-status-available text-[18px]" /> 여유로운 추천 부스
+                </h3>
+                {recommendedBooths.length === 0 ? (
+                  <p className="text-caption text-ink-muted">아직 집계된 혼잡도 데이터가 없어요.</p>
+                ) : (
+                  <div className="space-y-md">
+                    {recommendedBooths.map((entry) => {
+                      const meta = boothMetaById.get(entry.boothId);
+                      return (
+                        <div
+                          key={entry.boothId}
+                          onClick={() => openRankedBoothSheet(entry)}
+                          className="flex gap-md bg-white p-md rounded-2xl border border-hairline shadow-sm cursor-pointer active:bg-surface-pearl transition-colors"
+                        >
+                          <div className="w-16 h-16 rounded-lg bg-surface-container-low flex items-center justify-center flex-shrink-0 border border-hairline overflow-hidden">
+                            {meta?.representativeFileId ? (
+                              <img src={fileDownloadUrl(meta.representativeFileId)} alt={meta.displayName || meta.boothCode} className="w-full h-full object-cover" />
+                            ) : (
+                              <Icon name="storefront" className="text-primary" />
+                            )}
+                          </div>
+                          <div className="flex-grow flex flex-col justify-center">
+                            <div className="flex items-center gap-xs mb-1">
+                              <span className="bg-status-available text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded">{entry.rank}</span>
+                              <span className="text-caption text-secondary">{[meta?.floorName, meta?.zoneName].filter(Boolean).join(" · ")}</span>
+                            </div>
+                            <h3 className="font-body-strong">{meta?.displayName || meta?.boothCode || `부스 #${entry.boothId}`}</h3>
+                            <p className="text-caption text-secondary">최근 10분 방문 {entry.congestionCount ?? 0}명</p>
+                          </div>
+                          <div className="flex items-center"><Icon name="chevron_right" className="text-secondary" /></div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
           </section>
         )}
 
@@ -502,43 +708,41 @@ export default function EventOngoing() {
               <div className="flex justify-between items-start mb-md">
                 <div>
                   <h3 className="font-display-md text-[24px] text-on-surface">{activeBooth.name}</h3>
-                  <p className="text-secondary text-caption">{activeBooth.id} · {activeBooth.zone}</p>
+                  <p className="text-secondary text-caption">{[activeBooth.code, activeBooth.zone].filter(Boolean).join(" · ")}</p>
                 </div>
-                {!activeBooth.isMapBooth && (
-                  <span className={`px-sm py-1 text-caption font-bold rounded-full bg-${levelColor(activeBooth.congestion)}/10 text-${levelColor(activeBooth.congestion)}`}>
-                    {levelLabel(activeBooth.congestion)}
+                {activeBooth.congestionLevel && (
+                  <span className={`px-sm py-1 text-caption font-bold rounded-full bg-${congestionLevelMeta(activeBooth.congestionLevel).colorClass}/10 text-${congestionLevelMeta(activeBooth.congestionLevel).colorClass}`}>
+                    {congestionLevelMeta(activeBooth.congestionLevel).label}
                   </span>
                 )}
               </div>
-              {activeBooth.isMapBooth && (
-                <div className="mb-lg">
-                  <div className="h-32 rounded-xl overflow-hidden bg-surface-container-low flex items-center justify-center mb-sm">
-                    {activeBooth.representativeFileId ? (
-                      <img
-                        src={fileDownloadUrl(activeBooth.representativeFileId)}
-                        alt={activeBooth.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <Icon name="storefront" className="text-[32px] text-primary" />
-                    )}
-                  </div>
-                  {activeBooth.shortIntro && (
-                    <p className="text-caption text-on-surface-variant">{activeBooth.shortIntro}</p>
+              <div className="mb-lg">
+                <div className="h-32 rounded-xl overflow-hidden bg-surface-container-low flex items-center justify-center mb-sm">
+                  {activeBooth.representativeFileId ? (
+                    <img
+                      src={fileDownloadUrl(activeBooth.representativeFileId)}
+                      alt={activeBooth.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Icon name="storefront" className="text-[32px] text-primary" />
                   )}
                 </div>
-              )}
+                {activeBooth.shortIntro && (
+                  <p className="text-caption text-on-surface-variant">{activeBooth.shortIntro}</p>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-sm mb-lg">
                 <div className="bg-surface-container-low p-md rounded-xl">
-                  <p className="text-caption text-secondary mb-xs">실시간 대기</p>
+                  <p className="text-caption text-secondary mb-xs">최근 10분 방문</p>
                   <p className="font-display-md text-primary text-[22px]">
-                    {activeBooth.isMapBooth ? "정보 없음" : `${Math.round(activeBooth.congestion / 2)}분`}
+                    {activeBooth.congestionCount != null ? `${activeBooth.congestionCount}명` : "정보 없음"}
                   </p>
                 </div>
                 <div className="bg-surface-container-low p-md rounded-xl">
-                  <p className="text-caption text-secondary mb-xs">오늘 방문자</p>
+                  <p className="text-caption text-secondary mb-xs">혼잡도</p>
                   <p className="font-body-strong">
-                    {activeBooth.isMapBooth ? "정보 없음" : `${(1200 - activeBooth.congestion * 5).toLocaleString()}명`}
+                    {activeBooth.congestionLevel ? congestionLevelMeta(activeBooth.congestionLevel).label : "정보 없음"}
                   </p>
                 </div>
               </div>
@@ -548,8 +752,8 @@ export default function EventOngoing() {
               <div className="flex gap-sm">
                 <button
                   onClick={toggleInterestFromSheet}
-                  disabled={!activeBoothRealId || !isAuthenticated || togglingInterestId === activeBoothRealId}
-                  title={!activeBoothRealId ? "실제 부스 정보가 없어 관심 등록을 지원하지 않아요" : !isAuthenticated ? "로그인 후 이용할 수 있어요" : undefined}
+                  disabled={!activeBooth.boothId || !isAuthenticated || togglingInterestId === activeBooth.boothId}
+                  title={!activeBooth.boothId ? "실제 부스 정보가 없어 관심 등록을 지원하지 않아요" : !isAuthenticated ? "로그인 후 이용할 수 있어요" : undefined}
                   className="flex-1 border border-hairline rounded-xl py-md font-body-strong flex items-center justify-center gap-xs active:scale-95 transition-transform disabled:opacity-50"
                 >
                   {activeBoothIsInterested ? (
@@ -559,9 +763,7 @@ export default function EventOngoing() {
                   )}
                 </button>
                 <Link
-                  to={activeBooth.isMapBooth
-                    ? `/booth-detail?eventId=${selectedEventId}&boothId=${activeBooth.boothId}`
-                    : `/booth-detail?booth=${activeBooth.id}`}
+                  to={`/booth-detail?eventId=${selectedEventId}&boothId=${activeBooth.boothId}`}
                   className="flex-1 bg-primary text-white rounded-xl py-md font-body-strong text-center active:scale-95 transition-transform"
                 >
                   부스 상세·예약
@@ -587,6 +789,59 @@ export default function EventOngoing() {
           </div>
           <p className="font-body-strong">회원 입장 QR · 사용 전</p>
           <p className="text-caption text-ink-muted mt-xs">화면 밝기를 최대로 설정하면 현장 스캔이 더 원활해요.</p>
+        </div>
+      </div>
+
+      {/* Booth search sheet */}
+      <div className={`sheet-overlay${searchSheetOpen ? " open" : ""}`}>
+        <div className="sheet-backdrop" onClick={() => setSearchSheetOpen(false)} />
+        <div className="sheet-panel max-w-[600px] mx-auto left-0 right-0 max-h-[80vh] flex flex-col">
+          <div className="w-12 h-1.5 bg-surface-variant rounded-full mx-auto mb-lg flex-shrink-0" />
+          <div className="flex items-center gap-sm bg-surface-pearl border border-hairline rounded-full px-lg h-[48px] mb-md flex-shrink-0">
+            <Icon name="search" className="text-ink-muted text-[20px]" />
+            <input
+              autoFocus
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && runBoothSearch()}
+              type="text"
+              placeholder="부스명으로 검색"
+              className="flex-1 bg-transparent outline-none text-body"
+            />
+            <button onClick={runBoothSearch} className="text-primary font-body-strong text-caption flex-shrink-0">검색</button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {searchLoading && <p className="text-caption text-ink-muted">검색 중입니다.</p>}
+            {searchError && <p className="text-caption text-error">{searchError}</p>}
+            {!searchLoading && !searchError && searchSubmitted && searchResults.length === 0 && (
+              <p className="text-caption text-ink-muted py-lg text-center">검색 결과가 없어요.</p>
+            )}
+            {!searchLoading && searchResults.length > 0 && (
+              <div className="space-y-sm">
+                {searchResults.map((b) => (
+                  <Link
+                    key={b.boothId}
+                    to={`/booth-detail?eventId=${selectedEventId}&boothId=${b.boothId}`}
+                    onClick={() => setSearchSheetOpen(false)}
+                    className="flex items-center gap-md p-sm rounded-xl hover:bg-surface-pearl transition-colors"
+                  >
+                    <div className="w-12 h-12 rounded-lg bg-surface-container-low flex items-center justify-center flex-shrink-0">
+                      <Icon name="storefront" className="text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-body-strong truncate">{b.displayName || b.boothCode}</p>
+                      <p className="text-caption text-ink-muted truncate">{b.shortIntro}</p>
+                    </div>
+                    {b.averageRating != null && (
+                      <span className="text-caption text-secondary flex items-center gap-1 flex-shrink-0">
+                        <Icon name="star" fill className="text-[13px] text-amber-500" />{b.averageRating.toFixed(1)}
+                      </span>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

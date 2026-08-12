@@ -39,6 +39,12 @@ const upsertPositions = async (eventId, mapId, positions) => {
   return response.data;
 };
 
+// 최근 10분 QR스캔 수 기준 혼잡도(HIGH/MEDIUM/LOW)를 포함한 게시된 평면도 마커 목록.
+// ApiResponse 래핑 없이 그대로 반환한다.
+const getVenueMapMarkersWithCongestion = async (eventId, mapType) => {
+  return apiRequest(`/events/${eventId}/guide/markers?mapType=${encodeURIComponent(mapType)}`);
+};
+
 export {
   listVenueMaps,
   listPublicVenueMaps,
@@ -46,4 +52,5 @@ export {
   publishVenueMap,
   deleteVenueMap,
   upsertPositions,
+  getVenueMapMarkersWithCongestion,
 };
