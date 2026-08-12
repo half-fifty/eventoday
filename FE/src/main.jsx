@@ -50,7 +50,7 @@ const router = createBrowserRouter([
   { path: "/", element: <Home /> },
   { path: "/login", element: <Login /> },
   { path: "/business/signup", element: <BusinessSignup /> },
-  { path: "/event-ongoing", element: <EventOngoing /> },
+  { path: "/events/:eventId/ongoing", element: <EventOngoing /> },
   { path: "/event-recruiting", element: <EventRecruiting /> },
   { path: "/recruitments", element: <RecruitmentList /> },
   { path: "/recruitments/:recruitmentId", element: <RecruitmentDetail /> },
