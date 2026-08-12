@@ -60,6 +60,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             t.eventId AS eventId,
             e.name AS eventName,
             e.startAt AS eventStartAt,
+            e.endAt AS eventEndAt,
             t.totalQuantity AS quantity,
             t.status AS ticketOrderStatus
         FROM Payment p

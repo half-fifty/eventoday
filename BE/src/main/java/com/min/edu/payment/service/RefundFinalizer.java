@@ -12,6 +12,7 @@ import com.min.edu.admission.domain.ExchangeCodeStatus;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.PaymentOrder;
@@ -44,6 +45,7 @@ public class RefundFinalizer {
     private final PaymentRefundRepository paymentRefundRepository;
     private final ExchangeCodeRepository exchangeCodeRepository;
     private final TicketInventoryGateway ticketInventoryGateway;
+    private final EventOperationDeadlinePolicy deadlinePolicy;
 
     @Transactional
     public CreateRefundResponse finalizeRefund(
@@ -80,7 +82,7 @@ public class RefundFinalizer {
             return CreateRefundResponse.of(refund, paymentOrder.getOrderNo());
         }
 
-        validateRefundable(projection, payment, paymentOrder, ticketOrder);
+        validateRefundable(projection, payment, paymentOrder, ticketOrder, refund);
         validateTossCancelResponse(projection, tossResponse);
 
         OffsetDateTime now = OffsetDateTime.now();
@@ -126,7 +128,8 @@ public class RefundFinalizer {
             RefundPaymentProjection projection,
             Payment payment,
             PaymentOrder paymentOrder,
-            TicketOrder ticketOrder) {
+            TicketOrder ticketOrder,
+            PaymentRefund refund) {
         if (!payment.isPaid()
                 || !paymentOrder.isPaid()
                 || !ticketOrder.isConfirmed()
@@ -134,7 +137,7 @@ public class RefundFinalizer {
             throw new BusinessException(GlobalErrorCode.REFUND_NOT_ALLOWED);
         }
 
-        if (!projection.getEventStartAt().isAfter(OffsetDateTime.now())) {
+        if (!deadlinePolicy.isBeforeOperationCutoff(refund.getRequestedAt(), projection.getEventEndAt())) {
             throw new BusinessException(GlobalErrorCode.REFUND_NOT_ALLOWED);
         }
 

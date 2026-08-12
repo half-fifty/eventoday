@@ -125,7 +125,7 @@ public enum GlobalErrorCode implements ErrorCode {
     EXCHANGE_CODE_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "ADMISSION_404_001", "교환 코드 발급 요청을 찾을 수 없습니다."),
     EXCHANGE_CODE_REQUEST_ALREADY_EXISTS(HttpStatus.CONFLICT, "ADMISSION_409_001", "이미 처리 대기 중인 교환 코드 발급 요청이 있습니다."),
     EXCHANGE_CODE_REQUEST_INVALID_STATE(HttpStatus.CONFLICT, "ADMISSION_409_002", "현재 상태에서는 교환 코드 발급 요청을 심사할 수 없습니다."),
-    EXCHANGE_CODE_REQUEST_EVENT_ALREADY_STARTED(HttpStatus.CONFLICT, "ADMISSION_409_003", "행사 시작 이후에는 교환 코드 발급 요청을 생성할 수 없습니다."),
+    EXCHANGE_CODE_REQUEST_EVENT_ALREADY_STARTED(HttpStatus.CONFLICT, "ADMISSION_409_003", "행사 티켓 운영 마감 이후에는 교환 코드 발급 요청을 생성할 수 없습니다."),
     EXCHANGE_CODE_REQUEST_EVENT_NOT_OPEN(HttpStatus.CONFLICT, "ADMISSION_409_004", "교환 코드 발급 요청이 가능한 행사 상태가 아닙니다."),
     NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND,"NOTIFICATION_404_001","알림을 찾을 수 없습니다."),
     EMAIL_SEND_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "MAIL_503_001", "이메일 발송 서비스를 일시적으로 이용할 수 없습니다.");

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.EventStatus;
+import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.payment.dto.request.CreateTicketOrderRequest;
 import com.min.edu.payment.dto.request.GuestBuyerRequest;
 import com.min.edu.payment.event.EventTicketSnapshot;
@@ -20,6 +21,12 @@ public class TicketOrderPolicy {
         Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final Pattern PHONE_PATTERN =
         Pattern.compile("^(?:\\d{2,3}-?\\d{3,4}-?\\d{4})$");
+
+    private final EventOperationDeadlinePolicy deadlinePolicy;
+
+    public TicketOrderPolicy(EventOperationDeadlinePolicy deadlinePolicy) {
+        this.deadlinePolicy = deadlinePolicy;
+    }
 
     public void validate(
             Long buyerMemberId,
@@ -90,8 +97,10 @@ public class TicketOrderPolicy {
     private boolean isAfterSalesEnd(
             EventTicketSnapshot event,
             OffsetDateTime now) {
-        return event.ticketSalesEndAt() != null
-            && !now.isBefore(event.ticketSalesEndAt());
+        return !now.isBefore(deadlinePolicy.effectiveTicketSalesEndAt(
+            event.ticketSalesEndAt(),
+            event.endAt()
+        ));
     }
 
     private boolean isBlank(String value) {

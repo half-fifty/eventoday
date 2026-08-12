@@ -20,6 +20,7 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.Event;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.domain.EventStatus;
+import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventRepository;
@@ -66,7 +67,8 @@ class ExchangeCodeRequestServiceTest {
             eventRepository,
             eventMemberRepository,
             organizationMemberRepository,
-            exceptionTranslator
+            exceptionTranslator,
+            new EventOperationDeadlinePolicy()
         );
     }
 
@@ -197,8 +199,48 @@ class ExchangeCodeRequestServiceTest {
     }
 
     @Test
-    void createRequest_failsWhenEventAlreadyStarted() {
-        Event event = event(EventStatus.PUBLISHED, OffsetDateTime.now().minusMinutes(1));
+    void createRequest_allowsAfterEventStartBeforeOperationCutoff() {
+        OffsetDateTime now = OffsetDateTime.now();
+        Event event = event(EventStatus.PUBLISHED, now.minusHours(1), now.plusHours(3));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event));
+        given(organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
+            eq(100L), eq(10L), eq(OrganizationMemberStatus.ACTIVE), any()))
+            .willReturn(true);
+        given(exchangeCodeRequestRepository.save(any(ExchangeCodeRequest.class)))
+            .willAnswer(invocation -> invocation.getArgument(0));
+
+        service.createRequest(
+            1L,
+            new ExchangeCodeRequestDtos.CreateRequest(1, "purpose"),
+            actor(10L, PlatformRole.USER)
+        );
+
+        verify(exchangeCodeRequestRepository).save(any(ExchangeCodeRequest.class));
+    }
+
+    @Test
+    void createRequest_failsAtOperationCutoff() {
+        OffsetDateTime now = OffsetDateTime.now();
+        Event event = event(EventStatus.PUBLISHED, now.minusHours(2), now.plusHours(1));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event));
+        given(organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
+            eq(100L), eq(10L), eq(OrganizationMemberStatus.ACTIVE), any()))
+            .willReturn(true);
+
+        assertThatThrownBy(() -> service.createRequest(
+            1L,
+            new ExchangeCodeRequestDtos.CreateRequest(1, "purpose"),
+            actor(10L, PlatformRole.USER)
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_EVENT_ALREADY_STARTED);
+    }
+
+    @Test
+    void createRequest_failsAfterOperationCutoff() {
+        OffsetDateTime now = OffsetDateTime.now();
+        Event event = event(EventStatus.PUBLISHED, now.minusHours(2), now.plusMinutes(30));
         given(eventRepository.findById(1L)).willReturn(Optional.of(event));
         given(organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
             eq(100L), eq(10L), eq(OrganizationMemberStatus.ACTIVE), any()))
@@ -430,6 +472,10 @@ class ExchangeCodeRequestServiceTest {
     }
 
     private Event event(EventStatus status, OffsetDateTime startAt) {
+        return event(status, startAt, startAt.plusDays(1));
+    }
+
+    private Event event(EventStatus status, OffsetDateTime startAt, OffsetDateTime endAt) {
         return Event.builder()
             .id(1L)
             .organizerOrganizationId(100L)
@@ -439,7 +485,7 @@ class ExchangeCodeRequestServiceTest {
             .venueName("venue")
             .address("address")
             .startAt(startAt)
-            .endAt(startAt.plusDays(1))
+            .endAt(endAt)
             .ticketPrice(java.math.BigDecimal.ZERO)
             .ticketTotalQuantity(100)
             .ticketSoldQuantity(0)

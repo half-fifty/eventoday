@@ -31,6 +31,8 @@ public interface RefundPaymentProjection {
 
     OffsetDateTime getEventStartAt();
 
+    OffsetDateTime getEventEndAt();
+
     Integer getQuantity();
 
     String getTicketOrderStatus();
