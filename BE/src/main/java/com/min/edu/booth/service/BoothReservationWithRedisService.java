@@ -217,6 +217,7 @@ public class BoothReservationWithRedisService {
                     .memberId(memberId)
                     .partySize(request.getPartySize())
                     .status(BoothReservationStatus.RESERVED)
+                    .createdAt(now)
                     .reservedAt(now)
                     .createdAt(now)
                     .updatedAt(now)
@@ -261,19 +262,19 @@ public class BoothReservationWithRedisService {
         BoothReservation reservation = reservationRepository.findByIdAndMemberIdWithLock(reservationId, memberId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
-        // 2️⃣ boothId 검증
+        // 2boothId 검증
         if (!reservation.getBoothId().equals(boothId)) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
-        // 3️⃣ 예약 상태 확인
+        // 예약 상태 확인
         if (reservation.getStatus() != BoothReservationStatus.RESERVED) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
         OffsetDateTime now = OffsetDateTime.now();
 
-        // 4️⃣ 예약 상태 변경 (CANCELLED)
+        // 예약 상태 변경 (CANCELLED)
         reservation.updateStatus(BoothReservationStatus.CANCELLED);
         reservation.updateCancelledAt(now);
         reservation.updateUpdatedAt(now);

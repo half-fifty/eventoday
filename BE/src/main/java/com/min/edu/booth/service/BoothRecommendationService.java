@@ -24,9 +24,9 @@ public class BoothRecommendationService {
     private static final int CONGESTION_THRESHOLD = 3;  // 혼잡한 부스 TOP 3
 
     /**
-     * WBS-163: 혼잡도 기반 부스 추천 (최적화 버전)
+     * WBS-163: 혼잡도 기반 부스 추천
      * 1. 혼잡한 부스 파악 (상위 3개, INNER JOIN)
-     * 2. 추천 부스 조회 (LEFT JOIN, 혼잡 부수는 DB에서 제외)
+     * 2. 추천 부스 조회 (LEFT JOIN, 혼잡 부스는 DB에서 제외)
      * 3. in-memory 필터링 제거 → DB에서 직접 제외
      * 4. 추천 이유 포함
      */
@@ -52,9 +52,11 @@ public class BoothRecommendationService {
             congestedBoothIds.add(boothId);
         }
 
-        // 2️⃣ 추천 부스 조회 (LEFT JOIN, 혼잡 부수는 DB에서 제외)
-        // ⭐ 변경: findAllBoothsWithCongestion → findRecommendedBooths(excludedIds)
-        // 효과: DB에서 직접 제외, in-memory 필터링 제거
+        // 2️⃣ 추천 부스 조회 (항상 findRecommendedBooths 사용!)
+        List<RecommendedBoothsResponse.RecommendedBooth> recommendedBooths = new ArrayList<>();
+        int rank = 1;
+
+        // LEFT JOIN으로 모든 부스 조회, 혼잡한 부스는 DB에서 제외
         var recommendedPage = qrScanRepository.findRecommendedBooths(
                 eventId,
                 since,
@@ -62,18 +64,10 @@ public class BoothRecommendationService {
                 pageable
         );
 
-        List<RecommendedBoothsResponse.RecommendedBooth> recommendedBooths = new ArrayList<>();
-        int rank = 1;
-
-        // 3️⃣ 추천 부스 (in-memory 필터링 제거!)
-        // ⭐ 이미 DB에서 congestedBoothIds 제외되었으므로
-        //   모든 row는 추천 가능한 부수
+        // 추천 부스 (혼잡한 부스는 이미 DB에서 제외됨)
         for (Object[] row : recommendedPage.getContent()) {
             Long boothId = ((Number) row[0]).longValue();
             long congestionCount = ((Number) row[1]).longValue();
-
-            // ⭐ 제거됨: if (!congestedBoothIds.contains(boothId))
-            // → 이미 DB에서 제외됨!
 
             recommendedBooths.add(RecommendedBoothsResponse.RecommendedBooth.builder()
                     .boothId(boothId)
