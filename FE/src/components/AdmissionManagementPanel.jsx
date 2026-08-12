@@ -154,31 +154,50 @@ export default function AdmissionManagementPanel({ eventId }) {
   const [logPageInfo, setLogPageInfo] = useState({ number: 0, totalPages: 1 });
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState("");
+  const [auxiliaryAccessDenied, setAuxiliaryAccessDenied] = useState(false);
   const [cancellingId, setCancellingId] = useState(null);
   const scanLockRef = useRef(false);
+  const ticketRequestGenerationRef = useRef(0);
+  const logRequestGenerationRef = useRef(0);
+  const checkInRequestGenerationRef = useRef(0);
+  const activeEventIdRef = useRef(eventId);
+  activeEventIdRef.current = eventId;
 
   const loadTickets = useCallback(() => {
-    if (!eventId) return Promise.resolve();
+    if (!eventId || auxiliaryAccessDenied) return Promise.resolve();
+    const generation = ++ticketRequestGenerationRef.current;
+    const requestingEventId = eventId;
     setTicketsLoading(true);
     setTicketsError("");
     const params = { page: ticketPage, size: 20 };
     if (ticketStatus) params.status = ticketStatus;
     return admissionApi.getEventAdmissionTickets(eventId, params)
       .then((result) => {
+        if (generation !== ticketRequestGenerationRef.current || requestingEventId !== activeEventIdRef.current) return;
         setTickets(pageContent(result));
         setTicketPageInfo(pageInfo(result));
       })
       .catch((error) => {
+        if (generation !== ticketRequestGenerationRef.current || requestingEventId !== activeEventIdRef.current) return;
         setTickets([]);
-        setTicketsError(error.status === 403
-          ? "전체 입장 티켓 목록 조회 권한이 없습니다."
-          : error.message || "입장 티켓 목록을 불러오지 못했습니다.");
+        if (error.status === 403) {
+          setAuxiliaryAccessDenied(true);
+          setTicketsError("");
+          return;
+        }
+        setTicketsError(error.message || "입장 티켓 목록을 불러오지 못했습니다.");
       })
-      .finally(() => setTicketsLoading(false));
-  }, [eventId, ticketPage, ticketStatus]);
+      .finally(() => {
+        if (generation === ticketRequestGenerationRef.current && requestingEventId === activeEventIdRef.current) {
+          setTicketsLoading(false);
+        }
+      });
+  }, [auxiliaryAccessDenied, eventId, ticketPage, ticketStatus]);
 
   const loadLogs = useCallback(() => {
-    if (!eventId) return Promise.resolve();
+    if (!eventId || auxiliaryAccessDenied) return Promise.resolve();
+    const generation = ++logRequestGenerationRef.current;
+    const requestingEventId = eventId;
     setLogsLoading(true);
     setLogsError("");
     const params = { page: logPage, size: 20 };
@@ -186,17 +205,47 @@ export default function AdmissionManagementPanel({ eventId }) {
     if (logResult) params.result = logResult;
     return admissionApi.getAdmissionLogs(eventId, params)
       .then((result) => {
+        if (generation !== logRequestGenerationRef.current || requestingEventId !== activeEventIdRef.current) return;
         setLogs(pageContent(result));
         setLogPageInfo(pageInfo(result));
       })
       .catch((error) => {
+        if (generation !== logRequestGenerationRef.current || requestingEventId !== activeEventIdRef.current) return;
         setLogs([]);
-        setLogsError(error.status === 403
-          ? "입장 로그 조회 권한이 없습니다."
-          : error.message || "입장 로그를 불러오지 못했습니다.");
+        if (error.status === 403) {
+          setAuxiliaryAccessDenied(true);
+          setLogsError("");
+          return;
+        }
+        setLogsError(error.message || "입장 로그를 불러오지 못했습니다.");
       })
-      .finally(() => setLogsLoading(false));
-  }, [eventId, logAction, logPage, logResult]);
+      .finally(() => {
+        if (generation === logRequestGenerationRef.current && requestingEventId === activeEventIdRef.current) {
+          setLogsLoading(false);
+        }
+      });
+  }, [auxiliaryAccessDenied, eventId, logAction, logPage, logResult]);
+
+  useEffect(() => {
+    ticketRequestGenerationRef.current += 1;
+    logRequestGenerationRef.current += 1;
+    checkInRequestGenerationRef.current += 1;
+    setAuxiliaryAccessDenied(false);
+    setTicketPage(0);
+    setLogPage(0);
+    setTickets([]);
+    setTicketPageInfo({ number: 0, totalPages: 1 });
+    setTicketsError("");
+    setTicketsLoading(false);
+    setLogs([]);
+    setLogPageInfo({ number: 0, totalPages: 1 });
+    setLogsError("");
+    setLogsLoading(false);
+    setCheckInResult(null);
+    setCheckInError("");
+    setProcessing(false);
+    scanLockRef.current = false;
+  }, [eventId]);
 
   useEffect(() => {
     setTicketPage(0);
@@ -233,6 +282,8 @@ export default function AdmissionManagementPanel({ eventId }) {
       return;
     }
     if (processing || scanLockRef.current) return;
+    const generation = ++checkInRequestGenerationRef.current;
+    const submittingEventId = eventId;
     scanLockRef.current = true;
     setProcessing(true);
     setCheckInResult(null);
@@ -244,15 +295,19 @@ export default function AdmissionManagementPanel({ eventId }) {
         gateName: normalizedGateName || null,
       };
       const result = await admissionApi.checkIn(eventId, payload);
+      if (generation !== checkInRequestGenerationRef.current || submittingEventId !== activeEventIdRef.current) return;
       setCheckInResult(result?.data || null);
-      await Promise.all([loadTickets(), loadLogs()]);
+      if (!auxiliaryAccessDenied) await Promise.all([loadTickets(), loadLogs()]);
     } catch (error) {
+      if (generation !== checkInRequestGenerationRef.current || submittingEventId !== activeEventIdRef.current) return;
       setCheckInError(checkInMessage(error));
-      await loadLogs();
+      if (!auxiliaryAccessDenied) await loadLogs();
     } finally {
-      setProcessing(false);
+      if (generation === checkInRequestGenerationRef.current && submittingEventId === activeEventIdRef.current) {
+        setProcessing(false);
+      }
     }
-  }, [eventId, gateName, loadLogs, loadTickets, processing]);
+  }, [auxiliaryAccessDenied, eventId, gateName, loadLogs, loadTickets, processing]);
 
   const handleDetected = useCallback((value) => {
     submitCheckIn(value);
@@ -358,6 +413,21 @@ export default function AdmissionManagementPanel({ eventId }) {
         </div>
 
         <div className="space-y-lg">
+          {auxiliaryAccessDenied ? (
+            <div className="rounded-xl border border-hairline bg-white p-lg">
+              <div className="flex items-start gap-sm">
+                <Icon name="badge" className="text-[20px] text-primary" />
+                <div>
+                  <h2 className="font-body-strong">입장 처리 전용 권한</h2>
+                  <p className="mt-xs text-caption text-ink-muted">
+                    현재 계정은 QR 스캔과 직접 입력을 통한 입장 처리를 사용할 수 있습니다.
+                    행사 입장 티켓 목록과 입장 로그는 행사 관리자 권한에서 확인할 수 있습니다.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
           <div className="rounded-xl border border-hairline bg-white">
             <div className="flex flex-wrap items-center justify-between gap-sm border-b border-hairline p-lg">
               <h2 className="font-body-strong">행사 입장 티켓</h2>
@@ -474,6 +544,8 @@ export default function AdmissionManagementPanel({ eventId }) {
               />
             )}
           </div>
+            </>
+          )}
         </div>
       </div>
     </section>

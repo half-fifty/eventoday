@@ -12,14 +12,18 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.domain.Event;
+import com.min.edu.event.repository.EventRepository;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.PaymentOrder;
@@ -31,6 +35,7 @@ import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.domain.TicketOrderStatus;
 import com.min.edu.payment.dto.request.ConfirmPaymentRequest;
 import com.min.edu.payment.dto.response.ConfirmPaymentResponse;
+import com.min.edu.payment.event.TicketReservationCompletedEvent;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
@@ -66,6 +71,12 @@ class PaymentFinalizerTest {
     @Mock
     private AdvertisementRepository advertisementRepository;
 
+    @Mock
+    private EventRepository eventRepository;
+
+    @Mock
+    private ApplicationEventPublisher applicationEventPublisher;
+
     private PaymentFinalizer paymentFinalizer;
 
     @BeforeEach
@@ -80,7 +91,9 @@ class PaymentFinalizerTest {
             ticketOrderRepository,
             paymentRepository,
             ticketExchangeCodeIssuer,
-            advertisementRepository
+            advertisementRepository,
+            eventRepository,
+            applicationEventPublisher
         );
 
         given(entityManager.createNativeQuery(any(String.class))).willReturn(query);
@@ -113,6 +126,52 @@ class PaymentFinalizerTest {
         assertThat(ticketOrder.getUpdatedAt()).isAfter(tossResponse().approvedAt());
         verify(ticketExchangeCodeIssuer).issueIfAbsent(any(), any(), any());
         verify(query).setParameter("timeout", "300ms");
+    }
+
+    @Test
+    void finalizePayment_publishesGuestReservationCompletedEventForNewGuestPayment() {
+        PaymentOrder paymentOrder = pendingGuestPaymentOrder();
+        TicketOrder ticketOrder = pendingTicketOrder();
+        Payment savedPayment = payment();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(false);
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(ticketOrder));
+        given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
+        given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
+        given(eventRepository.findById(3L)).willReturn(Optional.of(event()));
+
+        paymentFinalizer.finalizePayment(request(), tossResponse());
+
+        ArgumentCaptor<TicketReservationCompletedEvent> captor =
+            ArgumentCaptor.forClass(TicketReservationCompletedEvent.class);
+        verify(applicationEventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().orderNo()).isEqualTo("ORDER-1");
+        assertThat(captor.getValue().buyerEmail()).isEqualTo("guest@example.com");
+        assertThat(captor.getValue().eventName()).isEqualTo("테스트 행사");
+    }
+
+    @Test
+    void finalizePayment_doesNotPublishReservationCompletedEventForMemberPayment() {
+        PaymentOrder paymentOrder = pendingPaymentOrder();
+        TicketOrder ticketOrder = pendingTicketOrder();
+        Payment savedPayment = payment();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(false);
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(ticketOrder));
+        given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
+        given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
+
+        paymentFinalizer.finalizePayment(request(), tossResponse());
+
+        verify(applicationEventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -176,6 +235,7 @@ class PaymentFinalizerTest {
             paymentFinalizer.finalizePayment(request(), tossResponse());
 
         assertThat(response.getPaymentId()).isEqualTo(5L);
+        verify(applicationEventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -303,6 +363,23 @@ class PaymentFinalizerTest {
         return paymentOrder(PaymentOrderStatus.PAID);
     }
 
+    private PaymentOrder pendingGuestPaymentOrder() {
+        return PaymentOrder.builder()
+            .id(1L)
+            .orderNo("ORDER-1")
+            .buyerMemberId(null)
+            .buyerName("guest")
+            .buyerEmail("guest@example.com")
+            .buyerPhone("010-1234-5678")
+            .orderType(PaymentOrderType.EVENT_TICKET)
+            .totalAmount(BigDecimal.valueOf(10000))
+            .status(PaymentOrderStatus.PENDING.name())
+            .expiresAt(OffsetDateTime.now().plusMinutes(10))
+            .createdAt(OffsetDateTime.now())
+            .updatedAt(OffsetDateTime.now())
+            .build();
+    }
+
     private PaymentOrder expiredPaymentOrder() {
         return PaymentOrder.builder()
             .id(1L)
@@ -380,6 +457,14 @@ class PaymentFinalizerTest {
             .confirmedAt(status == TicketOrderStatus.CONFIRMED ? OffsetDateTime.now() : null)
             .createdAt(OffsetDateTime.now())
             .updatedAt(OffsetDateTime.now())
+            .build();
+    }
+
+    private Event event() {
+        return Event.builder()
+            .id(3L)
+            .organizerOrganizationId(4L)
+            .name("테스트 행사")
             .build();
     }
 }

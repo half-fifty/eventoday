@@ -149,3 +149,18 @@ public class EventController {
         eventService.removeMember(eventId, memberId, actor); return ApiResponse.success();
     }
 }
+
+@RestController
+class MeAdmissionEventController {
+    private final EventService eventService;
+
+    MeAdmissionEventController(EventService eventService) {
+        this.eventService = eventService;
+    }
+
+    @GetMapping("/me/admission-events")
+    public ApiResponse<List<EventDtos.AdmissionEventResponse>> findMyAdmissionEvents(
+            @AuthenticationPrincipal AuthenticatedMemberDto actor) {
+        return ApiResponse.success(eventService.findMyAdmissionEvents(actor));
+    }
+}

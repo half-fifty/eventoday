@@ -8,6 +8,7 @@ const json = (method, body) => ({
 
 export const eventApi = {
   managedOrganizations: () => apiRequest("/v1/me/managed-organizations"),
+  admissionEvents: () => apiRequest("/me/admission-events"),
   list: (params = {}) => apiRequest(`/v1/events?${new URLSearchParams(params)}`),
   detail: (eventId) => apiRequest(`/v1/events/${eventId}`),
   exhibitCategories: () => apiRequest("/v1/exhibit-categories"),

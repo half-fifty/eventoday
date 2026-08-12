@@ -253,6 +253,7 @@ class TicketOrderPolicyTest {
             int remainingQuantity) {
         return new EventTicketSnapshot(
             1L,
+            "테스트 행사",
             status,
             BigDecimal.valueOf(10000),
             10,
