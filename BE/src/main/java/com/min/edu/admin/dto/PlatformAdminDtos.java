@@ -26,4 +26,15 @@ public final class PlatformAdminDtos {
             long pendingEventCount, long activeAccountCount,
             long pendingAdvertisementCount, long activeEventCount,
             List<AuditEntry> recentActivity) {}
+
+    /** 플랫폼(사이트 전체) 공지 응답 */
+    public record Notice(
+            Long noticeId, String title, String content, boolean pinned,
+            OffsetDateTime publishedAt, OffsetDateTime updatedAt) {}
+
+    /** 플랫폼 공지 등록 요청 */
+    public record NoticeCreateRequest(String title, String content, boolean pinned) {}
+
+    /** 플랫폼 공지 수정 요청 */
+    public record NoticeUpdateRequest(String title, String content, boolean pinned) {}
 }

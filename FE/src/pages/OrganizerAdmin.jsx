@@ -13,6 +13,7 @@ import {
 import { getManagementRecruitment } from "../api/recruitmentApi.js";
 import { listVenueMaps } from "../api/venueMapApi.js";
 import BoothManagementPanel from "../components/BoothManagementPanel.jsx";
+import ContentManagementPanel from "../components/ContentManagementPanel.jsx";
 import { OrganizerExchangeCodeRequestPanel } from "../components/ExchangeCodeRequestPanels.jsx";
 import FloorplanManagementPanel from "../components/FloorplanManagementPanel.jsx";
 import Icon from "../components/Icon.jsx";
@@ -27,6 +28,7 @@ const navItems = [
   { key: "applications", label: "부스 신청서 검토", icon: "assignment" },
   { key: "assignment", label: "부스 관리", icon: "grid_view" },
   { key: "floorplan", label: "평면도 관리", icon: "map" },
+  { key: "content", label: "공지·자료 관리", icon: "article" },
   { key: "exchange-codes", label: "외부 예매 티켓 연동", icon: "key" },
   { key: "approval", label: "행사 등록 승인 요청", icon: "verified" },
 ];
@@ -774,6 +776,7 @@ export default function OrganizerAdmin() {
               {page === "applications" && <OrganizerApplicationPanel eventId={selectedEventId} onDataChanged={refreshDashboard} />}
               {page === "assignment" && <BoothManagementPanel eventId={selectedEventId} />}
               {page === "floorplan" && <FloorplanManagementPanel eventId={selectedEventId} />}
+              {page === "content" && <ContentManagementPanel eventId={selectedEventId} />}
               {page === "exchange-codes" && <OrganizerExchangeCodeRequestPanel eventId={selectedEventId} />}
 
               {page === "approval" && (
