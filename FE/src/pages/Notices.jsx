@@ -5,6 +5,7 @@ import Footer from "../components/Footer.jsx";
 import Icon from "../components/Icon.jsx";
 import FileDownloadLink from "../components/FileDownloadLink.jsx";
 import { listAllContents } from "../api/contentApi.js";
+import { platformNoticeApi } from "../api/platformNoticeApi.js";
 
 // 전체 공지사항 페이지
 // CONTENT-API-006(전체 공지 목록)으로 공개 행사의 공지·자료를 페이지 단위로 조회한다.
@@ -20,6 +21,10 @@ export default function Notices() {
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const [typeFilter, setTypeFilter] = useState(""); // "" | "NOTICE" | "RESOURCE"
+
+  // 사이트 전체 공지 (플랫폼 관리자 등록) - 행사 공지와 출처가 달라 별도 상태로 관리한다
+  const [siteNotices, setSiteNotices] = useState([]);
+  const [expandedSiteId, setExpandedSiteId] = useState(null);
 
   // 페이지네이션 - 필터가 바뀌면 첫 페이지부터 다시 조회
   const [page, setPage] = useState(0);
@@ -62,6 +67,20 @@ export default function Notices() {
     return () => { cancelled = true; };
   }, [typeFilter]);
 
+  // 사이트 공지는 유형 필터와 무관하므로 최초 1회만 조회한다.
+  // 실패해도 행사 공지 목록 표시를 막지 않도록 에러는 무시하고 빈 목록으로 둔다.
+  useEffect(() => {
+    let cancelled = false;
+    platformNoticeApi.list()
+      .then((response) => {
+        if (!cancelled) setSiteNotices(response?.data || []);
+      })
+      .catch(() => {
+        if (!cancelled) setSiteNotices([]);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   // 다음 페이지 이어붙이기
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;
@@ -95,6 +114,45 @@ export default function Notices() {
       <main className="flex-1 w-full max-w-[900px] mx-auto px-lg pt-[76px] pb-3xl">
         <h1 className="font-display-lg text-[28px] mb-xs">공지사항</h1>
         <p className="text-caption text-ink-muted mb-lg">진행 중인 행사들의 공지와 자료를 한곳에서 확인하세요.</p>
+
+        {/* 사이트 공지: 플랫폼 관리자가 등록한 전체 공지.
+            자료만 보는 중일 때는 성격이 달라 숨긴다. */}
+        {typeFilter !== "RESOURCE" && siteNotices.length > 0 && (
+          <section className="mb-lg">
+            <h2 className="mb-sm flex items-center gap-xs font-body-strong text-[15px]">
+              <Icon name="campaign" className="text-[18px] text-primary" /> 사이트 공지
+            </h2>
+            <div className="overflow-hidden rounded-2xl border border-primary/20 bg-primary/5 divide-y divide-primary/10">
+              {siteNotices.map((notice) => (
+                <div key={notice.noticeId}>
+                  <button
+                    onClick={() => setExpandedSiteId(expandedSiteId === notice.noticeId ? null : notice.noticeId)}
+                    className="flex w-full items-center gap-sm p-lg text-left transition-colors hover:bg-primary/5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-body-strong text-[14px]">
+                        {notice.pinned && <Icon name="push_pin" className="mr-1 text-[13px] text-primary" />}
+                        {notice.title}
+                      </p>
+                      <p className="text-caption text-ink-muted">
+                        {notice.publishedAt ? new Date(notice.publishedAt).toLocaleDateString("ko-KR") : ""}
+                      </p>
+                    </div>
+                    <Icon
+                      name={expandedSiteId === notice.noticeId ? "expand_less" : "expand_more"}
+                      className="text-[18px] text-ink-muted"
+                    />
+                  </button>
+                  {expandedSiteId === notice.noticeId && notice.content && (
+                    <div className="px-lg pb-lg">
+                      <p className="whitespace-pre-line rounded-lg bg-white p-md text-caption">{notice.content}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* 유형 필터: 전체 / 공지 / 자료 */}
         <div className="flex gap-sm mb-lg">

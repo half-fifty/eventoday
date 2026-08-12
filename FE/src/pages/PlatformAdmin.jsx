@@ -5,6 +5,7 @@ import { eventApi } from "../api/eventApi.js";
 import { platformAdminApi } from "../api/platformAdminApi.js";
 import { AdminExchangeCodeRequestPanel } from "../components/ExchangeCodeRequestPanels.jsx";
 import Icon from "../components/Icon.jsx";
+import PlatformNoticePanel from "../components/PlatformNoticePanel.jsx";
 import TopNav from "../components/TopNav.jsx";
 import useAuth from "../hooks/useAuth.js";
 
@@ -12,6 +13,7 @@ const menuItems = [
   { key: "dashboard", label: "전체 대시보드", icon: "dashboard" },
   { key: "requests", label: "행사 등록 신청", icon: "verified" },
   { key: "exchange-codes", label: "교환 코드 관리", icon: "key" },
+  { key: "notices", label: "공지 관리", icon: "article" },
   { key: "accounts", label: "계정 관리", icon: "group" },
   { key: "ads", label: "광고 승인 관리", icon: "campaign" },
   { key: "stats", label: "통합 통계", icon: "bar_chart" },
@@ -159,6 +161,8 @@ export default function PlatformAdmin() {
           {page === "requests" && <section className="space-y-lg"><div><h1 className="font-display-lg text-[26px]">행사 등록 신청</h1><p className="mt-xs text-caption text-ink-muted">개최자가 제출한 행사를 검토하고 승인합니다.</p></div><div className="space-y-md">{requests.length ? requests.map((event) => <article key={event.id} className="rounded-xl border border-hairline bg-white p-lg"><div className="flex flex-wrap items-start justify-between gap-md"><div><p className="font-body-strong">{event.name}</p><p className="text-caption text-ink-muted">조직 #{event.organizerOrganizationId} · {event.venueName || "장소 미정"}</p><p className="text-[11px] text-ink-muted">수정 {formatDateTime(event.updatedAt)}</p></div><div className="flex items-center gap-sm"><StatusBadge status={event.status} />{["SUBMITTED", "UNDER_REVIEW"].includes(event.status) && <><button disabled={actionKey === `event-${event.id}`} onClick={() => approveEvent(event.id)} className="rounded-full bg-status-available px-md py-xs text-caption font-body-strong text-white disabled:opacity-50">승인</button><button disabled={actionKey === `event-${event.id}`} onClick={() => rejectEvent(event.id)} className="rounded-full border border-error/30 px-md py-xs text-caption font-body-strong text-error disabled:opacity-50">반려</button></>}</div></div>{event.rejectionReason && <p className="mt-md rounded-lg bg-error/5 p-sm text-caption text-error">반려 사유: {event.rejectionReason}</p>}</article>) : <div className="rounded-xl border border-hairline bg-white"><Empty text="등록된 행사가 없습니다." /></div>}</div><Pagination result={eventPageInfo} current={eventPage} onChange={setEventPage} /></section>}
 
           {page === "exchange-codes" && <AdminExchangeCodeRequestPanel />}
+
+          {page === "notices" && <PlatformNoticePanel />}
 
           {page === "accounts" && <section className="space-y-lg"><div><h1 className="font-display-lg text-[26px]">계정 관리</h1><p className="mt-xs text-caption text-ink-muted">실제 가입 회원의 상태와 소속을 관리합니다.</p></div><div className="flex flex-wrap gap-xs">{accountFilters.map(([key, label]) => <button key={key} onClick={() => setAccountFilter(key)} className={`rounded-full px-md py-1.5 text-caption font-body-strong ${accountFilter === key ? "bg-primary text-white" : "border border-hairline bg-white"}`}>{label}</button>)}</div><div className="overflow-hidden rounded-xl border border-hairline bg-white">{filteredAccounts.length ? <div className="divide-y divide-divider-soft">{filteredAccounts.map((account) => <div key={account.id} className="flex flex-col gap-md p-lg sm:flex-row sm:items-center"><div className="grid h-10 w-10 place-items-center rounded-full bg-primary/10 text-primary"><Icon name="person" /></div><div className="min-w-0 flex-1"><p className="font-body-strong">{account.nickname} <span className="text-[10px] text-ink-muted">#{account.id}</span></p><p className="truncate text-caption text-ink-muted">{account.email}</p><p className="text-[11px] text-ink-muted">{account.organizationName || "개인 회원"} · {account.organizationType || account.platformRole}</p></div><div className="flex items-center gap-sm"><span className={`text-caption ${account.status === "ACTIVE" ? "text-status-available" : "text-error"}`}>{account.status === "ACTIVE" ? "활성" : "차단"}</span><button type="button" disabled={actionKey === `account-${account.id}` || account.id === member.id} onClick={() => toggleAccount(account)} className={`relative h-6 w-10 rounded-full disabled:opacity-40 ${account.status === "ACTIVE" ? "bg-status-available" : "bg-hairline"}`}><span className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all" style={{ left: account.status === "ACTIVE" ? "18px" : "2px" }} /></button></div></div>)}</div> : <Empty text="조건에 맞는 계정이 없습니다." />}</div></section>}
 
