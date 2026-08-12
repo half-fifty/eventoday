@@ -61,8 +61,10 @@ export default function FloorplanManagementPanel({ eventId }) {
 
   const imageRef = useRef(null);
   const draggingBoothIdRef = useRef(null);
+  // 행사를 빠르게 전환할 때 이전 요청의 응답이 늦게 도착해 현재 화면을 덮어쓰는 것을 막기 위한 버전 가드.
+  const requestVersionRef = useRef(0);
 
-  const loadAll = async (id) => {
+  const loadAll = async (id, version) => {
     setLoading(true);
     setError("");
     try {
@@ -70,16 +72,21 @@ export default function FloorplanManagementPanel({ eventId }) {
         listVenueMaps(id),
         listAllBooths(id),
       ]);
+      if (requestVersionRef.current !== version) return;
       setMaps(mapList);
       setBooths(allBooths);
     } catch (err) {
+      if (requestVersionRef.current !== version) return;
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "평면도 정보를 불러오지 못했습니다.");
     } finally {
-      setLoading(false);
+      if (requestVersionRef.current === version) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    const version = ++requestVersionRef.current;
     setUploadForm(EMPTY_UPLOAD_FORM);
     setSelectedMapId(null);
     setPositions([]);
@@ -88,7 +95,7 @@ export default function FloorplanManagementPanel({ eventId }) {
     setMaps([]);
     setBooths([]);
     if (eventId) {
-      loadAll(eventId);
+      loadAll(eventId, version);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
@@ -115,7 +122,7 @@ export default function FloorplanManagementPanel({ eventId }) {
     try {
       await actionFn();
       setMessage(successMessage);
-      await loadAll(eventId);
+      await loadAll(eventId, requestVersionRef.current);
     } catch (err) {
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : err.message || "요청에 실패했습니다.");
     } finally {

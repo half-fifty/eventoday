@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -85,7 +86,13 @@ public class VenueMapService {
             .updatedAt(now)
             .build();
 
-        VenueMap saved = venueMapRepository.save(venueMap);
+        VenueMap saved;
+        try {
+            saved = venueMapRepository.saveAndFlush(venueMap);
+        } catch (DataIntegrityViolationException e) {
+            // 같은 (event_id, map_type, floor_name)에 동시에 업로드되어 버전 번호가 겹친 경우.
+            throw new BusinessException(GlobalErrorCode.VENUE_MAP_VERSION_CONFLICT);
+        }
         return toResponses(eventId, List.of(saved)).get(0);
     }
 

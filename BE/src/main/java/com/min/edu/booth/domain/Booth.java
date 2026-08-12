@@ -195,6 +195,16 @@ public class Booth {
         this.updatedAt = now;
     }
 
+    /**
+     * 배정된 부스를 AVAILABLE로 되돌린다. 배정 조직 기록도 함께 해제해
+     * 이후 다른 조직이 같은 부스에 재배정될 수 있게 한다.
+     */
+    public void unassign(OffsetDateTime now) {
+        this.status = BoothStatus.AVAILABLE;
+        this.assignedOrganizationId = null;
+        this.updatedAt = now;
+    }
+
     public void updateIntro(
             String displayName,
             String shortIntro,

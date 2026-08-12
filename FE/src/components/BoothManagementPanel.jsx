@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import Icon from "./Icon.jsx";
 import { ApiError } from "../api/apiClient.js";
@@ -177,14 +177,19 @@ export default function BoothManagementPanel({ eventId }) {
   const [introBoothId, setIntroBoothId] = useState(null);
   const [introForm, setIntroForm] = useState(EMPTY_INTRO_FORM);
 
+  // 행사를 빠르게 전환할 때 이전 요청의 응답이 늦게 도착해 현재 화면을 덮어쓰는 것을 막기 위한 버전 가드.
+  const requestVersionRef = useRef(0);
+
   const [qrBoothId, setQrBoothId] = useState(null);
   const [qrInfo, setQrInfo] = useState(null);
   const [qrImageUrl, setQrImageUrl] = useState("");
+  const [qrError, setQrError] = useState("");
 
   const showQr = async (boothId, info) => {
     setQrBoothId(boothId);
     setQrInfo(info);
     setQrImageUrl("");
+    setQrError("");
     // 스캔하면 부스 상세 페이지로 이동하도록, 토큰 원문 대신 페이지 URL을 인코딩한다.
     const scanUrl = `${window.location.origin}/booth-detail?eventId=${eventId}&boothId=${boothId}&qr=${info.qrToken}`;
     try {
@@ -192,24 +197,30 @@ export default function BoothManagementPanel({ eventId }) {
       setQrImageUrl(dataUrl);
     } catch {
       setQrImageUrl("");
+      setQrError("QR 이미지를 생성하지 못했습니다.");
     }
   };
 
-  const loadBooths = async (id, currentFilters, currentPage) => {
+  const loadBooths = async (id, currentFilters, currentPage, version) => {
     setLoading(true);
     setError("");
     try {
       const result = await listBooths(id, { ...currentFilters, page: currentPage, size: PAGE_SIZE });
+      if (requestVersionRef.current !== version) return;
       setPageResult(result);
     } catch (err) {
+      if (requestVersionRef.current !== version) return;
       setPageResult(null);
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "부스 목록을 불러오지 못했습니다.");
     } finally {
-      setLoading(false);
+      if (requestVersionRef.current === version) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    const version = ++requestVersionRef.current;
     setPage(0);
     setFilters(EMPTY_FILTERS);
     setEditingBoothId(null);
@@ -218,22 +229,22 @@ export default function BoothManagementPanel({ eventId }) {
     setMessage("");
     setPageResult(null);
     if (eventId) {
-      loadBooths(eventId, EMPTY_FILTERS, 0);
+      loadBooths(eventId, EMPTY_FILTERS, 0, version);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
   const handleSearch = () => {
     setPage(0);
-    loadBooths(eventId, filters, 0);
+    loadBooths(eventId, filters, 0, requestVersionRef.current);
   };
 
   const changePage = (nextPage) => {
     setPage(nextPage);
-    loadBooths(eventId, filters, nextPage);
+    loadBooths(eventId, filters, nextPage, requestVersionRef.current);
   };
 
-  const refresh = () => loadBooths(eventId, filters, page);
+  const refresh = () => loadBooths(eventId, filters, page, requestVersionRef.current);
 
   const runAction = async (actionFn, successMessage) => {
     if (submitting) return;
@@ -324,6 +335,7 @@ export default function BoothManagementPanel({ eventId }) {
     setQrBoothId(null);
     setQrInfo(null);
     setQrImageUrl("");
+    setQrError("");
   };
 
   // 발급은 멱등이라(이미 있으면 기존 QR을 그대로 돌려줌) 버튼 하나로 발급·조회를 겸한다.
@@ -524,6 +536,10 @@ export default function BoothManagementPanel({ eventId }) {
                       <div className="flex items-center gap-md p-md border border-hairline rounded-lg bg-surface-container-lowest">
                         {qrImageUrl ? (
                           <img src={qrImageUrl} alt={`${booth.boothCode} 부스 QR`} className="w-32 h-32" />
+                        ) : qrError ? (
+                          <div className="w-32 h-32 flex items-center justify-center text-caption text-error text-center px-sm">
+                            {qrError}
+                          </div>
                         ) : (
                           <div className="w-32 h-32 flex items-center justify-center text-caption text-ink-muted">
                             생성 중...

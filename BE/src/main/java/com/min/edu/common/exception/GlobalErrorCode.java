@@ -108,6 +108,7 @@ public enum GlobalErrorCode implements ErrorCode {
     RESERVATION_SLOT_HAS_RESERVATIONS(HttpStatus.CONFLICT, "BOOTH_409_005", "예약 이력이 있는 시간대는 삭제할 수 없습니다. 대신 꺼주세요."),
     RESERVATION_ALREADY_EXISTS(HttpStatus.CONFLICT, "BOOTH_409_006", "이미 예약이 진행 중입니다."),
     BOOTH_CODE_ALREADY_EXISTS(HttpStatus.CONFLICT, "BOOTH_409_002", "이미 등록된 부스 번호입니다."),
+    VENUE_MAP_VERSION_CONFLICT(HttpStatus.CONFLICT, "BOOTH_409_007", "같은 평면도가 동시에 업로드되었습니다. 다시 시도해주세요."),
     BOOTH_QR_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "BOOTH_500_001", "QR 토큰 생성에 실패했습니다."),
     RECRUITMENT_NOT_OPEN(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_001", "현재 부스 신청 모집 기간이 아닙니다."),
     BOOTH_REQUIREMENT_NOT_MET(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_002", "요청한 설비를 해당 부스에서 제공하지 않습니다."),
