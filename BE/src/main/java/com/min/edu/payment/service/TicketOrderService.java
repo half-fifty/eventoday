@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.min.edu.admission.domain.ExchangeCode;
@@ -23,6 +24,7 @@ import com.min.edu.payment.dto.response.CreateTicketOrderResponse;
 import com.min.edu.payment.event.EventTicketReader;
 import com.min.edu.payment.event.EventTicketSnapshot;
 import com.min.edu.payment.event.TicketInventoryGateway;
+import com.min.edu.payment.event.TicketReservationCompletedEvent;
 import com.min.edu.payment.policy.TicketOrderPolicy;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
@@ -46,6 +48,7 @@ public class TicketOrderService {
     private final ExchangeCodeGenerator exchangeCodeGenerator;
     private final TicketOrderPolicy ticketOrderPolicy;
     private final OrderAccessTokenProvider orderAccessTokenProvider;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Transactional
     public CreateTicketOrderResponse create(
@@ -174,6 +177,7 @@ public class TicketOrderService {
             request.getQuantity(),
             now
         );
+        publishGuestReservationCompleted(paymentOrder, event);
 
         return CreateTicketOrderResponse.free(
             paymentOrder,
@@ -197,6 +201,22 @@ public class TicketOrderService {
         }
 
         return orderAccessTokenProvider.create(orderNo, event.endAt());
+    }
+
+    private void publishGuestReservationCompleted(
+            PaymentOrder paymentOrder,
+            EventTicketSnapshot event) {
+        if (paymentOrder.getBuyerMemberId() != null
+                || paymentOrder.getBuyerEmail() == null
+                || paymentOrder.getBuyerEmail().isBlank()) {
+            return;
+        }
+
+        applicationEventPublisher.publishEvent(new TicketReservationCompletedEvent(
+            paymentOrder.getOrderNo(),
+            paymentOrder.getBuyerEmail(),
+            event.eventName()
+        ));
     }
 
     private List<ExchangeCode> createExchangeCodes(

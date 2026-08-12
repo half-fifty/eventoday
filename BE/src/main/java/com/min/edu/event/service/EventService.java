@@ -86,6 +86,15 @@ public class EventService {
                 .map(EventDtos.ManagedOrganization::from).toList();
     }
 
+    public List<EventDtos.AdmissionEventResponse> findMyAdmissionEvents(AuthenticatedMemberDto actor) {
+        requireAuthenticated(actor);
+        return eventMemberRepository.findAdmissionEventsByMemberId(
+                        actor.getMemberId(), List.of(EventRole.EVENT_MANAGER, EventRole.CHECKIN_STAFF))
+                .stream()
+                .map(EventDtos.AdmissionEventResponse::from)
+                .toList();
+    }
+
     public Page<EventDtos.Summary> findPublicEvents(String keyword, String eventType, RegionCode regionCode,
             List<String> exhibitCategoryCodes, String venueName,
             OffsetDateTime startFrom, OffsetDateTime startTo, Pageable pageable) {

@@ -12,7 +12,7 @@ import useAuth from "../hooks/useAuth.js";
 const menuItems = [
   { key: "dashboard", label: "전체 대시보드", icon: "dashboard" },
   { key: "requests", label: "행사 등록 신청", icon: "verified" },
-  { key: "exchange-codes", label: "교환 코드 관리", icon: "key" },
+  { key: "exchange-codes", label: "외부 예매 티켓 관리", icon: "key" },
   { key: "notices", label: "공지 관리", icon: "article" },
   { key: "accounts", label: "계정 관리", icon: "group" },
   { key: "ads", label: "광고 승인 관리", icon: "campaign" },

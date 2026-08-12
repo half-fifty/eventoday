@@ -31,6 +31,7 @@ import PaymentDetail from "./pages/PaymentDetail.jsx";
 import RefundDetail from "./pages/RefundDetail.jsx";
 import AdmissionTicketDetail from "./pages/AdmissionTicketDetail.jsx";
 import EventAdmissionManagement from "./pages/EventAdmissionManagement.jsx";
+import StaffAdmissionEvents from "./pages/StaffAdmissionEvents.jsx";
 import GuestOrderAccess from "./pages/GuestOrderAccess.jsx";
 import GuestReservationManagement from "./pages/GuestReservationManagement.jsx";
 import NotFound from "./pages/NotFound.jsx";
@@ -49,7 +50,7 @@ const router = createBrowserRouter([
   { path: "/", element: <Home /> },
   { path: "/login", element: <Login /> },
   { path: "/business/signup", element: <BusinessSignup /> },
-  { path: "/event-ongoing", element: <EventOngoing /> },
+  { path: "/events/:eventId/ongoing", element: <EventOngoing /> },
   { path: "/event-recruiting", element: <EventRecruiting /> },
   { path: "/recruitments", element: <RecruitmentList /> },
   { path: "/recruitments/:recruitmentId", element: <RecruitmentDetail /> },
@@ -111,6 +112,14 @@ const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <EventAdmissionManagement />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: "/staff/admission",
+    element: (
+      <ProtectedRoute>
+        <StaffAdmissionEvents />
       </ProtectedRoute>
     ),
   },

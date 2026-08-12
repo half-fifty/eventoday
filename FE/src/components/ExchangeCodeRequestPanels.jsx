@@ -39,7 +39,7 @@ function RequestRow({ request, onSelect }) {
       <div className="min-w-0 flex-1">
         <p className="font-body-strong truncate">{request.eventName}</p>
         <p className="text-caption text-ink-muted">
-          요청 #{request.requestId} · {request.requestedQuantity}개 · {request.requesterNickname || `회원 #${request.requestedBy}`}
+          외부 판매 {request.requestedQuantity}매 · {request.requesterNickname || `회원 #${request.requestedBy}`}
         </p>
         <p className="text-[11px] text-ink-muted">요청 {formatDateTime(request.createdAt)}</p>
       </div>
@@ -61,21 +61,20 @@ function RequestDetail({ request, admin, actionBusy, rejectionReason, onRejectio
       <div className="mb-md flex flex-wrap items-start justify-between gap-md">
         <div>
           <p className="font-body-strong">{request.eventName}</p>
-          <p className="text-caption text-ink-muted">요청 #{request.requestId} · 행사 #{request.eventId}</p>
         </div>
         <span className={`rounded-full px-sm py-1 text-[11px] font-bold ${statusClass(request.status)}`}>
           {statusLabel[request.status] || request.status}
         </span>
       </div>
       <div className="grid gap-sm text-caption sm:grid-cols-2">
-        <Info label="요청 수량" value={`${request.requestedQuantity}개`} />
+        <Info label="외부 판매 티켓 매수" value={`${request.requestedQuantity}매`} />
         <Info label="요청자" value={request.requesterNickname || `회원 #${request.requestedBy}`} />
         <Info label="요청 시각" value={formatDateTime(request.createdAt)} />
         <Info label="검토 시각" value={formatDateTime(request.reviewedAt)} />
         <Info label="검토자" value={request.reviewedBy ? `회원 #${request.reviewedBy}` : "-"} />
         <Info label="이메일 발송" value={request.emailedAt ? formatDateTime(request.emailedAt) : "미발송"} />
         <div className="sm:col-span-2">
-          <Info label="요청 목적" value={request.purpose} />
+          <Info label="외부 예매처 및 요청 사유" value={request.purpose} />
         </div>
         {request.rejectionReason && (
           <div className="sm:col-span-2">
@@ -116,14 +115,14 @@ function RequestDetail({ request, admin, actionBusy, rejectionReason, onRejectio
 
       {canIssue && (
         <div className="mt-md rounded-xl bg-surface-container p-md">
-          <p className="mb-sm text-caption text-ink-muted">승인된 요청입니다. 교환 코드 {request.requestedQuantity}개를 발급할 수 있습니다.</p>
+          <p className="mb-sm text-caption text-ink-muted">승인된 외부 판매 티켓 {request.requestedQuantity}매에 대한 입장 등록 코드를 발급할 수 있습니다.</p>
           <button
             type="button"
             onClick={onIssue}
             disabled={actionBusy}
             className="rounded-full bg-black px-lg py-sm text-caption font-body-strong text-white disabled:opacity-50"
           >
-            교환 코드 발급
+            입장 등록 코드 발급
           </button>
         </div>
       )}
@@ -157,7 +156,7 @@ function Info({ label, value, danger = false }) {
 export function OrganizerExchangeCodeRequestPanel({ eventId }) {
   const [requests, setRequests] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [quantity, setQuantity] = useState("1");
+  const [quantity, setQuantity] = useState("");
   const [purpose, setPurpose] = useState("");
   const [page, setPage] = useState(0);
   const [requestPageInfo, setRequestPageInfo] = useState({ number: 0, totalPages: 1 });
@@ -210,7 +209,7 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
       })
       .catch((requestError) => {
         if (requestSeq !== listRequestSeqRef.current) return;
-        setError(requestError.message || "교환 코드 요청 목록을 불러오지 못했습니다.");
+        setError(requestError.message || "외부 예매 티켓 연동 요청을 불러오지 못했습니다.");
       })
       .finally(() => {
         if (requestSeq === listRequestSeqRef.current) setLoading(false);
@@ -229,7 +228,7 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
       const result = await exchangeCodeApi.getExchangeCodeRequest(requestId);
       if (latestRequestIdRef.current === requestId) setSelectedRequest(result?.data || null);
     } catch (requestError) {
-      if (latestRequestIdRef.current === requestId) setError(requestError.message || "교환 코드 요청 상세를 불러오지 못했습니다.");
+      if (latestRequestIdRef.current === requestId) setError(requestError.message || "외부 예매 티켓 연동 요청 상세를 불러오지 못했습니다.");
     } finally {
       if (latestRequestIdRef.current === requestId) setDetailLoading(false);
     }
@@ -242,22 +241,22 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
     setError("");
     if (!eventId) return setError("행사를 먼저 선택하세요.");
     if (!Number.isInteger(requestedQuantity) || requestedQuantity < 1 || requestedQuantity > 1000) {
-      return setError("요청 수량은 1개 이상 1000개 이하로 입력하세요.");
+      return setError("외부 판매 티켓 매수는 1매 이상 1000매 이하로 입력하세요.");
     }
-    if (!trimmedPurpose) return setError("요청 목적을 입력하세요.");
-    if (trimmedPurpose.length > 500) return setError("요청 목적은 500자 이하로 입력하세요.");
+    if (!trimmedPurpose) return setError("외부 예매처와 요청 사유를 입력하세요.");
+    if (trimmedPurpose.length > 500) return setError("외부 예매처와 요청 사유는 500자 이하로 입력하세요.");
     setSubmitting(true);
     try {
-      const result = await exchangeCodeApi.createExchangeCodeRequest(eventId, {
+      await exchangeCodeApi.createExchangeCodeRequest(eventId, {
         requestedQuantity,
         purpose: trimmedPurpose,
       });
-      setQuantity("1");
+      setQuantity("");
       setPurpose("");
-      setMessage({ ok: true, text: `교환 코드 발급 요청이 접수되었습니다. 요청 #${result?.data?.requestId || ""}` });
+      setMessage({ ok: true, text: "외부 예매 티켓 연동 요청이 접수되었습니다." });
       await loadRequests();
     } catch (requestError) {
-      setMessage({ ok: false, text: requestError.message || "교환 코드 발급 요청에 실패했습니다." });
+      setMessage({ ok: false, text: requestError.message || "외부 예매 티켓 연동 요청에 실패했습니다." });
     } finally {
       setSubmitting(false);
     }
@@ -266,7 +265,7 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
   if (!eventId) {
     return (
       <section className="rounded-xl border border-hairline bg-white p-lg text-caption text-ink-muted">
-        교환 코드 요청을 관리할 행사를 선택하세요.
+        외부 예매 티켓을 연동할 행사를 선택하세요.
       </section>
     );
   }
@@ -274,32 +273,36 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
   return (
     <section className="space-y-lg">
       <div>
-        <h1 className="font-display-lg text-[26px]">교환 코드 발급 요청</h1>
-        <p className="mt-xs text-caption text-ink-muted">행사 관리자 권한으로 교환 코드 발급을 요청합니다.</p>
+        <h1 className="font-display-lg text-[26px]">외부 예매 티켓 연동</h1>
+        <p className="mt-xs max-w-[760px] text-caption leading-relaxed text-ink-muted">
+          네이버 등 외부 예매처에서 판매한 티켓을 EvenToday 입장 QR로 전환하기 위한 기능입니다. 외부 판매 매수만큼 입장 등록 코드 발급을 요청한 뒤 구매자에게 전달하세요.
+        </p>
       </div>
       <div className="rounded-xl border border-hairline bg-white p-lg">
-        <div className="grid gap-sm sm:grid-cols-[140px_1fr_auto]">
+        <div className="grid gap-sm sm:grid-cols-[160px_1fr_auto]">
           <input
-            type="number"
-            min="1"
-            max="1000"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-            className="h-[42px] rounded-lg border border-hairline px-sm text-caption outline-none focus:border-primary-focus"
+            onChange={(event) => setQuantity(event.target.value.replace(/\D/g, "").slice(0, 4))}
+            placeholder="외부 판매 티켓 매수"
+            aria-label="외부 판매 티켓 매수"
+            className="h-[44px] w-full rounded-lg border border-hairline bg-white px-md text-caption text-ink outline-none transition-colors placeholder:text-ink-muted focus:border-primary-focus focus:ring-1 focus:ring-primary-focus/20"
           />
           <input
             type="text"
             maxLength={500}
             value={purpose}
             onChange={(event) => setPurpose(event.target.value)}
-            placeholder="요청 목적"
-            className="h-[42px] rounded-lg border border-hairline px-sm text-caption outline-none focus:border-primary-focus"
+            placeholder="외부 예매처 및 요청 사유 (예: 네이버 예매 판매분)"
+            className="h-[44px] w-full rounded-lg border border-hairline bg-white px-md text-caption text-ink outline-none transition-colors placeholder:text-ink-muted focus:border-primary-focus focus:ring-1 focus:ring-primary-focus/20"
           />
           <button
             type="button"
             onClick={submitRequest}
             disabled={submitting}
-            className="h-[42px] rounded-lg bg-primary px-lg text-caption font-body-strong text-white disabled:opacity-50"
+            className="h-[44px] rounded-lg bg-primary px-xl text-caption font-body-strong text-white transition-colors hover:bg-primary-focus disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? "요청 중" : "요청"}
           </button>
@@ -311,7 +314,7 @@ export function OrganizerExchangeCodeRequestPanel({ eventId }) {
         <div className="rounded-xl border border-hairline bg-white divide-y divide-divider-soft">
           <div className="p-lg font-body-strong">요청 내역</div>
           {loading && <p className="p-lg text-caption text-ink-muted">요청 목록을 불러오는 중입니다.</p>}
-          {!loading && !error && requests.length === 0 && <p className="p-lg text-caption text-ink-muted">교환 코드 요청 내역이 없습니다.</p>}
+          {!loading && !error && requests.length === 0 && <p className="p-lg text-caption text-ink-muted">외부 예매 티켓 연동 요청 내역이 없습니다.</p>}
           {!loading && requests.map((request) => (
             <RequestRow key={request.requestId} request={request} onSelect={selectRequest} />
           ))}
@@ -366,7 +369,7 @@ export function AdminExchangeCodeRequestPanel() {
       })
       .catch((requestError) => {
         if (requestSeq !== listRequestSeqRef.current) return;
-        setError(requestError.message || "교환 코드 요청 목록을 불러오지 못했습니다.");
+        setError(requestError.message || "외부 예매 티켓 연동 요청을 불러오지 못했습니다.");
       })
       .finally(() => {
         if (requestSeq === listRequestSeqRef.current) setLoading(false);
@@ -385,7 +388,7 @@ export function AdminExchangeCodeRequestPanel() {
         }
       })
       .catch((requestError) => {
-        if (latestRequestIdRef.current === requestId) setError(requestError.message || "교환 코드 요청 상세를 불러오지 못했습니다.");
+        if (latestRequestIdRef.current === requestId) setError(requestError.message || "외부 예매 티켓 연동 요청 상세를 불러오지 못했습니다.");
       })
       .finally(() => {
         if (latestRequestIdRef.current === requestId) setDetailLoading(false);
@@ -412,7 +415,7 @@ export function AdminExchangeCodeRequestPanel() {
     setError("");
     try {
       await exchangeCodeApi.approveExchangeCodeRequest(selectedRequest.requestId);
-      setMessage({ ok: true, text: "교환 코드 요청을 승인했습니다." });
+      setMessage({ ok: true, text: "외부 예매 티켓 연동 요청을 승인했습니다." });
       await refreshAfterAction(selectedRequest.requestId);
     } catch (requestError) {
       setMessage({ ok: false, text: requestError.message || "승인에 실패했습니다." });
@@ -431,7 +434,7 @@ export function AdminExchangeCodeRequestPanel() {
     setActionBusy(true);
     try {
       await exchangeCodeApi.rejectExchangeCodeRequest(selectedRequest.requestId, trimmed);
-      setMessage({ ok: true, text: "교환 코드 요청을 반려했습니다." });
+      setMessage({ ok: true, text: "외부 예매 티켓 연동 요청을 반려했습니다." });
       await refreshAfterAction(selectedRequest.requestId);
     } catch (requestError) {
       setMessage({ ok: false, text: requestError.message || "반려에 실패했습니다." });
@@ -442,14 +445,14 @@ export function AdminExchangeCodeRequestPanel() {
 
   const issue = async () => {
     if (!selectedRequest || actionBusy) return;
-    const confirmed = window.confirm(`요청 수량 ${selectedRequest.requestedQuantity}개의 교환 코드를 발급하시겠습니까?`);
+    const confirmed = window.confirm(`외부 판매 티켓 ${selectedRequest.requestedQuantity}매에 대한 입장 등록 코드를 발급하시겠습니까?`);
     if (!confirmed) return;
     setActionBusy(true);
     setMessage(null);
     setError("");
     try {
       const result = await exchangeCodeApi.issueExchangeCodes(selectedRequest.requestId);
-      setMessage({ ok: true, text: `교환 코드 ${result?.data?.generatedQuantity || selectedRequest.requestedQuantity}개를 발급했습니다.` });
+      setMessage({ ok: true, text: `입장 등록 코드 ${result?.data?.generatedQuantity || selectedRequest.requestedQuantity}개를 발급했습니다.` });
       await refreshAfterAction(selectedRequest.requestId);
     } catch (requestError) {
       setMessage({ ok: false, text: requestError.message || "교환 코드 발급에 실패했습니다." });
@@ -465,7 +468,7 @@ export function AdminExchangeCodeRequestPanel() {
     setError("");
     try {
       await exchangeCodeApi.resendExchangeCodeEmail(selectedRequest.requestId);
-      setMessage({ ok: true, text: "교환 코드 이메일을 재전송했습니다." });
+      setMessage({ ok: true, text: "입장 등록 코드 이메일을 재전송했습니다." });
       await refreshAfterAction(selectedRequest.requestId);
     } catch (requestError) {
       setMessage({ ok: false, text: requestError.message || "이메일 재전송에 실패했습니다." });
@@ -478,8 +481,8 @@ export function AdminExchangeCodeRequestPanel() {
     <section className="space-y-lg">
       <div className="flex flex-wrap items-center justify-between gap-md">
         <div>
-          <h1 className="font-display-lg text-[26px]">교환 코드 요청 관리</h1>
-          <p className="mt-xs text-caption text-ink-muted">요청 승인, 반려, 코드 발급, 이메일 재전송을 처리합니다.</p>
+          <h1 className="font-display-lg text-[26px]">외부 예매 티켓 관리</h1>
+          <p className="mt-xs max-w-[760px] text-caption leading-relaxed text-ink-muted">외부 예매처 판매분을 EvenToday 입장 QR로 전환하기 위한 요청을 검토하고, 구매자에게 전달할 입장 등록 코드를 발급합니다.</p>
         </div>
         <select
           value={status}

@@ -135,7 +135,15 @@ export default function AdmissionTicketDetail() {
                 <p className="rounded-lg bg-error/10 p-sm text-caption text-error">{qrError}</p>
               )}
               {ticket.qrAvailable && qrUrl && !qrLoading && !qrError && (
-                <img src={qrUrl} alt={`${ticket.eventName} 입장 QR`} className="mx-auto h-56 w-56 rounded-xl border border-hairline bg-white p-sm" />
+                <>
+                  <img src={qrUrl} alt={`${ticket.eventName} 입장 QR`} className="mx-auto h-56 w-56 rounded-xl border border-hairline bg-white p-sm" />
+                  <Link
+                    to={`/events/${ticket.eventId}/ongoing`}
+                    className="mx-auto mt-lg flex w-fit items-center gap-xs rounded-full bg-primary px-xl py-md text-caption font-body-strong text-white transition-colors hover:bg-primary-focus"
+                  >
+                    행사 화면으로 이동
+                  </Link>
+                </>
               )}
             </div>
           </section>

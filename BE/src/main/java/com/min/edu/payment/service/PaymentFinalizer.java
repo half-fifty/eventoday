@@ -3,10 +3,12 @@ package com.min.edu.payment.service;
 import java.time.OffsetDateTime;
 
 import org.springframework.stereotype.Component;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.repository.EventRepository;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.PaymentOrder;
@@ -15,6 +17,7 @@ import com.min.edu.payment.domain.PaymentProvider;
 import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.dto.request.ConfirmPaymentRequest;
 import com.min.edu.payment.dto.response.ConfirmPaymentResponse;
+import com.min.edu.payment.event.TicketReservationCompletedEvent;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
@@ -37,6 +40,8 @@ public class PaymentFinalizer {
     private final PaymentRepository paymentRepository;
     private final TicketExchangeCodeIssuer ticketExchangeCodeIssuer;
     private final AdvertisementRepository advertisementRepository;
+    private final EventRepository eventRepository;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Transactional
     public ConfirmPaymentResponse finalizePayment(
@@ -117,6 +122,7 @@ public class PaymentFinalizer {
         if (ticketOrder != null) {
             ticketOrder.confirm(tossResponse.approvedAt(), now);
             ticketExchangeCodeIssuer.issueIfAbsent(ticketOrder, paymentOrder.getBuyerMemberId(), now);
+            publishGuestReservationCompleted(paymentOrder, ticketOrder);
             return ConfirmPaymentResponse.of(payment, paymentOrder.getOrderNo(), ticketOrder);
         }
         advertisement.markPaid(now);
@@ -174,5 +180,24 @@ public class PaymentFinalizer {
             .createNativeQuery("select set_config('lock_timeout', :timeout, true)")
             .setParameter("timeout", lockTimeoutMs + "ms")
             .getSingleResult();
+    }
+
+    private void publishGuestReservationCompleted(
+            PaymentOrder paymentOrder,
+            TicketOrder ticketOrder) {
+        if (paymentOrder.getBuyerMemberId() != null
+                || paymentOrder.getBuyerEmail() == null
+                || paymentOrder.getBuyerEmail().isBlank()) {
+            return;
+        }
+
+        String eventName = eventRepository.findById(ticketOrder.getEventId())
+            .map(event -> event.getName())
+            .orElse("");
+        applicationEventPublisher.publishEvent(new TicketReservationCompletedEvent(
+            paymentOrder.getOrderNo(),
+            paymentOrder.getBuyerEmail(),
+            eventName
+        ));
     }
 }

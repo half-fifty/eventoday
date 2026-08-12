@@ -14,6 +14,7 @@ import { getManagementRecruitment } from "../api/recruitmentApi.js";
 import { listVenueMaps } from "../api/venueMapApi.js";
 import BoothManagementPanel from "../components/BoothManagementPanel.jsx";
 import ContentManagementPanel from "../components/ContentManagementPanel.jsx";
+import { OrganizerExchangeCodeRequestPanel } from "../components/ExchangeCodeRequestPanels.jsx";
 import FloorplanManagementPanel from "../components/FloorplanManagementPanel.jsx";
 import Icon from "../components/Icon.jsx";
 import OrganizerApplicationPanel from "../components/OrganizerApplicationPanel.jsx";
@@ -28,6 +29,7 @@ const navItems = [
   { key: "assignment", label: "부스 관리", icon: "grid_view" },
   { key: "floorplan", label: "평면도 관리", icon: "map" },
   { key: "content", label: "공지·자료 관리", icon: "article" },
+  { key: "exchange-codes", label: "외부 예매 티켓 연동", icon: "key" },
   { key: "approval", label: "행사 등록 승인 요청", icon: "verified" },
 ];
 
@@ -601,6 +603,9 @@ export default function OrganizerAdmin() {
                         <p className="text-caption font-bold tracking-wider text-primary">SELECTED EVENT</p>
                         <h2 className="font-display-md text-[20px]">{selectedEvent.name}</h2>
                       </div>
+                      <Link to={`/events/${selectedEventId}/admission`} className="inline-flex items-center gap-xs rounded-full border border-primary/30 px-md py-xs text-caption font-body-strong text-primary-focus hover:bg-primary-container/10">
+                        <Icon name="qr_code_scanner" className="text-[16px]" /> 현장 입장 관리
+                      </Link>
                       <Link to={`/organizer-admin/events/${selectedEventId}/edit?organizationId=${organizationId}`} className="inline-flex items-center gap-xs rounded-full border border-hairline px-md py-xs text-caption hover:bg-surface-container">
                         <Icon name="edit" className="text-[16px]" /> 행사 정보 수정
                       </Link>
@@ -772,6 +777,7 @@ export default function OrganizerAdmin() {
               {page === "assignment" && <BoothManagementPanel eventId={selectedEventId} />}
               {page === "floorplan" && <FloorplanManagementPanel eventId={selectedEventId} />}
               {page === "content" && <ContentManagementPanel eventId={selectedEventId} />}
+              {page === "exchange-codes" && <OrganizerExchangeCodeRequestPanel eventId={selectedEventId} />}
 
               {page === "approval" && (
                 <section className="space-y-lg">
