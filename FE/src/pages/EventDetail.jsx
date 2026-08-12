@@ -21,10 +21,24 @@ const formatDateTime = (value) => value
 const emptyBuyer = { name: "", email: "", phone: "" };
 const OPERATION_CUTOFF_MS = 60 * 60 * 1000;
 
+const effectiveTicketSalesEndTime = (event) => {
+  const operationCutoffTime = event?.endAt ? new Date(event.endAt).getTime() - OPERATION_CUTOFF_MS : null;
+  const configuredSalesEndTime = event?.ticketSalesEndAt ? new Date(event.ticketSalesEndAt).getTime() : null;
+  if (operationCutoffTime == null) return configuredSalesEndTime;
+  if (configuredSalesEndTime == null) return operationCutoffTime;
+  return Math.min(configuredSalesEndTime, operationCutoffTime);
+};
+
+const isTicketSalesEnded = (event, now = Date.now()) => {
+  const effectiveSalesEndTime = effectiveTicketSalesEndTime(event);
+  return effectiveSalesEndTime != null && now >= effectiveSalesEndTime;
+};
+
 export default function EventDetail() {
   const { eventId } = useParams();
   const { isAuthenticated } = useAuth();
   const [event, setEvent] = useState(null);
+  const [currentTime, setCurrentTime] = useState(Date.now());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [purchaseOpen, setPurchaseOpen] = useState(false);
@@ -93,9 +107,22 @@ export default function EventDetail() {
     return () => { cancelled = true; };
   }, [eventId, event?.venueMapEnabled]);
 
+  useEffect(() => {
+    const effectiveSalesEndTime = effectiveTicketSalesEndTime(event);
+    if (effectiveSalesEndTime == null || Date.now() >= effectiveSalesEndTime) return undefined;
+    const delay = Math.max(1000, Math.min(effectiveSalesEndTime - Date.now(), 60000));
+    const timerId = window.setTimeout(() => setCurrentTime(Date.now()), delay);
+    return () => window.clearTimeout(timerId);
+  }, [event, currentTime]);
+
   const submitTicketOrder = async (submitEvent) => {
     submitEvent.preventDefault();
     if (purchasing) return;
+    if (isTicketSalesEnded(event)) {
+      setCurrentTime(Date.now());
+      setPurchaseError("티켓 판매가 종료되었습니다.");
+      return;
+    }
     const ticketQuantity = Number(quantity);
     const purchaseLimit = event.ticketPurchaseLimit || 1;
     if (!Number.isInteger(ticketQuantity) || ticketQuantity < 1 || ticketQuantity > purchaseLimit) {
@@ -167,15 +194,19 @@ export default function EventDetail() {
     }
   };
 
-  const now = Date.now();
+  const openPurchase = () => {
+    if (isTicketSalesEnded(event)) {
+      setCurrentTime(Date.now());
+      setPurchaseError("티켓 판매가 종료되었습니다.");
+      return;
+    }
+    setPurchaseError("");
+    setPurchaseOpen(true);
+  };
+
+  const now = currentTime;
   const salesNotStarted = event?.ticketSalesStartAt && new Date(event.ticketSalesStartAt).getTime() > now;
-  const operationCutoffTime = event?.endAt ? new Date(event.endAt).getTime() - OPERATION_CUTOFF_MS : null;
-  const configuredSalesEndTime = event?.ticketSalesEndAt ? new Date(event.ticketSalesEndAt).getTime() : null;
-  const effectiveSalesEndTime = operationCutoffTime == null
-    ? configuredSalesEndTime
-    : configuredSalesEndTime == null
-      ? operationCutoffTime
-      : Math.min(configuredSalesEndTime, operationCutoffTime);
+  const effectiveSalesEndTime = effectiveTicketSalesEndTime(event);
   const salesEnded = effectiveSalesEndTime != null && now >= effectiveSalesEndTime;
   const ticketButtonLabel = salesNotStarted
     ? `${formatDateTime(event.ticketSalesStartAt)} 판매 시작`
@@ -271,7 +302,7 @@ export default function EventDetail() {
               <p className="flex gap-sm"><Icon name="location_on" /><span>{event.venueName}<br /><span className="text-caption text-ink-muted">{event.address}</span></span></p>
               <div className="border-t border-hairline pt-md"><p className="text-caption text-ink-muted">입장 가격</p><p className="font-display-md text-[22px]">{Number(event.ticketPrice) === 0 ? "무료" : `${Number(event.ticketPrice).toLocaleString("ko-KR")}원`}</p></div>
               {(event.contactEmail || event.contactPhone) && <div className="border-t border-hairline pt-md space-y-sm"><p className="text-caption text-ink-muted">행사 문의</p>{event.contactEmail && <a href={`mailto:${event.contactEmail}`} className="flex gap-sm items-center text-body hover:text-primary"><Icon name="mail" />{event.contactEmail}</a>}{event.contactPhone && <a href={`tel:${event.contactPhone}`} className="flex gap-sm items-center text-body hover:text-primary"><Icon name="call" />{event.contactPhone}</a>}</div>}
-              <button disabled={salesNotStarted || salesEnded} onClick={() => setPurchaseOpen(true)} className="w-full py-sm bg-primary text-white rounded-full font-body-strong disabled:bg-surface-container-highest disabled:text-ink-muted disabled:cursor-not-allowed">{ticketButtonLabel}</button>
+              <button disabled={salesNotStarted || salesEnded} onClick={openPurchase} className="w-full py-sm bg-primary text-white rounded-full font-body-strong disabled:bg-surface-container-highest disabled:text-ink-muted disabled:cursor-not-allowed">{ticketButtonLabel}</button>
             </aside>
           </div>
         </>}

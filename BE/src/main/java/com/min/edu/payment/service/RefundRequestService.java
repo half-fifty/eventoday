@@ -70,9 +70,11 @@ public class RefundRequestService {
             }
         }
 
-        validateRefundableBeforeToss(payment);
+        OffsetDateTime refundAttemptedAt = OffsetDateTime.now();
+        validateRefundableBeforeToss(payment, refundAttemptedAt);
 
-        PaymentRefund preparedRefund = prepareRefundAttempt(payment, memberId, request);
+        PaymentRefund preparedRefund =
+            prepareRefundAttempt(payment, memberId, request, refundAttemptedAt);
         if (preparedRefund.isCompleted()) {
             return CreateRefundResponse.of(preparedRefund, payment.getOrderNo());
         }
@@ -117,9 +119,10 @@ public class RefundRequestService {
     private PaymentRefund prepareRefundAttempt(
             RefundPaymentProjection payment,
             Long memberId,
-            CreateRefundRequest request) {
+            CreateRefundRequest request,
+            OffsetDateTime refundAttemptedAt) {
         try {
-            return refundAttemptRecorder.prepare(payment, memberId, request);
+            return refundAttemptRecorder.prepare(payment, memberId, request, refundAttemptedAt);
         } catch (RuntimeException exception) {
             BusinessException businessException = exceptionTranslator.translate(exception);
             if (businessException == null) {
@@ -134,14 +137,16 @@ public class RefundRequestService {
             }
 
             if (existingRefund.isFailed()) {
-                return refundAttemptRecorder.prepare(payment, memberId, request);
+                return refundAttemptRecorder.prepare(payment, memberId, request, refundAttemptedAt);
             }
 
             throw new BusinessException(GlobalErrorCode.REFUND_ALREADY_PROCESSING);
         }
     }
 
-    private void validateRefundableBeforeToss(RefundPaymentProjection payment) {
+    private void validateRefundableBeforeToss(
+            RefundPaymentProjection payment,
+            OffsetDateTime refundAttemptedAt) {
         if (!PaymentStatus.PAID.name().equals(payment.getPaymentStatus())
                 || !PaymentOrderStatus.PAID.name().equals(payment.getPaymentOrderStatus())
                 || !TicketOrderStatus.CONFIRMED.name().equals(payment.getTicketOrderStatus())
@@ -149,7 +154,7 @@ public class RefundRequestService {
             throw new BusinessException(GlobalErrorCode.REFUND_NOT_ALLOWED);
         }
 
-        if (!deadlinePolicy.isBeforeOperationCutoff(OffsetDateTime.now(), payment.getEventEndAt())) {
+        if (!deadlinePolicy.isBeforeOperationCutoff(refundAttemptedAt, payment.getEventEndAt())) {
             throw new BusinessException(GlobalErrorCode.REFUND_NOT_ALLOWED);
         }
 

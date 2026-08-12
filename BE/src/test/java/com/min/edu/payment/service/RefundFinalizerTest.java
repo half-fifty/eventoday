@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.min.edu.admission.domain.ExchangeCode;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
@@ -95,6 +97,53 @@ class RefundFinalizerTest {
         given(entityManager.createNativeQuery(any(String.class))).willReturn(query);
         given(query.setParameter(eq("timeout"), any())).willReturn(query);
         given(query.getSingleResult()).willReturn("");
+    }
+
+    @Test
+    void finalizeRefund_completesWhenRequestedBeforeCutoffEvenIfFinalizerRunsAfterCutoff() {
+        OffsetDateTime now = OffsetDateTime.now();
+        RefundPaymentProjection projection = projection(
+            PaymentStatus.PAID.name(),
+            PaymentOrderStatus.PAID.name(),
+            TicketOrderStatus.CONFIRMED.name(),
+            now.minusHours(2),
+            now.plusMinutes(30)
+        );
+        PaymentOrder paymentOrder = paidPaymentOrder();
+        Payment payment = paidPayment();
+        TicketOrder ticketOrder = confirmedTicketOrder();
+        PaymentRefund refund = requestedRefund(now.minusHours(1));
+        List<ExchangeCode> exchangeCodes = List.of(
+            ExchangeCode.createForTicketOrder(3L, 2L, 10L, "code-1", null, now.minusHours(1)),
+            ExchangeCode.createForTicketOrder(3L, 2L, 10L, "code-2", null, now.minusHours(1))
+        );
+
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(projection));
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.findById(1L)).willReturn(Optional.of(payment));
+        given(ticketOrderRepository.findByPaymentOrderId(11L)).willReturn(Optional.of(ticketOrder));
+        given(paymentRefundRepository.findById(7L)).willReturn(Optional.of(refund));
+        given(exchangeCodeRepository.existsByTicketOrderIdAndStatus(any(), any())).willReturn(false);
+        given(exchangeCodeRepository.findAllByTicketOrderIdOrderByIdAsc(2L))
+            .willReturn(exchangeCodes);
+        given(ticketInventoryGateway.release(3L, 2)).willReturn(true);
+        given(paymentRefundRepository.saveAndFlush(refund)).willReturn(refund);
+
+        CreateRefundResponse response = refundFinalizer.finalizeRefund(
+            7L,
+            1L,
+            10L,
+            new CreateRefundRequest("reason"),
+            tossResponse()
+        );
+
+        assertThat(response.getRefundStatus()).isEqualTo("COMPLETED");
+        assertThat(payment.isRefunded()).isTrue();
+        assertThat(paymentOrder.isRefunded()).isTrue();
+        assertThat(ticketOrder.isRefunded()).isTrue();
+        assertThat(refund.isCompleted()).isTrue();
+        assertThat(exchangeCodes).allMatch(ExchangeCode::isCancelled);
     }
 
     @Test
@@ -332,6 +381,10 @@ class RefundFinalizerTest {
     }
 
     private PaymentRefund requestedRefund() {
+        return requestedRefund(OffsetDateTime.now());
+    }
+
+    private PaymentRefund requestedRefund(OffsetDateTime requestedAt) {
         return PaymentRefund.builder()
             .id(7L)
             .paymentId(1L)
@@ -339,7 +392,7 @@ class RefundFinalizerTest {
             .refundAmount(BigDecimal.valueOf(10000))
             .reason("reason")
             .status(com.min.edu.payment.domain.PaymentRefundStatus.REQUESTED)
-            .requestedAt(OffsetDateTime.now())
+            .requestedAt(requestedAt)
             .build();
     }
 

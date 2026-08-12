@@ -82,7 +82,7 @@ public class RefundFinalizer {
             return CreateRefundResponse.of(refund, paymentOrder.getOrderNo());
         }
 
-        validateRefundable(projection, payment, paymentOrder, ticketOrder);
+        validateRefundable(projection, payment, paymentOrder, ticketOrder, refund);
         validateTossCancelResponse(projection, tossResponse);
 
         OffsetDateTime now = OffsetDateTime.now();
@@ -128,7 +128,8 @@ public class RefundFinalizer {
             RefundPaymentProjection projection,
             Payment payment,
             PaymentOrder paymentOrder,
-            TicketOrder ticketOrder) {
+            TicketOrder ticketOrder,
+            PaymentRefund refund) {
         if (!payment.isPaid()
                 || !paymentOrder.isPaid()
                 || !ticketOrder.isConfirmed()
@@ -136,7 +137,7 @@ public class RefundFinalizer {
             throw new BusinessException(GlobalErrorCode.REFUND_NOT_ALLOWED);
         }
 
-        if (!deadlinePolicy.isBeforeOperationCutoff(OffsetDateTime.now(), projection.getEventEndAt())) {
+        if (!deadlinePolicy.isBeforeOperationCutoff(refund.getRequestedAt(), projection.getEventEndAt())) {
             throw new BusinessException(GlobalErrorCode.REFUND_NOT_ALLOWED);
         }
 

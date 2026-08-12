@@ -156,6 +156,15 @@ export default function EventForm() {
       setError("티켓 판매 종료는 행사 종료 1시간 전까지로 설정해 주세요.");
       return;
     }
+    const operationCutoffTime = new Date(form.endAt).getTime() - OPERATION_CUTOFF_MS;
+    const effectiveSalesEndTime = form.ticketSalesEndAt
+      ? Math.min(new Date(form.ticketSalesEndAt).getTime(), operationCutoffTime)
+      : operationCutoffTime;
+    if (form.ticketSalesStartAt
+        && new Date(form.ticketSalesStartAt).getTime() >= effectiveSalesEndTime) {
+      setError("티켓 판매 시작은 실제 판매 종료보다 이전이어야 합니다.");
+      return;
+    }
     setSaving(true); setError("");
     const payload = { ...form, ticketPrice: Number(form.ticketPrice),
       ticketTotalQuantity: Number(form.ticketTotalQuantity), ticketPurchaseLimit: Number(form.ticketPurchaseLimit),

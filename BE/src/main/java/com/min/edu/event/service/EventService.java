@@ -346,6 +346,11 @@ public class EventService {
         if (request.ticketSalesEndAt() != null
                 && request.ticketSalesEndAt().isAfter(deadlinePolicy.operationCutoff(request.endAt())))
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        OffsetDateTime effectiveTicketSalesEndAt =
+                deadlinePolicy.effectiveTicketSalesEndAt(request.ticketSalesEndAt(), request.endAt());
+        if (request.ticketSalesStartAt() != null
+                && !request.ticketSalesStartAt().isBefore(effectiveTicketSalesEndAt))
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         if (request.ticketTotalQuantity() < request.ticketPurchaseLimit())
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
     }
