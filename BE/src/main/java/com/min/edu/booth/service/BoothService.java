@@ -197,7 +197,12 @@ public class BoothService {
             BoothStatusUpdateRequestDto request,
             AuthenticatedMemberDto member) {
         requireEventManager(eventId, member);
-        Booth booth = getByIdAndEventIdOrThrow(boothId, eventId);
+        // BoothApplicationService.approve()가 승인 시 findByIdWithLock으로 부스를 잠그고
+        // ASSIGNED로 바꾸는 것과 동시에 이 메서드가 잠금 없이 조회해 상태를 바꾸면, 둘 중 하나의
+        // 변경이 유실될 수 있다. 여기서도 같은 락으로 조회해 두 경로가 서로 직렬화되게 한다.
+        Booth booth = boothRepository.findByIdWithLock(boothId)
+            .filter(b -> b.getEventId().equals(eventId))
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
         BoothStatus nextStatus = request.getStatus();
         if (nextStatus == BoothStatus.ASSIGNED && booth.getAssignedOrganizationId() == null) {

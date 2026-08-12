@@ -67,7 +67,10 @@ export default function FloorplanManagementPanel({ eventId }) {
   // 행사를 빠르게 전환할 때 이전 요청의 응답이 늦게 도착해 현재 화면을 덮어쓰는 것을 막기 위한 버전 가드.
   const requestVersionRef = useRef(0);
 
-  const loadAll = async (id, version) => {
+  // 호출할 때마다 새 버전을 발급해, 나중에 시작됐지만 먼저 끝난 요청만 반영되도록 한다.
+  // eventId가 바뀌는 effect도 결국 이 함수를 호출하므로 행사 전환도 자연히 최신 버전으로 갱신된다.
+  const loadAll = async (id) => {
+    const version = ++requestVersionRef.current;
     setLoading(true);
     setError("");
     try {
@@ -89,7 +92,6 @@ export default function FloorplanManagementPanel({ eventId }) {
   };
 
   useEffect(() => {
-    const version = ++requestVersionRef.current;
     setUploadForm(EMPTY_UPLOAD_FORM);
     setFileInputKey((prev) => prev + 1);
     setSelectedMapId(null);
@@ -99,7 +101,12 @@ export default function FloorplanManagementPanel({ eventId }) {
     setMaps([]);
     setBooths([]);
     if (eventId) {
-      loadAll(eventId, version);
+      loadAll(eventId);
+    } else {
+      // 진행 중이던 요청이 있었다면 그 응답은 이제 무의미하므로 버전을 올려 무시하고,
+      // 로딩 상태도 여기서 직접 꺼야 한다 (그 요청의 finally는 버전 불일치로 스킵됨).
+      requestVersionRef.current += 1;
+      setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
@@ -120,17 +127,25 @@ export default function FloorplanManagementPanel({ eventId }) {
 
   const runAction = async (actionFn, successMessage) => {
     if (submitting) return;
+    // 이 액션이 시작된 시점의 행사를 기억해뒀다가, 완료 시점에 사용자가 이미 다른 행사로
+    // 넘어갔으면(=eventId가 달라졌으면) 그 행사 데이터를 재조회/메시지 표시하지 않는다.
+    // 안 그러면 이전 행사 재조회가 최신 버전을 새로 받아 지금 보고 있는 행사 데이터를 덮어쓴다.
+    const actionEventId = eventId;
     setSubmitting(true);
     setError("");
     setMessage("");
     try {
       await actionFn();
+      if (eventId !== actionEventId) return;
       setMessage(successMessage);
-      await loadAll(eventId, requestVersionRef.current);
+      await loadAll(eventId);
     } catch (err) {
+      if (eventId !== actionEventId) return;
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : err.message || "요청에 실패했습니다.");
     } finally {
-      setSubmitting(false);
+      if (eventId === actionEventId) {
+        setSubmitting(false);
+      }
     }
   };
 
