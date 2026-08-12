@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import Icon from "./Icon.jsx";
 import { ApiError } from "../api/apiClient.js";
@@ -177,39 +177,60 @@ export default function BoothManagementPanel({ eventId }) {
   const [introBoothId, setIntroBoothId] = useState(null);
   const [introForm, setIntroForm] = useState(EMPTY_INTRO_FORM);
 
+  // 행사를 빠르게 전환할 때 이전 요청의 응답이 늦게 도착해 현재 화면을 덮어쓰는 것을 막기 위한 버전 가드.
+  const requestVersionRef = useRef(0);
+  // runAction 안에서 "이 액션이 시작된 뒤 행사가 바뀌었는가"를 판단하기 위한 세대 카운터.
+  // eventId는 컴포넌트 prop이라 runAction 클로저 안에서 캡처한 값과 나중에 다시 읽는 값이
+  // 항상 같은 렌더의 값이라 절대 달라지지 않는다(클로저이므로) - 그래서 eventId를 직접
+  // 비교하면 항상 "안 바뀜"으로 나온다. eventId가 실제로 바뀔 때만 증가하는 이 ref로 비교해야
+  // 진짜 세대 변화를 감지할 수 있다.
+  const eventGenerationRef = useRef(0);
+
   const [qrBoothId, setQrBoothId] = useState(null);
   const [qrInfo, setQrInfo] = useState(null);
   const [qrImageUrl, setQrImageUrl] = useState("");
+  const [qrError, setQrError] = useState("");
 
   const showQr = async (boothId, info) => {
     setQrBoothId(boothId);
     setQrInfo(info);
     setQrImageUrl("");
+    setQrError("");
     // 스캔하면 부스 상세 페이지로 이동하도록, 토큰 원문 대신 페이지 URL을 인코딩한다.
     const scanUrl = `${window.location.origin}/booth-detail?eventId=${eventId}&boothId=${boothId}&qr=${info.qrToken}`;
     try {
       const dataUrl = await QRCode.toDataURL(scanUrl, { width: 160, margin: 1 });
       setQrImageUrl(dataUrl);
-    } catch {
+    } catch (err) {
       setQrImageUrl("");
+      setQrError(err instanceof Error && err.message ? err.message : "QR 이미지를 생성하지 못했습니다.");
     }
   };
 
+  // loadBooths를 호출할 때마다(같은 행사 안에서 검색/페이지 이동/재조회가 겹치는 경우 포함)
+  // 매번 새 버전을 발급해, 나중에 시작됐지만 먼저 끝난 요청만 반영되도록 한다. eventId가
+  // 바뀌는 effect도 결국 이 함수를 호출하므로 행사 전환도 자연히 최신 버전으로 갱신된다.
   const loadBooths = async (id, currentFilters, currentPage) => {
+    const version = ++requestVersionRef.current;
     setLoading(true);
     setError("");
     try {
       const result = await listBooths(id, { ...currentFilters, page: currentPage, size: PAGE_SIZE });
+      if (requestVersionRef.current !== version) return;
       setPageResult(result);
     } catch (err) {
+      if (requestVersionRef.current !== version) return;
       setPageResult(null);
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "부스 목록을 불러오지 못했습니다.");
     } finally {
-      setLoading(false);
+      if (requestVersionRef.current === version) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    eventGenerationRef.current += 1;
     setPage(0);
     setFilters(EMPTY_FILTERS);
     setEditingBoothId(null);
@@ -217,8 +238,18 @@ export default function BoothManagementPanel({ eventId }) {
     closeQr();
     setMessage("");
     setPageResult(null);
+    // 이전 행사에서 진행 중이던 액션이 있었다면 그 결과는 이제 무의미하다 - runAction의
+    // 가드가 그 액션의 후속 상태 변경은 막아주지만, submitting 자체는 그 액션의 finally가
+    // (가드 때문에) 건드리지 않으므로 여기서 직접 꺼줘야 다음 행사에서 버튼이 계속
+    // 비활성화된 채로 남지 않는다.
+    setSubmitting(false);
     if (eventId) {
       loadBooths(eventId, EMPTY_FILTERS, 0);
+    } else {
+      // 진행 중이던 요청이 있었다면 그 응답은 이제 무의미하므로 버전을 올려 무시하고,
+      // 로딩 상태도 여기서 직접 꺼야 한다 (그 요청의 finally는 버전 불일치로 스킵됨).
+      requestVersionRef.current += 1;
+      setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
@@ -237,17 +268,26 @@ export default function BoothManagementPanel({ eventId }) {
 
   const runAction = async (actionFn, successMessage) => {
     if (submitting) return;
+    // 이 액션이 시작된 시점의 "행사 세대"를 기억해뒀다가, 완료 시점에 사용자가 이미 다른
+    // 행사로 넘어갔으면(=세대가 달라졌으면) 그 행사 데이터를 재조회/메시지 표시하지 않는다.
+    // eventId 값 자체를 비교하면 안 된다 - eventId는 이 클로저가 만들어진 렌더의 값을
+    // 그대로 캡처하고 있어서 나중에 다시 읽어도 항상 같은 값이라 절대 안 바뀐 것처럼 보인다.
+    const actionGeneration = eventGenerationRef.current;
     setSubmitting(true);
     setError("");
     setMessage("");
     try {
       await actionFn();
+      if (eventGenerationRef.current !== actionGeneration) return;
       setMessage(successMessage);
       await refresh();
     } catch (err) {
+      if (eventGenerationRef.current !== actionGeneration) return;
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : err.message || "요청에 실패했습니다.");
     } finally {
-      setSubmitting(false);
+      if (eventGenerationRef.current === actionGeneration) {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -324,6 +364,7 @@ export default function BoothManagementPanel({ eventId }) {
     setQrBoothId(null);
     setQrInfo(null);
     setQrImageUrl("");
+    setQrError("");
   };
 
   // 발급은 멱등이라(이미 있으면 기존 QR을 그대로 돌려줌) 버튼 하나로 발급·조회를 겸한다.
@@ -524,6 +565,10 @@ export default function BoothManagementPanel({ eventId }) {
                       <div className="flex items-center gap-md p-md border border-hairline rounded-lg bg-surface-container-lowest">
                         {qrImageUrl ? (
                           <img src={qrImageUrl} alt={`${booth.boothCode} 부스 QR`} className="w-32 h-32" />
+                        ) : qrError ? (
+                          <div className="w-32 h-32 flex items-center justify-center text-caption text-error text-center px-sm">
+                            {qrError}
+                          </div>
                         ) : (
                           <div className="w-32 h-32 flex items-center justify-center text-caption text-ink-muted">
                             생성 중...
