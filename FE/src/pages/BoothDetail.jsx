@@ -221,6 +221,13 @@ export default function BoothDetail() {
   };
 
   useEffect(() => {
+    // refreshMyReview()가 끝나기 전까지 이전 부스의 후기 편집 상태가 남아있으면, 그 사이 "수정 완료"를
+    // 눌렀을 때 이전 부스의 후기 id로 새 부스에 잘못 반영될 수 있어 부스가 바뀌는 즉시 초기화한다.
+    setMyReviewForThisBooth(null);
+    setEditingReview(false);
+    setReviewFormRating(5);
+    setReviewFormComment("");
+    setReviewFormError("");
     refreshMyReview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, boothId]);
