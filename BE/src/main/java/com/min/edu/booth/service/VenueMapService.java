@@ -6,6 +6,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -85,7 +87,17 @@ public class VenueMapService {
             .updatedAt(now)
             .build();
 
-        VenueMap saved = venueMapRepository.save(venueMap);
+        VenueMap saved;
+        try {
+            saved = venueMapRepository.saveAndFlush(venueMap);
+        } catch (DataIntegrityViolationException e) {
+            // FK 위반 등 다른 무결성 예외까지 버전 충돌로 오인하지 않도록, uk_venue_maps_event_type_floor_version
+            // 유니크 제약 위반인 경우에만 VENUE_MAP_VERSION_CONFLICT로 변환하고 나머지는 그대로 전파한다.
+            if (isVenueMapVersionUniqueViolation(e)) {
+                throw new BusinessException(GlobalErrorCode.VENUE_MAP_VERSION_CONFLICT, e);
+            }
+            throw e;
+        }
         return toResponses(eventId, List.of(saved)).get(0);
     }
 
@@ -212,6 +224,28 @@ public class VenueMapService {
                     .build();
             })
             .toList();
+    }
+
+    private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
+    private static final String VENUE_MAP_VERSION_UNIQUE_CONSTRAINT =
+        "uk_venue_maps_event_type_floor_version";
+
+    private boolean isVenueMapVersionUniqueViolation(DataIntegrityViolationException exception) {
+        Throwable current = exception;
+
+        while (current != null) {
+            if (current instanceof ConstraintViolationException constraintViolationException) {
+                return VENUE_MAP_VERSION_UNIQUE_CONSTRAINT.equals(
+                    constraintViolationException.getConstraintName()
+                ) && UNIQUE_VIOLATION_SQL_STATE.equals(
+                    constraintViolationException.getSQLState()
+                );
+            }
+
+            current = current.getCause();
+        }
+
+        return false;
     }
 
     private VenueMap getByIdAndEventIdOrThrow(Long mapId, Long eventId) {

@@ -195,6 +195,23 @@ public class Booth {
         this.updatedAt = now;
     }
 
+    /**
+     * 배정된 부스를 AVAILABLE로 되돌린다. 배정 조직 기록과 함께 이전 조직이 등록한 소개
+     * 정보(updateIntro로 설정한 필드들)도 지워야 한다 - 안 지우면 AVAILABLE 상태에서 공개
+     * 목록(listPublic)에 이전 조직의 소개가 그대로 노출되고, 다른 조직이 재배정돼도
+     * updateIntro를 다시 호출하기 전까지 이전 조직의 정보가 새 조직 부스로 남는다.
+     */
+    public void unassign(OffsetDateTime now) {
+        this.status = BoothStatus.AVAILABLE;
+        this.assignedOrganizationId = null;
+        this.displayName = null;
+        this.shortIntro = null;
+        this.description = null;
+        this.exhibitionContent = null;
+        this.representativeFileId = null;
+        this.updatedAt = now;
+    }
+
     public void updateIntro(
             String displayName,
             String shortIntro,
