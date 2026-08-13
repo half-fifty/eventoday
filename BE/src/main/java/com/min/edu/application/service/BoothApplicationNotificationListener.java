@@ -4,7 +4,7 @@ import com.min.edu.common.mail.EmailMessage;
 import com.min.edu.common.mail.EmailSender;
 import com.min.edu.notification.domain.NotificationType;
 import com.min.edu.notification.dto.NotificationEventDto;
-import com.min.edu.notification.producer.NotificationProducer;
+import com.min.edu.notification.outbox.service.OutboxEventWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -15,6 +15,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * 부스 신청 승인/반려 결과를 신청자에게 사이트 알림 + 이메일로 발송하는 리스너
  * - AFTER_COMMIT: 승인·반려 트랜잭션이 커밋된 이후에만 발송
  *   (커밋 실패 시 알림이 나가지 않고, 발송 지연이 비관적 락 보유 시간을 늘리지 않음)
+ * - 사이트 알림은 카프카를 직접 호출하지 않고 outbox_events에 기록만 한다.
+ *   실제 발행은 OutboxEventPublishRunner가 별도 스케줄러에서 재시도 가능하게 처리한다.
  * - EventReviewNotificationListener와 동일한 패턴
  */
 @Slf4j
@@ -22,7 +24,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class BoothApplicationNotificationListener {
 
-    private final NotificationProducer notificationProducer;
+    private final OutboxEventWriter outboxEventWriter;
     private final EmailSender emailSender;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -37,9 +39,9 @@ public class BoothApplicationNotificationListener {
                 ? NotificationType.BOOTH_APPLICATION_APPROVED
                 : NotificationType.BOOTH_APPLICATION_REJECTED;
 
-        // 사이트 알림: 신청서를 제출한 회원에게 발송
+        // 사이트 알림: 신청서를 제출한 회원에게 발송할 이벤트를 outbox에 기록
         try {
-            notificationProducer.send(NotificationEventDto.create(
+            outboxEventWriter.write(NotificationEventDto.create(
                     decision.applicantMemberId(),
                     type,
                     "BOOTH_APPLICATION",
@@ -47,7 +49,7 @@ public class BoothApplicationNotificationListener {
                     title,
                     content));
         } catch (RuntimeException exception) {
-            log.error("부스 신청 {} 알림 발송 실패 - applicationId: {}", result, decision.applicationId(), exception);
+            log.error("부스 신청 {} 알림 기록 실패 - applicationId: {}", result, decision.applicationId(), exception);
         }
 
         // 이메일: 신청서에 기재된 담당자 이메일로 발송 (반려 사유 등 자유 입력값은 HTML 이스케이프)
