@@ -21,6 +21,29 @@ public class ConfirmPaymentResponse {
     private String paymentStatus;
     private String ticketOrderStatus;
     private OffsetDateTime approvedAt;
+    private String paymentMethod;
+    private VirtualAccountResponse virtualAccount;
+
+    public ConfirmPaymentResponse(
+            Long paymentId,
+            String orderNo,
+            Long ticketOrderId,
+            BigDecimal amount,
+            String paymentStatus,
+            String ticketOrderStatus,
+            OffsetDateTime approvedAt) {
+        this(
+            paymentId,
+            orderNo,
+            ticketOrderId,
+            amount,
+            paymentStatus,
+            ticketOrderStatus,
+            approvedAt,
+            null,
+            null
+        );
+    }
 
     public static ConfirmPaymentResponse of(
             Payment payment,
@@ -33,7 +56,27 @@ public class ConfirmPaymentResponse {
             payment.getAmount(),
             payment.getStatus(),
             ticketOrder.getStatus(),
-            payment.getApprovedAt()
+            payment.getApprovedAt(),
+            payment.getMethod(),
+            null
+        );
+    }
+
+    public static ConfirmPaymentResponse waitingForDeposit(
+            Payment payment,
+            String orderNo,
+            TicketOrder ticketOrder,
+            VirtualAccountResponse virtualAccount) {
+        return new ConfirmPaymentResponse(
+            payment.getId(),
+            orderNo,
+            ticketOrder.getId(),
+            payment.getAmount(),
+            payment.getStatus(),
+            ticketOrder.getStatus(),
+            payment.getApprovedAt(),
+            payment.getMethod(),
+            virtualAccount
         );
     }
 
@@ -48,7 +91,20 @@ public class ConfirmPaymentResponse {
             payment.getAmount(),
             payment.getStatus(),
             advertisement.getStatus().name(),
-            payment.getApprovedAt()
+            payment.getApprovedAt(),
+            payment.getMethod(),
+            null
         );
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class VirtualAccountResponse {
+
+        private String bankCode;
+        private String accountNumber;
+        private String customerName;
+        private BigDecimal amount;
+        private OffsetDateTime dueAt;
     }
 }

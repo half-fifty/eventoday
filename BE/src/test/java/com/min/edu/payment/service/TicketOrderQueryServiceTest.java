@@ -75,6 +75,7 @@ class TicketOrderQueryServiceTest {
         assertThat(item.getEventId()).isEqualTo(1L);
         assertThat(item.getEventName()).isEqualTo("Event");
         assertThat(item.getPaymentRequired()).isFalse();
+        assertThat(item.getPaymentMethod()).isNull();
         assertThat(response.getPage()).isZero();
         assertThat(response.getSize()).isEqualTo(20);
         assertThat(response.getTotalElements()).isEqualTo(1);
@@ -233,6 +234,7 @@ class TicketOrderQueryServiceTest {
         assertThat(response.getOrderNo()).isEqualTo("FREE-ORDER-1");
         assertThat(response.getPaymentId()).isNull();
         assertThat(response.getPaymentRequired()).isFalse();
+        assertThat(response.getPaymentMethod()).isNull();
     }
 
     @Test
@@ -422,6 +424,31 @@ class TicketOrderQueryServiceTest {
             }
 
             @Override
+            public String getPaymentMethod() {
+                return paymentId == null ? null : "CARD";
+            }
+
+            @Override
+            public String getVirtualAccountBankCode() {
+                return null;
+            }
+
+            @Override
+            public String getVirtualAccountNumber() {
+                return null;
+            }
+
+            @Override
+            public String getVirtualAccountCustomerName() {
+                return null;
+            }
+
+            @Override
+            public OffsetDateTime getVirtualAccountDueAt() {
+                return null;
+            }
+
+            @Override
             public OffsetDateTime getExpiresAt() {
                 return expiresAt;
             }
@@ -518,6 +545,31 @@ class TicketOrderQueryServiceTest {
             @Override
             public String getTicketOrderStatus() {
                 return ticketOrderStatus;
+            }
+
+            @Override
+            public String getPaymentMethod() {
+                return paymentId == null ? null : "CARD";
+            }
+
+            @Override
+            public String getVirtualAccountBankCode() {
+                return null;
+            }
+
+            @Override
+            public String getVirtualAccountNumber() {
+                return null;
+            }
+
+            @Override
+            public String getVirtualAccountCustomerName() {
+                return null;
+            }
+
+            @Override
+            public OffsetDateTime getVirtualAccountDueAt() {
+                return null;
             }
 
             @Override

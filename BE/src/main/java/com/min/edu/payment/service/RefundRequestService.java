@@ -10,6 +10,7 @@ import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.policy.EventOperationDeadlinePolicy;
+import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrderStatus;
 import com.min.edu.payment.domain.PaymentRefund;
 import com.min.edu.payment.domain.PaymentStatus;
@@ -71,7 +72,7 @@ public class RefundRequestService {
         }
 
         OffsetDateTime refundAttemptedAt = OffsetDateTime.now();
-        validateRefundableBeforeToss(payment, refundAttemptedAt);
+        validateRefundableBeforeToss(payment, request, refundAttemptedAt);
 
         PaymentRefund preparedRefund =
             prepareRefundAttempt(payment, memberId, request, refundAttemptedAt);
@@ -146,6 +147,7 @@ public class RefundRequestService {
 
     private void validateRefundableBeforeToss(
             RefundPaymentProjection payment,
+            CreateRefundRequest request,
             OffsetDateTime refundAttemptedAt) {
         if (!PaymentStatus.PAID.name().equals(payment.getPaymentStatus())
                 || !PaymentOrderStatus.PAID.name().equals(payment.getPaymentOrderStatus())
@@ -162,6 +164,11 @@ public class RefundRequestService {
                 payment.getTicketOrderId(),
                 ExchangeCodeStatus.REDEEMED)) {
             throw new BusinessException(GlobalErrorCode.USED_TICKET_CANNOT_BE_REFUNDED);
+        }
+
+        if (PaymentMethod.VIRTUAL_ACCOUNT.matchesTossMethod(payment.getPaymentMethod())
+                && request.getRefundReceiveAccount() == null) {
+            throw new BusinessException(GlobalErrorCode.REFUND_RECEIVE_ACCOUNT_REQUIRED);
         }
     }
 
@@ -198,7 +205,8 @@ public class RefundRequestService {
             return tossPaymentClient.cancel(new TossCancelRequest(
                 payment.getPaymentKey(),
                 request.getReason(),
-                toTossAmount(payment.getPaymentAmount())
+                toTossAmount(payment.getPaymentAmount()),
+                refundReceiveAccount(payment, request)
             ));
         } catch (TossPaymentClientException exception) {
             if (ALREADY_CANCELED_PAYMENT.equals(exception.getTossErrorCode())) {
@@ -207,6 +215,26 @@ public class RefundRequestService {
 
             throw new BusinessException(exception.getErrorCode());
         }
+    }
+
+    private TossCancelRequest.RefundReceiveAccount refundReceiveAccount(
+            RefundPaymentProjection payment,
+            CreateRefundRequest request) {
+        if (!PaymentMethod.VIRTUAL_ACCOUNT.matchesTossMethod(payment.getPaymentMethod())) {
+            return null;
+        }
+
+        CreateRefundRequest.RefundReceiveAccountRequest account =
+            request.getRefundReceiveAccount();
+        if (account == null) {
+            throw new BusinessException(GlobalErrorCode.REFUND_RECEIVE_ACCOUNT_REQUIRED);
+        }
+
+        return new TossCancelRequest.RefundReceiveAccount(
+            account.getBank(),
+            account.getAccountNumber(),
+            account.getHolderName()
+        );
     }
 
     private TossCancelResponse recoverAlreadyCanceledPayment(RefundPaymentProjection payment) {

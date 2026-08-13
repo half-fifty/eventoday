@@ -9,6 +9,7 @@ import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderType;
+import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.dto.request.ConfirmPaymentRequest;
 import com.min.edu.payment.dto.response.ConfirmPaymentResponse;
@@ -30,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 public class PaymentConfirmService {
 
     private static final String TOSS_DONE_STATUS = "DONE";
+    private static final String TOSS_WAITING_FOR_DEPOSIT_STATUS = "WAITING_FOR_DEPOSIT";
     private static final String ALREADY_PROCESSED_PAYMENT = "ALREADY_PROCESSED_PAYMENT";
 
     private final PaymentOrderRepository paymentOrderRepository;
@@ -38,6 +40,7 @@ public class PaymentConfirmService {
     private final OrderAccessTokenProvider orderAccessTokenProvider;
     private final TossPaymentClient tossPaymentClient;
     private final PaymentFinalizer paymentFinalizer;
+    private final VirtualAccountPaymentService virtualAccountPaymentService;
     private final PaymentFinalizationExceptionTranslator exceptionTranslator;
     private final AdvertisementRepository advertisementRepository;
 
@@ -55,8 +58,24 @@ public class PaymentConfirmService {
             return finalizeWithoutToss(request);
         }
 
+        if (paymentOrder.isWaitingForDeposit()
+                && requestedMethod(paymentOrder) == PaymentMethod.VIRTUAL_ACCOUNT) {
+            return virtualAccountPaymentService.getWaitingForDeposit(
+                paymentOrder,
+                request.getPaymentKey()
+            );
+        }
+
         TossConfirmResponse tossResponse = confirmWithToss(request, paymentOrder);
         validateTossResponse(request, paymentOrder, tossResponse);
+
+        if (requestedMethod(paymentOrder) == PaymentMethod.VIRTUAL_ACCOUNT) {
+            return virtualAccountPaymentService.saveWaitingForDeposit(
+                paymentOrder,
+                request.getPaymentKey(),
+                tossResponse
+            );
+        }
 
         return finalizeWithLock(request, tossResponse);
     }
@@ -96,7 +115,7 @@ public class PaymentConfirmService {
             throw new BusinessException(GlobalErrorCode.PAYMENT_KEY_ALREADY_USED);
         }
 
-        if (paymentOrder.isPaid()) {
+        if (paymentOrder.isPaid() || paymentOrder.isWaitingForDeposit()) {
             return;
         }
 
@@ -177,9 +196,23 @@ public class PaymentConfirmService {
                 || !request.getOrderId().equals(response.orderId())
                 || response.totalAmount() == null
                 || response.totalAmount().compareTo(paymentOrder.getTotalAmount()) != 0
-                || !TOSS_DONE_STATUS.equals(response.status())
-                || response.approvedAt() == null
                 || response.requestedAt() == null) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+        }
+
+        PaymentMethod requestedMethod = requestedMethod(paymentOrder);
+        if (!requestedMethod.matchesTossMethod(response.method())) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_METHOD_MISMATCH);
+        }
+
+        if (requestedMethod == PaymentMethod.VIRTUAL_ACCOUNT) {
+            if (!TOSS_WAITING_FOR_DEPOSIT_STATUS.equals(response.status())) {
+                throw new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+            }
+            return;
+        }
+
+        if (!TOSS_DONE_STATUS.equals(response.status()) || response.approvedAt() == null) {
             throw new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
         }
     }
@@ -192,6 +225,8 @@ public class PaymentConfirmService {
                 request.getOrderId(),
                 request.getAmount(),
                 TOSS_DONE_STATUS,
+                null,
+                null,
                 null,
                 OffsetDateTime.now(),
                 OffsetDateTime.now()
@@ -220,5 +255,11 @@ public class PaymentConfirmService {
         } catch (ArithmeticException exception) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
+    }
+
+    private PaymentMethod requestedMethod(PaymentOrder paymentOrder) {
+        return paymentOrder.getRequestedPaymentMethod() == null
+            ? PaymentMethod.CARD
+            : paymentOrder.getRequestedPaymentMethod();
     }
 }

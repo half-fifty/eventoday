@@ -20,6 +20,32 @@ const formatDateTime = (value) => value
 
 const emptyBuyer = { name: "", email: "", phone: "" };
 const OPERATION_CUTOFF_MS = 60 * 60 * 1000;
+const PAYMENT_METHODS = {
+  CARD: "CARD",
+  VIRTUAL_ACCOUNT: "VIRTUAL_ACCOUNT",
+};
+const TOSS_VIRTUAL_ACCOUNT_TIME_ZONE = "Asia/Seoul";
+
+const formatTossVirtualAccountDueDate = (expiresAt) => {
+  if (!expiresAt) return undefined;
+  const date = new Date(expiresAt);
+  if (Number.isNaN(date.getTime())) return undefined;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TOSS_VIRTUAL_ACCOUNT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== "literal") acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+};
 
 const effectiveTicketSalesEndTime = (event) => {
   const operationCutoffTime = event?.endAt ? new Date(event.endAt).getTime() - OPERATION_CUTOFF_MS : null;
@@ -44,6 +70,7 @@ export default function EventDetail() {
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [buyer, setBuyer] = useState(emptyBuyer);
+  const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS.CARD);
   const [purchasing, setPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState("");
   const [issuedCodes, setIssuedCodes] = useState([]);
@@ -134,6 +161,7 @@ export default function EventDetail() {
     try {
       const payload = {
         quantity: ticketQuantity,
+        paymentMethod,
         ...(isAuthenticated ? {} : {
           buyer: {
             name: buyer.name.trim(),
@@ -160,15 +188,24 @@ export default function EventDetail() {
       if (!clientKey) throw new Error("VITE_TOSS_CLIENT_KEY가 설정되지 않아 결제창을 열 수 없습니다.");
       const tossPayments = await loadTossPayments(clientKey);
       const payment = tossPayments.payment({ customerKey: ANONYMOUS });
-      await payment.requestPayment({
-        method: "CARD",
+      const dueDate = formatTossVirtualAccountDueDate(order.expiresAt);
+      const paymentRequest = {
+        method: paymentMethod,
         amount: { currency: "KRW", value: Number(order.totalAmount) },
         orderId: order.orderNo,
         orderName: `${event.name} 티켓`,
         successUrl: `${window.location.origin}/tickets/payment/success?eventId=${eventId}`,
         failUrl: `${window.location.origin}/tickets/payment/fail?eventId=${eventId}`,
-        card: { useEscrow: false, flowMode: "DEFAULT", useCardPoint: false, useAppCardOnly: false },
-      });
+        ...(isAuthenticated ? {} : {
+          customerName: buyer.name.trim(),
+          customerEmail: buyer.email.trim(),
+          customerMobilePhone: buyer.phone.replace(/[^0-9]/g, ""),
+        }),
+        ...(paymentMethod === PAYMENT_METHODS.VIRTUAL_ACCOUNT
+          ? { virtualAccount: { dueDate } }
+          : { card: { useEscrow: false, flowMode: "DEFAULT", useCardPoint: false, useAppCardOnly: false } }),
+      };
+      await payment.requestPayment(paymentRequest);
     } catch (requestError) {
       setPurchaseError(requestError.message || "티켓 구매를 시작하지 못했습니다.");
     } finally {
@@ -314,6 +351,30 @@ export default function EventDetail() {
           {issuedCodes.length ? <div className="space-y-md"><p>무료 티켓이 발급되었습니다.</p>{!isAuthenticated && completedOrderNo && <div className="rounded-xl border border-primary/20 bg-primary/5 p-md text-left"><p className="text-caption text-ink-muted">주문번호</p><p className="mt-xs break-all font-mono text-lg font-bold text-on-surface">{completedOrderNo}</p><button type="button" onClick={copyCompletedOrderNo} className="mt-sm rounded-full border border-hairline px-md py-1.5 text-caption font-body-strong">주문번호 복사</button>{orderNoCopyMessage && <p className="mt-xs text-caption text-primary">{orderNoCopyMessage}</p>}<p className="mt-sm text-caption text-ink-muted">※ 비회원 예매 조회 시 필요한 번호입니다.<br />구매 시 입력한 이메일로 주문번호 안내 메일 발송을 시도합니다.<br />메일을 받지 못할 수 있으니 현재 주문번호를 보관해주세요.</p></div>}{issuedCodes.map((item, index) => <div key={item.exchangeCode || index} className="rounded-xl bg-surface-container p-md"><p className="text-caption text-ink-muted">입장 코드 {index + 1}</p><p className="font-mono font-bold text-lg break-all">{item.exchangeCode || item.code}</p></div>)}{completedOrderNo && <Link to={`/tickets/orders/${completedOrderNo}`} className="block w-full py-sm border border-hairline rounded-full text-center">주문 상세 보기</Link>}<button type="button" onClick={closePurchase} className="w-full py-sm bg-primary text-white rounded-full">확인</button></div> : <form onSubmit={submitTicketOrder} className="space-y-md">
             <div className="rounded-xl bg-surface-container p-md"><p className="font-body-strong">{event.name}</p><p className="text-caption text-ink-muted">1매 {Number(event.ticketPrice) === 0 ? "무료" : `${Number(event.ticketPrice).toLocaleString("ko-KR")}원`}</p></div>
             <label className="block">수량<input required min="1" max={event.ticketPurchaseLimit || 1} type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label>
+            {Number(event.ticketPrice) > 0 && (
+              <div className="space-y-sm">
+                <p className="text-caption text-ink-muted">결제수단</p>
+                <div className="grid grid-cols-2 gap-sm">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod(PAYMENT_METHODS.CARD)}
+                    className={`h-11 rounded-lg border text-caption font-body-strong ${paymentMethod === PAYMENT_METHODS.CARD ? "border-primary bg-primary/10 text-primary" : "border-hairline"}`}
+                  >
+                    카드
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod(PAYMENT_METHODS.VIRTUAL_ACCOUNT)}
+                    className={`h-11 rounded-lg border text-caption font-body-strong ${paymentMethod === PAYMENT_METHODS.VIRTUAL_ACCOUNT ? "border-primary bg-primary/10 text-primary" : "border-hairline"}`}
+                  >
+                    가상계좌
+                  </button>
+                </div>
+                {paymentMethod === PAYMENT_METHODS.VIRTUAL_ACCOUNT && (
+                  <p className="text-[11px] text-ink-muted">가상계좌는 발급 후 30분 안에 입금해야 예매가 확정됩니다.</p>
+                )}
+              </div>
+            )}
             {!isAuthenticated && <div className="space-y-md border-t border-hairline pt-md"><p className="text-caption text-ink-muted">비회원 구매 정보</p><label className="block">이름<input required value={buyer.name} onChange={(e) => setBuyer({ ...buyer, name: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label><label className="block">이메일<input required type="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label><label className="block">전화번호<input required placeholder="010-1234-5678" value={buyer.phone} onChange={(e) => setBuyer({ ...buyer, phone: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label></div>}
             <div className="flex justify-between border-t border-hairline pt-md"><span>결제 금액</span><strong>{Number(event.ticketPrice) === 0 ? "무료" : `${(Number(event.ticketPrice) * Number(quantity || 0)).toLocaleString("ko-KR")}원`}</strong></div>
             {purchaseError && <p className="text-caption text-error bg-error/10 rounded-lg p-sm">{purchaseError}</p>}

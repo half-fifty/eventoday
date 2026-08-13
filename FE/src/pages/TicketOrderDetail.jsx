@@ -12,6 +12,8 @@ const formatMoney = (value) =>
 
 const statusLabel = {
   PENDING: "대기",
+  PENDING_PAYMENT: "결제 대기",
+  WAITING_FOR_DEPOSIT: "입금 대기",
   PAID: "결제 완료",
   CONFIRMED: "확정",
   CANCELLED: "취소",
@@ -93,6 +95,16 @@ export default function TicketOrderDetail() {
                 <Info label="주문 확정" value={formatDateTime(order.confirmedAt)} />
                 <Info label="결제 주문 상태" value={order.paymentRequired ? (statusLabel[order.paymentOrderStatus] || order.paymentOrderStatus) : "무료 티켓"} />
               </div>
+              {order.virtualAccount && (
+                <div className="mt-lg rounded-xl border border-primary/20 bg-primary/5 p-md">
+                  <p className="text-caption text-ink-muted">입금 계좌</p>
+                  <p className="mt-xs font-body-strong">{order.virtualAccount.bankCode || "은행"} {order.virtualAccount.accountNumber}</p>
+                  <p className="text-caption text-ink-muted">
+                    예금주 {order.virtualAccount.customerName || "-"} · 입금액 {formatMoney(order.virtualAccount.amount || order.totalAmount)}
+                  </p>
+                  <p className="text-caption text-ink-muted">입금기한 {formatDateTime(order.virtualAccount.dueAt)}</p>
+                </div>
+              )}
             </div>
 
             <div className="rounded-2xl border border-hairline bg-white p-xl">

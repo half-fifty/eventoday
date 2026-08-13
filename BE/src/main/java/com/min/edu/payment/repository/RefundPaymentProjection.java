@@ -15,6 +15,8 @@ public interface RefundPaymentProjection {
 
     String getPaymentStatus();
 
+    String getPaymentMethod();
+
     String getOrderNo();
 
     Long getBuyerMemberId();

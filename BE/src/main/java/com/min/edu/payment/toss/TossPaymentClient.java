@@ -11,6 +11,10 @@ public interface TossPaymentClient {
 
     TossConfirmResponse getPayment(String paymentKey);
 
+    default TossConfirmResponse getPaymentByOrderId(String orderId) {
+        throw new UnsupportedOperationException("Payment lookup by orderId is not implemented.");
+    }
+
     TossCancelResponse getPaymentForRefund(String paymentKey);
 
     TossCancelResponse cancel(TossCancelRequest request);

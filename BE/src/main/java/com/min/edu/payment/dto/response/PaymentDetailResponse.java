@@ -24,6 +24,37 @@ public class PaymentDetailResponse {
     private String ticketOrderStatus;
     private OffsetDateTime requestedAt;
     private OffsetDateTime approvedAt;
+    private ConfirmPaymentResponse.VirtualAccountResponse virtualAccount;
+
+    public PaymentDetailResponse(
+            Long paymentId,
+            String orderNo,
+            Long ticketOrderId,
+            Long eventId,
+            String eventName,
+            String pgProvider,
+            String method,
+            BigDecimal amount,
+            String paymentStatus,
+            String ticketOrderStatus,
+            OffsetDateTime requestedAt,
+            OffsetDateTime approvedAt) {
+        this(
+            paymentId,
+            orderNo,
+            ticketOrderId,
+            eventId,
+            eventName,
+            pgProvider,
+            method,
+            amount,
+            paymentStatus,
+            ticketOrderStatus,
+            requestedAt,
+            approvedAt,
+            null
+        );
+    }
 
     public static PaymentDetailResponse from(PaymentDetailProjection projection) {
         return new PaymentDetailResponse(
@@ -38,7 +69,23 @@ public class PaymentDetailResponse {
             projection.getPaymentStatus(),
             projection.getTicketOrderStatus(),
             projection.getRequestedAt(),
-            projection.getApprovedAt()
+            projection.getApprovedAt(),
+            virtualAccount(projection)
+        );
+    }
+
+    private static ConfirmPaymentResponse.VirtualAccountResponse virtualAccount(
+            PaymentDetailProjection projection) {
+        if (projection.getVirtualAccountNumber() == null) {
+            return null;
+        }
+
+        return new ConfirmPaymentResponse.VirtualAccountResponse(
+            projection.getVirtualAccountBankCode(),
+            projection.getVirtualAccountNumber(),
+            projection.getVirtualAccountCustomerName(),
+            projection.getAmount(),
+            projection.getVirtualAccountDueAt()
         );
     }
 }

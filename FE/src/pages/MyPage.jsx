@@ -28,6 +28,8 @@ const pageInfo = (result) => ({
 });
 const orderStatusLabel = {
   PENDING: "대기",
+  PENDING_PAYMENT: "결제 대기",
+  WAITING_FOR_DEPOSIT: "입금 대기",
   PAID: "결제 완료",
   CONFIRMED: "확정",
   CANCELLED: "취소",
@@ -708,6 +710,11 @@ export default function MyPage() {
                       <p className="font-body-strong truncate">{order.eventName}</p>
                       <p className="text-caption text-ink-muted">주문 {order.orderNo} · {order.quantity}매 · {formatMoney(order.totalAmount)}</p>
                       <p className="text-[11px] text-ink-muted">주문 일시 {formatDateTime(order.createdAt)}</p>
+                      {order.ticketOrderStatus === "PENDING_PAYMENT" && order.virtualAccount && (
+                        <p className="text-[11px] text-primary">
+                          입금기한 {formatDateTime(order.virtualAccount.dueAt)}
+                        </p>
+                      )}
                     </div>
                     <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-primary-container/10 text-primary-focus">
                       {orderStatusLabel[order.ticketOrderStatus] || order.ticketOrderStatus}

@@ -27,6 +27,7 @@ public class RestClientTossPaymentClient implements TossPaymentClient {
 
     private static final String CONFIRM_PATH = "/v1/payments/confirm";
     private static final String PAYMENT_PATH = "/v1/payments/{paymentKey}";
+    private static final String PAYMENT_BY_ORDER_PATH = "/v1/payments/orders/{orderId}";
     private static final String CANCEL_PATH = "/v1/payments/{paymentKey}/cancel";
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
@@ -82,6 +83,27 @@ public class RestClientTossPaymentClient implements TossPaymentClient {
     public TossConfirmResponse getPayment(String paymentKey) {
         return execute(() -> webhookRestClient.get()
             .uri(PAYMENT_PATH, paymentKey)
+            .header(HttpHeaders.AUTHORIZATION, authorizationHeader())
+            .retrieve()
+            .onStatus(HttpStatusCode::is4xxClientError,
+                (httpRequest, clientResponse) -> {
+                    throw new TossPaymentClientException(
+                        GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID
+                    );
+                })
+            .onStatus(HttpStatusCode::is5xxServerError,
+                (httpRequest, clientResponse) -> {
+                    throw new TossPaymentClientException(
+                        GlobalErrorCode.PAYMENT_GATEWAY_ERROR
+                    );
+                })
+            .body(TossConfirmResponse.class));
+    }
+
+    @Override
+    public TossConfirmResponse getPaymentByOrderId(String orderId) {
+        return execute(() -> webhookRestClient.get()
+            .uri(PAYMENT_BY_ORDER_PATH, orderId)
             .header(HttpHeaders.AUTHORIZATION, authorizationHeader())
             .retrieve()
             .onStatus(HttpStatusCode::is4xxClientError,
