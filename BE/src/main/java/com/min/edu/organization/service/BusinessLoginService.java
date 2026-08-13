@@ -1,6 +1,7 @@
 package com.min.edu.organization.service;
 
 import java.time.OffsetDateTime;
+import java.util.Locale;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -36,7 +37,7 @@ public class BusinessLoginService {
 
     @Transactional
     public TokenDto login(BusinessLoginRequestDto request) {
-        String email = request.getEmail().trim().toLowerCase();
+        String email = request.getEmail().trim().toLowerCase(Locale.ROOT);
 
         Member member = memberRepository
             .findByEmail(email)

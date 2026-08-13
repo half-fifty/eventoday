@@ -60,6 +60,8 @@ const formatDateTime = (value) => value
   ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
 const formatMoney = (value) => `${Number(value || 0).toLocaleString("ko-KR")}원`;
 const dataOf = (result, fallback) => result?.data ?? fallback;
+// javascript: 등 위험한 스킴으로 저장된 값이 있어도 클릭 가능한 링크로 렌더링하지 않도록 방어한다.
+const isSafeHttpUrl = (value) => /^https?:\/\//i.test(value || "");
 
 export default function PlatformAdmin() {
   const { member } = useAuth();
@@ -238,7 +240,7 @@ export default function PlatformAdmin() {
                 <div><p className="text-[11px] text-ink-muted">담당자</p><p>{orgSignupDetail.managerName || "-"} · {orgSignupDetail.managerPhone || "-"}</p></div>
                 <div><p className="text-[11px] text-ink-muted">로그인 이메일 / 회사 연락처</p><p>{orgSignupDetail.loginEmail} · {orgSignupDetail.contactPhone}</p></div>
                 {orgSignupDetail.addressLine1 && <div><p className="text-[11px] text-ink-muted">주소</p><p>({orgSignupDetail.postalCode}) {orgSignupDetail.addressLine1} {orgSignupDetail.addressLine2}</p></div>}
-                {orgSignupDetail.homepageUrl && <div><p className="text-[11px] text-ink-muted">홈페이지</p><a href={orgSignupDetail.homepageUrl} target="_blank" rel="noreferrer" className="text-primary underline">{orgSignupDetail.homepageUrl}</a></div>}
+                {orgSignupDetail.homepageUrl && <div><p className="text-[11px] text-ink-muted">홈페이지</p>{isSafeHttpUrl(orgSignupDetail.homepageUrl) ? <a href={orgSignupDetail.homepageUrl} target="_blank" rel="noreferrer" className="text-primary underline">{orgSignupDetail.homepageUrl}</a> : <p className="text-ink-muted">{orgSignupDetail.homepageUrl} (허용되지 않는 URL 형식)</p>}</div>}
                 {orgSignupDetail.introduction && <div><p className="text-[11px] text-ink-muted">회사 소개</p><p>{orgSignupDetail.introduction}</p></div>}
                 <div><p className="text-[11px] text-ink-muted">사업자등록증</p>{orgSignupDetail.businessRegistrationFileDownloadUrl ? <a href={orgSignupDetail.businessRegistrationFileDownloadUrl} target="_blank" rel="noreferrer" className="text-primary underline">첨부 파일 열기</a> : <p className="text-ink-muted">첨부된 서류가 없습니다.</p>}</div>
                 <div><p className="text-[11px] text-ink-muted">신청일 / 상태</p><p>{formatDateTime(orgSignupDetail.submittedAt)} · {orgSignupStatus[orgSignupDetail.status]?.[0] || orgSignupDetail.status}</p></div>

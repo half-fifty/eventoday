@@ -1,6 +1,10 @@
 package com.min.edu.organization.service;
 
 import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -51,7 +55,33 @@ public class OrganizationSignupReviewAdminService {
             ? reviewRepository.findByStatus(status, pageable)
             : reviewRepository.findAll(pageable);
 
-        return reviews.map(this::toSummary);
+        List<Long> organizationIds = reviews.getContent().stream()
+            .map(OrganizationSignupReview::getOrganizationId)
+            .distinct()
+            .toList();
+
+        Map<Long, Organization> organizationsById = organizationRepository
+            .findAllById(organizationIds).stream()
+            .collect(Collectors.toMap(Organization::getId, Function.identity()));
+
+        Map<Long, OrganizationMember> ownersByOrganizationId = organizationMemberRepository
+            .findByOrganizationIdInAndOrganizationRole(organizationIds, OrganizationRole.OWNER).stream()
+            .collect(Collectors.toMap(
+                OrganizationMember::getOrganizationId, Function.identity()
+            ));
+
+        List<Long> ownerMemberIds = ownersByOrganizationId.values().stream()
+            .map(OrganizationMember::getMemberId)
+            .distinct()
+            .toList();
+
+        Map<Long, BusinessMemberProfile> profilesByMemberId = businessMemberProfileRepository
+            .findAllById(ownerMemberIds).stream()
+            .collect(Collectors.toMap(
+                BusinessMemberProfile::getMemberId, Function.identity()
+            ));
+
+        return reviews.map(review -> toSummary(review, organizationsById, ownersByOrganizationId, profilesByMemberId));
     }
 
     public OrganizationSignupReviewDetailDto getDetail(Long reviewId, AuthenticatedMemberDto actor) {
@@ -98,7 +128,8 @@ public class OrganizationSignupReviewAdminService {
     public void approve(Long reviewId, AuthenticatedMemberDto actor) {
         requireAdmin(actor);
 
-        OrganizationSignupReview review = getReview(reviewId);
+        // 동시 승인/반려 요청이 같은 PENDING 행을 함께 처리하지 못하도록 행 잠금을 건다.
+        OrganizationSignupReview review = getReviewForUpdate(reviewId);
         Organization organization = getOrganization(review.getOrganizationId());
         OffsetDateTime now = OffsetDateTime.now();
 
@@ -124,7 +155,8 @@ public class OrganizationSignupReviewAdminService {
             throw new BusinessException(GlobalErrorCode.ORGANIZATION_REJECTION_REASON_REQUIRED);
         }
 
-        OrganizationSignupReview review = getReview(reviewId);
+        // 동시 승인/반려 요청이 같은 PENDING 행을 함께 처리하지 못하도록 행 잠금을 건다.
+        OrganizationSignupReview review = getReviewForUpdate(reviewId);
         if (review.getStatus() != OrganizationSignupReviewStatus.PENDING) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
@@ -132,6 +164,7 @@ public class OrganizationSignupReviewAdminService {
         Organization organization = getOrganization(review.getOrganizationId());
         OrganizationMember owner = getOwner(organization.getId());
         Long ownerMemberId = owner.getMemberId();
+        Long certificateFileId = review.getBusinessRegistrationFileId();
 
         platformAuditService.record(
             actor.getMemberId(), "ORGANIZATION_SIGNUP", "REJECTED",
@@ -143,21 +176,32 @@ public class OrganizationSignupReviewAdminService {
         organizationMemberRepository.delete(owner);
         organizationRepository.delete(organization);
         memberRepository.deleteById(ownerMemberId);
+
+        // 반려된 신청서에 첨부됐던 사업자등록증(민감 서류)도 DB 메타데이터와 저장소 원본을 함께 폐기한다.
+        if (certificateFileId != null) {
+            fileService.deleteFile(certificateFileId);
+        }
     }
 
-    private OrganizationSignupReviewSummaryDto toSummary(OrganizationSignupReview review) {
-        Organization organization = getOrganization(review.getOrganizationId());
-        OrganizationMember owner = getOwner(organization.getId());
-        BusinessMemberProfile profile = businessMemberProfileRepository
-            .findById(owner.getMemberId())
-            .orElse(null);
+    private OrganizationSignupReviewSummaryDto toSummary(
+            OrganizationSignupReview review,
+            Map<Long, Organization> organizationsById,
+            Map<Long, OrganizationMember> ownersByOrganizationId,
+            Map<Long, BusinessMemberProfile> profilesByMemberId) {
+        Organization organization = organizationsById.get(review.getOrganizationId());
+        OrganizationMember owner = organization != null
+            ? ownersByOrganizationId.get(organization.getId())
+            : null;
+        BusinessMemberProfile profile = owner != null
+            ? profilesByMemberId.get(owner.getMemberId())
+            : null;
 
         return new OrganizationSignupReviewSummaryDto(
             review.getId(),
-            organization.getId(),
-            organization.getName(),
-            organization.getRepresentativeName(),
-            maskBusinessNumber(organization.getBusinessNumber()),
+            organization != null ? organization.getId() : null,
+            organization != null ? organization.getName() : null,
+            organization != null ? organization.getRepresentativeName() : null,
+            organization != null ? maskBusinessNumber(organization.getBusinessNumber()) : null,
             profile != null ? profile.getContactName() : null,
             review.getSubmittedAt(),
             review.getStatus()
@@ -179,6 +223,13 @@ public class OrganizationSignupReviewAdminService {
 
     private OrganizationSignupReview getReview(Long reviewId) {
         return reviewRepository.findById(reviewId)
+            .orElseThrow(() -> new BusinessException(
+                GlobalErrorCode.ORGANIZATION_SIGNUP_REVIEW_NOT_FOUND
+            ));
+    }
+
+    private OrganizationSignupReview getReviewForUpdate(Long reviewId) {
+        return reviewRepository.findByIdForUpdate(reviewId)
             .orElseThrow(() -> new BusinessException(
                 GlobalErrorCode.ORGANIZATION_SIGNUP_REVIEW_NOT_FOUND
             ));

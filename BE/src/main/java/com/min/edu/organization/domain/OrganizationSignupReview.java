@@ -17,7 +17,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * 개최자(ORGANIZER) 가입 신청 1건에 대한 심사 이력.
- * 반려 후 재신청 시 organization_id는 같고 새 행이 추가된다.
+ * 반려되면 관련 organization/member 행이 함께 삭제되므로, 이후 같은 사업자등록번호로
+ * 다시 가입하면 organization_id가 다른 새 조직·새 심사 행이 생성된다.
  */
 @Entity
 @Table(name = "organization_signup_reviews")

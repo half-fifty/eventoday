@@ -67,6 +67,43 @@ class OrganizationSignupReviewAdminServiceTest {
     }
 
     @Test
+    void list_batchLoadsOrganizationsAndProfilesInsteadOfPerRowQueries() {
+        Organization organization = pendingOrganization();
+        OrganizationSignupReview review =
+            OrganizationSignupReview.create(organization.getId(), null, OffsetDateTime.now());
+        OrganizationMember owner = OrganizationMember.createOwner(organization.getId(), 7L, OffsetDateTime.now());
+        com.min.edu.organization.domain.BusinessMemberProfile profile =
+            com.min.edu.organization.domain.BusinessMemberProfile.create(
+                7L, "담당자", "01000000000", OffsetDateTime.now()
+            );
+
+        org.springframework.data.domain.Pageable pageable =
+            org.springframework.data.domain.PageRequest.of(0, 20);
+        given(reviewRepository.findByStatus(
+            com.min.edu.organization.domain.OrganizationSignupReviewStatus.PENDING, pageable
+        )).willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(review)));
+        given(organizationRepository.findAllById(org.mockito.ArgumentMatchers.<Long>anyIterable()))
+            .willReturn(java.util.List.of(organization));
+        given(organizationMemberRepository.findByOrganizationIdInAndOrganizationRole(
+            org.mockito.ArgumentMatchers.anyCollection(), org.mockito.ArgumentMatchers.eq(OrganizationRole.OWNER)
+        )).willReturn(java.util.List.of(owner));
+        given(businessMemberProfileRepository.findAllById(java.util.List.of(7L)))
+            .willReturn(java.util.List.of(profile));
+
+        var page = service().list(
+            com.min.edu.organization.domain.OrganizationSignupReviewStatus.PENDING, admin(), pageable
+        );
+
+        assertThat(page.getContent()).hasSize(1);
+        assertThat(page.getContent().get(0).getManagerName()).isEqualTo("담당자");
+        assertThat(page.getContent().get(0).getOrganizationName()).isEqualTo(organization.getName());
+        org.mockito.Mockito.verify(organizationMemberRepository, org.mockito.Mockito.never())
+            .findByOrganizationIdAndOrganizationRole(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()
+            );
+    }
+
+    @Test
     void approve_nonAdminActor_throwsForbidden() {
         assertThatThrownBy(() -> service().approve(1L, normalUser()))
             .isInstanceOf(BusinessException.class)
@@ -84,7 +121,7 @@ class OrganizationSignupReviewAdminServiceTest {
     void approve_pendingReview_movesReviewAndOrganizationToApproved() {
         OrganizationSignupReview review = OrganizationSignupReview.create(10L, null, OffsetDateTime.now());
         Organization organization = pendingOrganization();
-        given(reviewRepository.findById(1L)).willReturn(Optional.of(review));
+        given(reviewRepository.findByIdForUpdate(1L)).willReturn(Optional.of(review));
         given(organizationRepository.findById(10L)).willReturn(Optional.of(organization));
 
         service().approve(1L, admin());
@@ -101,7 +138,7 @@ class OrganizationSignupReviewAdminServiceTest {
         OrganizationSignupReview review = OrganizationSignupReview.create(10L, null, OffsetDateTime.now());
         review.approve(1L, OffsetDateTime.now());
         Organization organization = pendingOrganization();
-        given(reviewRepository.findById(1L)).willReturn(Optional.of(review));
+        given(reviewRepository.findByIdForUpdate(1L)).willReturn(Optional.of(review));
         given(organizationRepository.findById(10L)).willReturn(Optional.of(organization));
 
         assertThatThrownBy(() -> service().approve(1L, admin()))
@@ -120,10 +157,10 @@ class OrganizationSignupReviewAdminServiceTest {
 
     @Test
     void reject_pendingReview_deletesSignupDataSoTheBusinessNumberCanBeReused() {
-        OrganizationSignupReview review = OrganizationSignupReview.create(10L, null, OffsetDateTime.now());
+        OrganizationSignupReview review = OrganizationSignupReview.create(10L, 55L, OffsetDateTime.now());
         Organization organization = pendingOrganization();
         OrganizationMember owner = OrganizationMember.createOwner(10L, 7L, OffsetDateTime.now());
-        given(reviewRepository.findById(1L)).willReturn(Optional.of(review));
+        given(reviewRepository.findByIdForUpdate(1L)).willReturn(Optional.of(review));
         given(organizationRepository.findById(10L)).willReturn(Optional.of(organization));
         given(organizationMemberRepository.findByOrganizationIdAndOrganizationRole(
             organization.getId(), OrganizationRole.OWNER
@@ -140,13 +177,30 @@ class OrganizationSignupReviewAdminServiceTest {
         verify(organizationMemberRepository).delete(owner);
         verify(organizationRepository).delete(organization);
         verify(memberRepository).deleteById(7L);
+        verify(fileService).deleteFile(55L);
+    }
+
+    @Test
+    void reject_reviewWithoutCertificate_doesNotCallFileService() {
+        OrganizationSignupReview review = OrganizationSignupReview.create(10L, null, OffsetDateTime.now());
+        Organization organization = pendingOrganization();
+        OrganizationMember owner = OrganizationMember.createOwner(10L, 7L, OffsetDateTime.now());
+        given(reviewRepository.findByIdForUpdate(1L)).willReturn(Optional.of(review));
+        given(organizationRepository.findById(10L)).willReturn(Optional.of(organization));
+        given(organizationMemberRepository.findByOrganizationIdAndOrganizationRole(
+            organization.getId(), OrganizationRole.OWNER
+        )).willReturn(Optional.of(owner));
+
+        service().reject(1L, "사유", admin());
+
+        org.mockito.Mockito.verifyNoInteractions(fileService);
     }
 
     @Test
     void reject_alreadyProcessedReview_throwsInvalidInputValue() {
         OrganizationSignupReview review = OrganizationSignupReview.create(10L, null, OffsetDateTime.now());
         review.approve(1L, OffsetDateTime.now());
-        given(reviewRepository.findById(1L)).willReturn(Optional.of(review));
+        given(reviewRepository.findByIdForUpdate(1L)).willReturn(Optional.of(review));
 
         assertThatThrownBy(() -> service().reject(1L, "사유", admin()))
             .isInstanceOf(BusinessException.class)
