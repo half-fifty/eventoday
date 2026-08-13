@@ -25,12 +25,18 @@ public interface TicketOrderRepository extends JpaRepository<TicketOrder, Long> 
                 p.totalAmount AS totalAmount,
                 p.status AS paymentOrderStatus,
                 t.status AS ticketOrderStatus,
+                pay.method AS paymentMethod,
+                va.bankCode AS virtualAccountBankCode,
+                va.accountNumber AS virtualAccountNumber,
+                va.customerName AS virtualAccountCustomerName,
+                va.dueAt AS virtualAccountDueAt,
                 p.expiresAt AS expiresAt,
                 t.confirmedAt AS confirmedAt,
                 t.createdAt AS createdAt
             FROM TicketOrder t
             JOIN PaymentOrder p ON p.id = t.paymentOrderId
             LEFT JOIN Payment pay ON pay.paymentOrderId = p.id
+            LEFT JOIN PaymentVirtualAccount va ON va.paymentId = pay.id
             JOIN Event e ON e.id = t.eventId
             WHERE p.buyerMemberId = :memberId
                 AND p.buyerMemberId IS NOT NULL
@@ -64,12 +70,18 @@ public interface TicketOrderRepository extends JpaRepository<TicketOrder, Long> 
             p.totalAmount AS totalAmount,
             p.status AS paymentOrderStatus,
             t.status AS ticketOrderStatus,
+            pay.method AS paymentMethod,
+            va.bankCode AS virtualAccountBankCode,
+            va.accountNumber AS virtualAccountNumber,
+            va.customerName AS virtualAccountCustomerName,
+            va.dueAt AS virtualAccountDueAt,
             p.expiresAt AS expiresAt,
             t.confirmedAt AS confirmedAt,
             t.createdAt AS createdAt
         FROM TicketOrder t
         JOIN PaymentOrder p ON p.id = t.paymentOrderId
         LEFT JOIN Payment pay ON pay.paymentOrderId = p.id
+        LEFT JOIN PaymentVirtualAccount va ON va.paymentId = pay.id
         JOIN Event e ON e.id = t.eventId
         WHERE p.orderNo = :orderNo
             AND p.orderType = com.min.edu.payment.domain.PaymentOrderType.EVENT_TICKET

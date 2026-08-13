@@ -25,6 +25,26 @@ public interface TicketOrderListProjection {
 
     String getTicketOrderStatus();
 
+    default String getPaymentMethod() {
+        return null;
+    }
+
+    default String getVirtualAccountBankCode() {
+        return null;
+    }
+
+    default String getVirtualAccountNumber() {
+        return null;
+    }
+
+    default String getVirtualAccountCustomerName() {
+        return null;
+    }
+
+    default OffsetDateTime getVirtualAccountDueAt() {
+        return null;
+    }
+
     OffsetDateTime getExpiresAt();
 
     OffsetDateTime getConfirmedAt();

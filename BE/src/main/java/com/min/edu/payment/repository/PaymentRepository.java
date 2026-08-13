@@ -33,11 +33,16 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             p.status AS paymentStatus,
             t.status AS ticketOrderStatus,
             p.requestedAt AS requestedAt,
-            p.approvedAt AS approvedAt
+            p.approvedAt AS approvedAt,
+            va.bankCode AS virtualAccountBankCode,
+            va.accountNumber AS virtualAccountNumber,
+            va.customerName AS virtualAccountCustomerName,
+            va.dueAt AS virtualAccountDueAt
         FROM Payment p
         JOIN PaymentOrder po ON po.id = p.paymentOrderId
         JOIN TicketOrder t ON t.paymentOrderId = po.id
         JOIN Event e ON e.id = t.eventId
+        LEFT JOIN PaymentVirtualAccount va ON va.paymentId = p.id
         WHERE p.id = :paymentId
             AND po.orderType = com.min.edu.payment.domain.PaymentOrderType.EVENT_TICKET
         """)
@@ -52,6 +57,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             p.paymentKey AS paymentKey,
             p.amount AS paymentAmount,
             p.status AS paymentStatus,
+            p.method AS paymentMethod,
             po.orderNo AS orderNo,
             po.buyerMemberId AS buyerMemberId,
             po.totalAmount AS totalAmount,

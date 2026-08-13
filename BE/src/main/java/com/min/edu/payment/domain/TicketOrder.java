@@ -84,6 +84,10 @@ public class TicketOrder {
         return TicketOrderStatus.REFUNDED.name().equals(status);
     }
 
+    public boolean isExpired() {
+        return TicketOrderStatus.EXPIRED.name().equals(status);
+    }
+
     public void confirm(OffsetDateTime approvedAt, OffsetDateTime updatedAt) {
         if (!isPendingPayment()) {
             throw new IllegalStateException("Ticket order is not pending payment.");
@@ -92,6 +96,15 @@ public class TicketOrder {
         this.status = TicketOrderStatus.CONFIRMED.name();
         this.confirmedAt = approvedAt;
         this.updatedAt = updatedAt;
+    }
+
+    public void expire(OffsetDateTime now) {
+        if (!isPendingPayment()) {
+            throw new IllegalStateException("Ticket order is not pending payment.");
+        }
+
+        this.status = TicketOrderStatus.EXPIRED.name();
+        this.updatedAt = now;
     }
 
     public void refund(OffsetDateTime now) {

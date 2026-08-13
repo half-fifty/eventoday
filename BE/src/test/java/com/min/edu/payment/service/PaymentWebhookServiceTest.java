@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,8 +18,20 @@ import org.springframework.dao.CannotAcquireLockException;
 
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentMethod;
+import com.min.edu.payment.domain.PaymentOrder;
+import com.min.edu.payment.domain.PaymentOrderStatus;
+import com.min.edu.payment.domain.PaymentOrderType;
+import com.min.edu.payment.domain.PaymentProvider;
+import com.min.edu.payment.domain.PaymentStatus;
+import com.min.edu.payment.domain.PaymentVirtualAccount;
 import com.min.edu.payment.dto.request.ConfirmPaymentRequest;
 import com.min.edu.payment.dto.request.TossPaymentWebhookRequest;
+import com.min.edu.payment.repository.PaymentOrderRepository;
+import com.min.edu.payment.repository.PaymentRepository;
+import com.min.edu.payment.repository.PaymentVirtualAccountRepository;
+import com.min.edu.payment.support.PaymentSecretHasher;
 import com.min.edu.payment.toss.TossPaymentClient;
 import com.min.edu.payment.toss.TossPaymentClientException;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
@@ -31,6 +44,15 @@ class PaymentWebhookServiceTest {
 
     @Mock
     private PaymentFinalizer paymentFinalizer;
+
+    @Mock
+    private PaymentOrderRepository paymentOrderRepository;
+
+    @Mock
+    private PaymentRepository paymentRepository;
+
+    @Mock
+    private PaymentVirtualAccountRepository virtualAccountRepository;
 
     private final PaymentFinalizationExceptionTranslator exceptionTranslator =
         new PaymentFinalizationExceptionTranslator();
@@ -127,8 +149,49 @@ class PaymentWebhookServiceTest {
         return new PaymentWebhookService(
             tossPaymentClient,
             paymentFinalizer,
-            exceptionTranslator
+            exceptionTranslator,
+            paymentOrderRepository,
+            paymentRepository,
+            virtualAccountRepository
         );
+    }
+
+    @Test
+    void handleTossWebhook_finalizesDepositCallbackWhenSecretMatches() {
+        PaymentWebhookService service = service();
+        PaymentOrder paymentOrder = virtualAccountOrder();
+        Payment payment = waitingPayment();
+        PaymentVirtualAccount virtualAccount = virtualAccount("secret");
+        TossConfirmResponse tossPayment = virtualAccountTossPayment("DONE");
+
+        given(paymentOrderRepository.findByOrderNo("ORDER-1")).willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.of(payment));
+        given(virtualAccountRepository.findByPaymentId(2L)).willReturn(Optional.of(virtualAccount));
+        given(tossPaymentClient.getPaymentByOrderId("ORDER-1")).willReturn(tossPayment);
+
+        service.handleTossWebhook(depositCallback("DONE", "secret"));
+
+        verify(paymentFinalizer).finalizePaymentFromWebhook(
+            any(ConfirmPaymentRequest.class),
+            org.mockito.ArgumentMatchers.eq(tossPayment)
+        );
+    }
+
+    @Test
+    void handleTossWebhook_rejectsDepositCallbackWhenSecretMismatch() {
+        PaymentWebhookService service = service();
+
+        given(paymentOrderRepository.findByOrderNo("ORDER-1")).willReturn(Optional.of(virtualAccountOrder()));
+        given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.of(waitingPayment()));
+        given(virtualAccountRepository.findByPaymentId(2L)).willReturn(Optional.of(virtualAccount("secret")));
+
+        assertBusinessException(
+            () -> service.handleTossWebhook(depositCallback("DONE", "other-secret")),
+            GlobalErrorCode.VIRTUAL_ACCOUNT_SECRET_MISMATCH
+        );
+
+        verify(tossPaymentClient, never()).getPaymentByOrderId(any());
+        verify(paymentFinalizer, never()).finalizePaymentFromWebhook(any(), any());
     }
 
     private TossPaymentWebhookRequest webhook(String status) {
@@ -136,6 +199,16 @@ class PaymentWebhookServiceTest {
             "PAYMENT_STATUS_CHANGED",
             "2026-08-04T11:20:00.123456",
             paymentData(status)
+        );
+    }
+
+    private TossPaymentWebhookRequest depositCallback(String status, String secret) {
+        return new TossPaymentWebhookRequest(
+            "2026-08-04T11:20:00.123456",
+            secret,
+            status,
+            "transaction-key",
+            "ORDER-1"
         );
     }
 
@@ -161,6 +234,69 @@ class PaymentWebhookServiceTest {
             requestedAt(),
             "DONE".equals(status) ? approvedAt() : null
         );
+    }
+
+    private TossConfirmResponse virtualAccountTossPayment(String status) {
+        return new TossConfirmResponse(
+            "payment-key",
+            "ORDER-1",
+            BigDecimal.valueOf(10000),
+            status,
+            "VIRTUAL_ACCOUNT",
+            "secret",
+            new TossConfirmResponse.VirtualAccount(
+                "1234567890",
+                "088",
+                "tester",
+                OffsetDateTime.parse("2026-08-03T10:30:00+09:00")
+            ),
+            requestedAt(),
+            "DONE".equals(status) ? approvedAt() : null
+        );
+    }
+
+    private PaymentOrder virtualAccountOrder() {
+        return PaymentOrder.builder()
+            .id(1L)
+            .orderNo("ORDER-1")
+            .buyerMemberId(10L)
+            .orderType(PaymentOrderType.EVENT_TICKET)
+            .totalAmount(BigDecimal.valueOf(10000))
+            .requestedPaymentMethod(PaymentMethod.VIRTUAL_ACCOUNT)
+            .status(PaymentOrderStatus.WAITING_FOR_DEPOSIT.name())
+            .expiresAt(OffsetDateTime.parse("2026-08-03T10:30:00+09:00"))
+            .createdAt(requestedAt())
+            .updatedAt(requestedAt())
+            .build();
+    }
+
+    private Payment waitingPayment() {
+        return Payment.builder()
+            .id(2L)
+            .paymentOrderId(1L)
+            .pgProvider(PaymentProvider.TOSS_PAYMENTS)
+            .paymentKey("payment-key")
+            .method("VIRTUAL_ACCOUNT")
+            .amount(BigDecimal.valueOf(10000))
+            .status(PaymentStatus.WAITING_FOR_DEPOSIT.name())
+            .requestedAt(requestedAt())
+            .updatedAt(requestedAt())
+            .build();
+    }
+
+    private PaymentVirtualAccount virtualAccount(String secret) {
+        return PaymentVirtualAccount.builder()
+            .id(3L)
+            .paymentId(2L)
+            .bankCode("088")
+            .accountNumber("1234567890")
+            .customerName("tester")
+            .dueAt(OffsetDateTime.parse("2026-08-03T10:30:00+09:00"))
+            .webhookSecretHash(PaymentSecretHasher.sha256(secret))
+            .tossStatus("WAITING_FOR_DEPOSIT")
+            .createdAt(requestedAt())
+            .updatedAt(requestedAt())
+            .build();
     }
 
     private OffsetDateTime requestedAt() {

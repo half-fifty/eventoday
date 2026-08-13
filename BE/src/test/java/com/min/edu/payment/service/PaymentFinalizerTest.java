@@ -38,6 +38,7 @@ import com.min.edu.payment.dto.response.ConfirmPaymentResponse;
 import com.min.edu.payment.event.TicketReservationCompletedEvent;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
+import com.min.edu.payment.repository.PaymentVirtualAccountRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
 import com.min.edu.advertisement.repository.AdvertisementRepository;
@@ -66,6 +67,9 @@ class PaymentFinalizerTest {
     private PaymentRepository paymentRepository;
 
     @Mock
+    private PaymentVirtualAccountRepository virtualAccountRepository;
+
+    @Mock
     private TicketExchangeCodeIssuer ticketExchangeCodeIssuer;
 
     @Mock
@@ -90,6 +94,7 @@ class PaymentFinalizerTest {
             paymentOrderRepository,
             ticketOrderRepository,
             paymentRepository,
+            virtualAccountRepository,
             ticketExchangeCodeIssuer,
             advertisementRepository,
             eventRepository,
@@ -281,6 +286,70 @@ class PaymentFinalizerTest {
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.PAYMENT_KEY_ALREADY_USED);
+    }
+
+    @Test
+    void finalizePayment_rejectsNonDoneTossResponseBeforeSavingPayment() {
+        PaymentOrder paymentOrder = pendingPaymentOrder();
+        TicketOrder ticketOrder = pendingTicketOrder();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(false);
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(ticketOrder));
+
+        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(
+                request(),
+                new TossConfirmResponse(
+                    "payment-key",
+                    "ORDER-1",
+                    BigDecimal.valueOf(10000),
+                    "WAITING_FOR_DEPOSIT",
+                    "CARD",
+                    tossResponse().requestedAt(),
+                    null
+                )
+            ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+
+        verify(paymentRepository, never()).saveAndFlush(any(Payment.class));
+        verify(ticketExchangeCodeIssuer, never()).issueIfAbsent(any(), any(), any());
+    }
+
+    @Test
+    void finalizePayment_rejectsMismatchedTossPaymentKeyBeforeSavingPayment() {
+        PaymentOrder paymentOrder = pendingPaymentOrder();
+        TicketOrder ticketOrder = pendingTicketOrder();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(false);
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(ticketOrder));
+
+        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(
+                request(),
+                new TossConfirmResponse(
+                    "other-payment-key",
+                    "ORDER-1",
+                    BigDecimal.valueOf(10000),
+                    "DONE",
+                    "CARD",
+                    tossResponse().requestedAt(),
+                    tossResponse().approvedAt()
+                )
+            ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+
+        verify(paymentRepository, never()).saveAndFlush(any(Payment.class));
+        verify(ticketExchangeCodeIssuer, never()).issueIfAbsent(any(), any(), any());
     }
 
     @Test

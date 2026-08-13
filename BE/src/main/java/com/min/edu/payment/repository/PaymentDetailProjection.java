@@ -32,4 +32,20 @@ public interface PaymentDetailProjection {
     OffsetDateTime getRequestedAt();
 
     OffsetDateTime getApprovedAt();
+
+    default String getVirtualAccountBankCode() {
+        return null;
+    }
+
+    default String getVirtualAccountNumber() {
+        return null;
+    }
+
+    default String getVirtualAccountCustomerName() {
+        return null;
+    }
+
+    default OffsetDateTime getVirtualAccountDueAt() {
+        return null;
+    }
 }

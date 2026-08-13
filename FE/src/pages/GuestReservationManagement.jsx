@@ -11,6 +11,8 @@ const formatMoney = (value) => `${Number(value || 0).toLocaleString("ko-KR")}원
 
 const statusLabel = {
   PENDING: "대기",
+  PENDING_PAYMENT: "결제 대기",
+  WAITING_FOR_DEPOSIT: "입금 대기",
   PAID: "결제 완료",
   CONFIRMED: "확정",
   REFUNDED: "환불 완료",
@@ -36,6 +38,7 @@ export default function GuestReservationManagement() {
   const [redeemingId, setRedeemingId] = useState(null);
   const [actionError, setActionError] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  const [refundAccount, setRefundAccount] = useState({ bank: "", accountNumber: "", holderName: "" });
   const [refunding, setRefunding] = useState(false);
   const [qrUrls, setQrUrls] = useState({});
   const [qrErrors, setQrErrors] = useState({});
@@ -146,13 +149,29 @@ export default function GuestReservationManagement() {
       setActionError("환불 사유를 입력해 주세요.");
       return;
     }
+    const isVirtualAccountPayment =
+      payment?.method === "VIRTUAL_ACCOUNT" || payment?.method === "가상계좌" || Boolean(payment?.virtualAccount);
+    if (isVirtualAccountPayment && (!refundAccount.bank.trim() || !refundAccount.accountNumber.trim() || !refundAccount.holderName.trim())) {
+      setActionError("가상계좌 환불을 받을 계좌 정보를 입력해 주세요.");
+      return;
+    }
     if (!window.confirm("해당 결제 전체를 환불 신청하시겠습니까?")) return;
 
     setRefunding(true);
     setActionError("");
     try {
-      await paymentApi.requestRefund(payment.paymentId, { reason }, orderAccessToken);
+      await paymentApi.requestRefund(payment.paymentId, {
+        reason,
+        ...(isVirtualAccountPayment ? {
+          refundReceiveAccount: {
+            bank: refundAccount.bank.trim(),
+            accountNumber: refundAccount.accountNumber.trim(),
+            holderName: refundAccount.holderName.trim(),
+          },
+        } : {}),
+      }, orderAccessToken);
       setRefundReason("");
+      setRefundAccount({ bank: "", accountNumber: "", holderName: "" });
       await loadAll();
     } catch (requestError) {
       setActionError(requestError.message || "환불 신청에 실패했습니다.");
@@ -219,14 +238,46 @@ export default function GuestReservationManagement() {
                     <Info label="결제 수단" value={payment.method || "-"} />
                     <Info label="승인 시각" value={formatDateTime(payment.approvedAt)} />
                   </div>
+                  {payment.virtualAccount && (
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-md">
+                      <p className="text-caption text-ink-muted">입금 계좌</p>
+                      <p className="mt-xs font-body-strong">{payment.virtualAccount.bankCode || "은행"} {payment.virtualAccount.accountNumber}</p>
+                      <p className="text-caption text-ink-muted">
+                        예금주 {payment.virtualAccount.customerName || "-"} · 입금액 {formatMoney(payment.virtualAccount.amount || payment.amount)}
+                      </p>
+                      <p className="text-caption text-ink-muted">입금기한 {formatDateTime(payment.virtualAccount.dueAt)}</p>
+                    </div>
+                  )}
                   {canRefund ? (
-                    <form onSubmit={requestRefund} className="flex flex-col gap-sm sm:flex-row">
+                    <form onSubmit={requestRefund} className="grid gap-sm">
                       <input
                         value={refundReason}
                         onChange={(event) => setRefundReason(event.target.value)}
                         placeholder="환불 사유"
                         className="h-11 min-w-0 flex-1 rounded-lg border border-hairline px-md outline-none focus:border-primary-focus"
                       />
+                      {(payment?.method === "VIRTUAL_ACCOUNT" || payment?.method === "가상계좌" || Boolean(payment?.virtualAccount)) && (
+                        <div className="grid gap-sm sm:grid-cols-3">
+                          <input
+                            value={refundAccount.bank}
+                            onChange={(event) => setRefundAccount((current) => ({ ...current, bank: event.target.value }))}
+                            placeholder="은행"
+                            className="h-11 rounded-lg border border-hairline px-md outline-none focus:border-primary-focus"
+                          />
+                          <input
+                            value={refundAccount.accountNumber}
+                            onChange={(event) => setRefundAccount((current) => ({ ...current, accountNumber: event.target.value }))}
+                            placeholder="계좌번호"
+                            className="h-11 rounded-lg border border-hairline px-md outline-none focus:border-primary-focus"
+                          />
+                          <input
+                            value={refundAccount.holderName}
+                            onChange={(event) => setRefundAccount((current) => ({ ...current, holderName: event.target.value }))}
+                            placeholder="예금주"
+                            className="h-11 rounded-lg border border-hairline px-md outline-none focus:border-primary-focus"
+                          />
+                        </div>
+                      )}
                       <button disabled={refunding} className="h-11 rounded-lg bg-primary px-lg text-white disabled:opacity-50">
                         {refunding ? "처리 중" : "환불 신청"}
                       </button>
