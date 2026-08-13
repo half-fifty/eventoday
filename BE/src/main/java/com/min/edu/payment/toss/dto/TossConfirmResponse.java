@@ -1,6 +1,7 @@
 package com.min.edu.payment.toss.dto;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 
 public record TossConfirmResponse(
@@ -40,7 +41,37 @@ public record TossConfirmResponse(
             String accountNumber,
             String bankCode,
             String customerName,
-            OffsetDateTime dueDate
+            LocalDateTime dueDate
     ) {
+
+        @Override
+        public String toString() {
+            return "VirtualAccount[accountNumber=***, bankCode="
+                + bankCode
+                + ", customerName=***, dueDate="
+                + dueDate
+                + "]";
+        }
+    }
+
+    @Override
+    public String toString() {
+        return "TossConfirmResponse[paymentKey="
+            + paymentKey
+            + ", orderId="
+            + orderId
+            + ", totalAmount="
+            + totalAmount
+            + ", status="
+            + status
+            + ", method="
+            + method
+            + ", secret=***, virtualAccount="
+            + (virtualAccount == null ? null : "[MASKED]")
+            + ", requestedAt="
+            + requestedAt
+            + ", approvedAt="
+            + approvedAt
+            + "]";
     }
 }

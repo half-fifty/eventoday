@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 
@@ -145,6 +146,48 @@ class PaymentWebhookServiceTest {
         );
     }
 
+    @Test
+    void handleTossWebhook_rejectsMalformedPaymentStatusChangedPayload() {
+        PaymentWebhookService service = service();
+
+        assertBusinessException(
+            () -> service.handleTossWebhook(new TossPaymentWebhookRequest(
+                "PAYMENT_STATUS_CHANGED",
+                "2026-08-04T11:20:00.123456",
+                null
+            )),
+            GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID
+        );
+
+        verify(tossPaymentClient, never()).getPayment(any());
+        verify(paymentFinalizer, never()).finalizePaymentFromWebhook(any(), any());
+    }
+
+    @Test
+    void handleTossWebhook_rejectsPaymentStatusChangedWithoutTotalAmount() {
+        PaymentWebhookService service = service();
+
+        assertBusinessException(
+            () -> service.handleTossWebhook(new TossPaymentWebhookRequest(
+                "PAYMENT_STATUS_CHANGED",
+                "2026-08-04T11:20:00.123456",
+                new TossPaymentWebhookRequest.PaymentData(
+                    "payment-key",
+                    "ORDER-1",
+                    null,
+                    "DONE",
+                    "CARD",
+                    requestedAt(),
+                    approvedAt()
+                )
+            )),
+            GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID
+        );
+
+        verify(tossPaymentClient, never()).getPayment(any());
+        verify(paymentFinalizer, never()).finalizePaymentFromWebhook(any(), any());
+    }
+
     private PaymentWebhookService service() {
         return new PaymentWebhookService(
             tossPaymentClient,
@@ -248,7 +291,7 @@ class PaymentWebhookServiceTest {
                 "1234567890",
                 "088",
                 "tester",
-                OffsetDateTime.parse("2026-08-03T10:30:00+09:00")
+                LocalDateTime.parse("2026-08-03T10:30:00")
             ),
             requestedAt(),
             "DONE".equals(status) ? approvedAt() : null

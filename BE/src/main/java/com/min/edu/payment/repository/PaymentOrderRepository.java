@@ -28,6 +28,18 @@ public interface PaymentOrderRepository extends JpaRepository<PaymentOrder, Long
         """)
     Optional<PaymentOrder> findByOrderNoForUpdate(@Param("orderNo") String orderNo);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT po
+        FROM PaymentOrder po
+        JOIN Payment p ON p.paymentOrderId = po.id
+        JOIN PaymentVirtualAccount va ON va.paymentId = p.id
+        WHERE va.id = :virtualAccountId
+        """)
+    Optional<PaymentOrder> findByVirtualAccountIdForUpdate(
+        @Param("virtualAccountId") Long virtualAccountId
+    );
+
     @Query("""
         SELECT p
         FROM PaymentOrder p

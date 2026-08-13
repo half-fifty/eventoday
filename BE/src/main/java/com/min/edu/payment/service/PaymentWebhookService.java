@@ -41,6 +41,10 @@ public class PaymentWebhookService {
     private final PaymentVirtualAccountRepository virtualAccountRepository;
 
     public void handleTossWebhook(TossPaymentWebhookRequest request) {
+        if (request == null) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+        }
+
         if (DEPOSIT_CALLBACK.equals(request.getEventType())
                 || isDepositCallbackBody(request)) {
             handleDepositCallback(request);
@@ -50,6 +54,8 @@ public class PaymentWebhookService {
         if (!PAYMENT_STATUS_CHANGED.equals(request.getEventType())) {
             return;
         }
+
+        validatePaymentStatusChangedRequest(request);
 
         TossConfirmResponse tossPayment = getPayment(request.getData().getPaymentKey());
         validateWebhookMatchesToss(request.getData(), tossPayment);
@@ -146,6 +152,20 @@ public class PaymentWebhookService {
                 && tossPayment.approvedAt() != null
                 && !webhookPayment.getApprovedAt().toInstant()
                     .equals(tossPayment.approvedAt().toInstant())) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+        }
+    }
+
+    private void validatePaymentStatusChangedRequest(TossPaymentWebhookRequest request) {
+        TossPaymentWebhookRequest.PaymentData data = request.getData();
+        if (data == null
+                || data.getPaymentKey() == null
+                || data.getPaymentKey().isBlank()
+                || data.getOrderId() == null
+                || data.getOrderId().isBlank()
+                || data.getTotalAmount() == null
+                || data.getStatus() == null
+                || data.getStatus().isBlank()) {
             throw new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
         }
     }

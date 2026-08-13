@@ -422,6 +422,31 @@ class TicketOrderQueryServiceTest {
             }
 
             @Override
+            public String getPaymentMethod() {
+                return "CARD";
+            }
+
+            @Override
+            public String getVirtualAccountBankCode() {
+                return null;
+            }
+
+            @Override
+            public String getVirtualAccountNumber() {
+                return null;
+            }
+
+            @Override
+            public String getVirtualAccountCustomerName() {
+                return null;
+            }
+
+            @Override
+            public OffsetDateTime getVirtualAccountDueAt() {
+                return null;
+            }
+
+            @Override
             public OffsetDateTime getExpiresAt() {
                 return expiresAt;
             }
@@ -518,6 +543,31 @@ class TicketOrderQueryServiceTest {
             @Override
             public String getTicketOrderStatus() {
                 return ticketOrderStatus;
+            }
+
+            @Override
+            public String getPaymentMethod() {
+                return "CARD";
+            }
+
+            @Override
+            public String getVirtualAccountBankCode() {
+                return null;
+            }
+
+            @Override
+            public String getVirtualAccountNumber() {
+                return null;
+            }
+
+            @Override
+            public String getVirtualAccountCustomerName() {
+                return null;
+            }
+
+            @Override
+            public OffsetDateTime getVirtualAccountDueAt() {
+                return null;
             }
 
             @Override

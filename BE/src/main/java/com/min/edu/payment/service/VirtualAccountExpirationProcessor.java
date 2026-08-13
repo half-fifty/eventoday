@@ -56,7 +56,7 @@ public class VirtualAccountExpirationProcessor {
         }
 
         if (!exchangeCodeRepository.findAllByTicketOrderIdOrderByIdAsc(ticketOrder.getId()).isEmpty()) {
-            throw new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT);
+            return;
         }
 
         if (!ticketInventoryGateway.release(
@@ -77,16 +77,16 @@ public class VirtualAccountExpirationProcessor {
             return;
         }
 
-        Payment payment = paymentRepository.findById(virtualAccount.getPaymentId())
+        PaymentOrder lockedOrder = paymentOrderRepository.findByVirtualAccountIdForUpdate(virtualAccountId)
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_ORDER_NOT_FOUND));
+
+        Payment payment = paymentRepository.findByPaymentOrderIdForUpdate(lockedOrder.getId())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_NOT_FOUND));
-        if (!payment.isWaitingForDeposit()) {
+        if (!virtualAccount.getPaymentId().equals(payment.getId())
+                || !payment.isWaitingForDeposit()) {
             return;
         }
 
-        PaymentOrder paymentOrder = paymentOrderRepository.findById(payment.getPaymentOrderId())
-            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_ORDER_NOT_FOUND));
-        PaymentOrder lockedOrder = paymentOrderRepository.findByOrderNoForUpdate(paymentOrder.getOrderNo())
-            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_ORDER_NOT_FOUND));
         TicketOrder ticketOrder = ticketOrderRepository.findByPaymentOrderId(lockedOrder.getId())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
 
@@ -110,7 +110,7 @@ public class VirtualAccountExpirationProcessor {
         }
 
         if (!exchangeCodeRepository.findAllByTicketOrderIdOrderByIdAsc(ticketOrder.getId()).isEmpty()) {
-            throw new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT);
+            return;
         }
 
         if (!ticketInventoryGateway.release(

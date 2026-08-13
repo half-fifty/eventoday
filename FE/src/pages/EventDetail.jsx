@@ -24,6 +24,28 @@ const PAYMENT_METHODS = {
   CARD: "CARD",
   VIRTUAL_ACCOUNT: "VIRTUAL_ACCOUNT",
 };
+const TOSS_VIRTUAL_ACCOUNT_TIME_ZONE = "Asia/Seoul";
+
+const formatTossVirtualAccountDueDate = (expiresAt) => {
+  if (!expiresAt) return undefined;
+  const date = new Date(expiresAt);
+  if (Number.isNaN(date.getTime())) return undefined;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TOSS_VIRTUAL_ACCOUNT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== "literal") acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+};
 
 const effectiveTicketSalesEndTime = (event) => {
   const operationCutoffTime = event?.endAt ? new Date(event.endAt).getTime() - OPERATION_CUTOFF_MS : null;
@@ -166,7 +188,7 @@ export default function EventDetail() {
       if (!clientKey) throw new Error("VITE_TOSS_CLIENT_KEY가 설정되지 않아 결제창을 열 수 없습니다.");
       const tossPayments = await loadTossPayments(clientKey);
       const payment = tossPayments.payment({ customerKey: ANONYMOUS });
-      const dueDate = order.expiresAt ? new Date(order.expiresAt).toISOString() : undefined;
+      const dueDate = formatTossVirtualAccountDueDate(order.expiresAt);
       const paymentRequest = {
         method: paymentMethod,
         amount: { currency: "KRW", value: Number(order.totalAmount) },

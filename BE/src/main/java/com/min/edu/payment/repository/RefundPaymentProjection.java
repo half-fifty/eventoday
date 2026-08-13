@@ -15,9 +15,7 @@ public interface RefundPaymentProjection {
 
     String getPaymentStatus();
 
-    default String getPaymentMethod() {
-        return null;
-    }
+    String getPaymentMethod();
 
     String getOrderNo();
 

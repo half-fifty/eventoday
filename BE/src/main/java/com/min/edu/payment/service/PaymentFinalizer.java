@@ -265,7 +265,7 @@ public class PaymentFinalizer {
         PaymentVirtualAccount virtualAccount = virtualAccountRepository
             .findByPaymentId(payment.getId())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
-        virtualAccount.markDeposited(tossResponse.approvedAt(), now);
+        virtualAccount.markDeposited(tossResponse.status(), tossResponse.approvedAt(), now);
         return payment;
     }
 

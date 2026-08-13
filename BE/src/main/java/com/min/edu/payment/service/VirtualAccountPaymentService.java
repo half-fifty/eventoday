@@ -15,6 +15,7 @@ import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.support.PaymentSecretHasher;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class VirtualAccountPaymentService {
+
+    private static final ZoneId TOSS_VIRTUAL_ACCOUNT_ZONE = ZoneId.of("Asia/Seoul");
 
     private final PaymentOrderRepository paymentOrderRepository;
     private final TicketOrderRepository ticketOrderRepository;
@@ -99,7 +102,7 @@ public class VirtualAccountPaymentService {
                 tossResponse.virtualAccount().bankCode(),
                 tossResponse.virtualAccount().accountNumber(),
                 tossResponse.virtualAccount().customerName(),
-                lockedOrder.getExpiresAt(),
+                toTossVirtualAccountDueAt(tossResponse.virtualAccount().dueDate()),
                 PaymentSecretHasher.sha256(tossResponse.secret()),
                 tossResponse.status(),
                 now
@@ -151,5 +154,9 @@ public class VirtualAccountPaymentService {
                 || tossResponse.virtualAccount().dueDate() == null) {
             throw new BusinessException(GlobalErrorCode.VIRTUAL_ACCOUNT_REQUIRED);
         }
+    }
+
+    private OffsetDateTime toTossVirtualAccountDueAt(java.time.LocalDateTime dueDate) {
+        return dueDate.atZone(TOSS_VIRTUAL_ACCOUNT_ZONE).toOffsetDateTime();
     }
 }

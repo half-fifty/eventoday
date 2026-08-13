@@ -26,11 +26,13 @@ import com.min.edu.event.domain.Event;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderStatus;
 import com.min.edu.payment.domain.PaymentOrderType;
 import com.min.edu.payment.domain.PaymentProvider;
 import com.min.edu.payment.domain.PaymentStatus;
+import com.min.edu.payment.domain.PaymentVirtualAccount;
 import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.domain.TicketOrderStatus;
 import com.min.edu.payment.dto.request.ConfirmPaymentRequest;
@@ -389,6 +391,36 @@ class PaymentFinalizerTest {
         verify(paymentRepository, never()).saveAndFlush(any(Payment.class));
     }
 
+    @Test
+    void finalizePayment_marksVirtualAccountDepositedWithTossDoneStatus() {
+        PaymentOrder paymentOrder = waitingVirtualAccountOrder();
+        TicketOrder ticketOrder = pendingTicketOrder();
+        Payment waitingPayment = waitingVirtualAccountPayment();
+        PaymentVirtualAccount virtualAccount = virtualAccount();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(false);
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(ticketOrder));
+        given(paymentRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(waitingPayment));
+        given(paymentRepository.saveAndFlush(waitingPayment)).willReturn(waitingPayment);
+        given(virtualAccountRepository.findByPaymentId(5L))
+            .willReturn(Optional.of(virtualAccount));
+
+        paymentFinalizer.finalizePaymentFromWebhook(
+            request(),
+            virtualAccountDoneTossResponse()
+        );
+
+        assertThat(waitingPayment.getStatus()).isEqualTo(PaymentStatus.PAID.name());
+        assertThat(virtualAccount.getTossStatus()).isEqualTo("DONE");
+        assertThat(virtualAccount.getDepositedAt())
+            .isEqualTo(virtualAccountDoneTossResponse().approvedAt());
+    }
+
     private ConfirmPaymentRequest request() {
         return new ConfirmPaymentRequest(
             "payment-key",
@@ -424,12 +456,68 @@ class PaymentFinalizerTest {
             .build();
     }
 
+    private Payment waitingVirtualAccountPayment() {
+        return Payment.builder()
+            .id(5L)
+            .paymentOrderId(1L)
+            .pgProvider(PaymentProvider.TOSS_PAYMENTS)
+            .paymentKey("payment-key")
+            .method("VIRTUAL_ACCOUNT")
+            .amount(BigDecimal.valueOf(10000))
+            .status(PaymentStatus.WAITING_FOR_DEPOSIT.name())
+            .requestedAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))
+            .updatedAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))
+            .build();
+    }
+
+    private TossConfirmResponse virtualAccountDoneTossResponse() {
+        return new TossConfirmResponse(
+            "payment-key",
+            "ORDER-1",
+            BigDecimal.valueOf(10000),
+            "DONE",
+            "VIRTUAL_ACCOUNT",
+            OffsetDateTime.parse("2026-08-03T10:00:00+09:00"),
+            OffsetDateTime.parse("2026-08-03T10:01:00+09:00")
+        );
+    }
+
+    private PaymentVirtualAccount virtualAccount() {
+        return PaymentVirtualAccount.builder()
+            .id(7L)
+            .paymentId(5L)
+            .bankCode("088")
+            .accountNumber("1234567890")
+            .customerName("tester")
+            .dueAt(OffsetDateTime.parse("2026-08-03T10:30:00+09:00"))
+            .webhookSecretHash("hash")
+            .tossStatus("WAITING_FOR_DEPOSIT")
+            .createdAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))
+            .updatedAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))
+            .build();
+    }
+
     private PaymentOrder pendingPaymentOrder() {
         return paymentOrder(PaymentOrderStatus.PENDING);
     }
 
     private PaymentOrder paidPaymentOrder() {
         return paymentOrder(PaymentOrderStatus.PAID);
+    }
+
+    private PaymentOrder waitingVirtualAccountOrder() {
+        return PaymentOrder.builder()
+            .id(1L)
+            .orderNo("ORDER-1")
+            .buyerMemberId(10L)
+            .orderType(PaymentOrderType.EVENT_TICKET)
+            .totalAmount(BigDecimal.valueOf(10000))
+            .requestedPaymentMethod(PaymentMethod.VIRTUAL_ACCOUNT)
+            .status(PaymentOrderStatus.WAITING_FOR_DEPOSIT.name())
+            .expiresAt(OffsetDateTime.now().plusMinutes(10))
+            .createdAt(OffsetDateTime.now())
+            .updatedAt(OffsetDateTime.now())
+            .build();
     }
 
     private PaymentOrder pendingGuestPaymentOrder() {

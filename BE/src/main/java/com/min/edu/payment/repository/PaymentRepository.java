@@ -3,16 +3,29 @@ package com.min.edu.payment.repository;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.min.edu.payment.domain.Payment;
+
+import jakarta.persistence.LockModeType;
 
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     Optional<Payment> findByPaymentOrderId(Long paymentOrderId);
 
     Optional<Payment> findByPaymentKey(String paymentKey);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT p
+        FROM Payment p
+        WHERE p.paymentOrderId = :paymentOrderId
+        """)
+    Optional<Payment> findByPaymentOrderIdForUpdate(
+        @Param("paymentOrderId") Long paymentOrderId
+    );
 
     long countByPaymentKey(String paymentKey);
 

@@ -78,14 +78,14 @@ public class PaymentVirtualAccount {
             .build();
     }
 
-    public void markDeposited(OffsetDateTime depositedAt, OffsetDateTime now) {
-        this.tossStatus = PaymentStatus.PAID.name();
+    public void markDeposited(String tossStatus, OffsetDateTime depositedAt, OffsetDateTime now) {
+        this.tossStatus = tossStatus;
         this.depositedAt = depositedAt;
         this.updatedAt = now;
     }
 
     public void markExpired(OffsetDateTime now) {
-        this.tossStatus = PaymentStatus.EXPIRED.name();
+        this.tossStatus = "EXPIRED";
         this.updatedAt = now;
     }
 }
