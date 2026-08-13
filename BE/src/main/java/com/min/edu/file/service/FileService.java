@@ -138,6 +138,17 @@ public class FileService {
     }
 
     /**
+     * 플랫폼 관리자가 심사 등의 목적으로 소유자 제한 없이 파일을 열람할 때 사용한다.
+     * 호출하는 쪽에서 PLATFORM_ADMIN 권한 검증을 이미 마쳤다는 전제로 소유자 검사를 생략한다.
+     */
+    @Transactional(readOnly = true)
+    public String getFileDownloadUrlForAdmin(Long fileId) {
+        FileAsset fileAsset = fileAssetRepository.findById(fileId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.FILE_NOT_FOUND));
+        return fileStorageService.generatePresignedUrl(fileAsset.getStorageKey());
+    }
+
+    /**
      * 다른 도메인이 자신의 엔티티에 fileId를 참조로 저장하기 전에,
      * 해당 회원이 그 파일에 접근 가능한지만 검증한다 (presigned URL은 발급하지 않음).
      */
