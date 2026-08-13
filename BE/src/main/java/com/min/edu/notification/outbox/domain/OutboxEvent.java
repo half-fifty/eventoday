@@ -63,6 +63,9 @@ public class OutboxEvent {
     @Column(name = "published_at")
     private OffsetDateTime publishedAt;
 
+    @Column(name = "lease_expires_at")
+    private OffsetDateTime leaseExpiresAt;
+
     public static OutboxEvent create(String messageKey, String payload, OffsetDateTime now) {
         return OutboxEvent.builder()
             .messageKey(messageKey)
@@ -78,15 +81,22 @@ public class OutboxEvent {
         this.status = OutboxEventStatus.PUBLISHED;
         this.publishedAt = now;
         this.lastError = null;
+        this.leaseExpiresAt = null;
     }
 
+    /**
+     * MAX_RETRY_COUNT번의 재시도 기회를 모두 소진한 뒤에만 FAILED로 격리한다.
+     * (retryCount == MAX_RETRY_COUNT는 아직 그 마지막 재시도가 남아있는 상태)
+     */
     public void markFailedAttempt(OffsetDateTime now, String errorMessage) {
         this.retryCount += 1;
         this.lastError = truncate(errorMessage);
+        this.leaseExpiresAt = null;
 
-        if (this.retryCount >= MAX_RETRY_COUNT) {
+        if (this.retryCount > MAX_RETRY_COUNT) {
             this.status = OutboxEventStatus.FAILED;
         } else {
+            this.status = OutboxEventStatus.PENDING;
             this.nextAttemptAt = now.plusSeconds(backoffSeconds(this.retryCount));
         }
     }

@@ -45,7 +45,7 @@ class OutboxEventTest {
     }
 
     @Test
-    void markFailedAttempt_reachingMaxRetries_movesToFailed() {
+    void markFailedAttempt_fifthFailure_stillSchedulesOneMoreRetry() {
         OutboxEvent event = OutboxEvent.create("42", "{}", OffsetDateTime.now());
         OffsetDateTime now = OffsetDateTime.now();
 
@@ -53,7 +53,29 @@ class OutboxEventTest {
             event.markFailedAttempt(now, "실패 " + attempt);
         }
 
-        assertThat(event.getStatus()).isEqualTo(OutboxEventStatus.FAILED);
+        assertThat(event.getStatus()).isEqualTo(OutboxEventStatus.PENDING);
         assertThat(event.getRetryCount()).isEqualTo(5);
+    }
+
+    @Test
+    void markFailedAttempt_sixthFailure_movesToFailed() {
+        OutboxEvent event = OutboxEvent.create("42", "{}", OffsetDateTime.now());
+        OffsetDateTime now = OffsetDateTime.now();
+
+        for (int attempt = 0; attempt < 6; attempt++) {
+            event.markFailedAttempt(now, "실패 " + attempt);
+        }
+
+        assertThat(event.getStatus()).isEqualTo(OutboxEventStatus.FAILED);
+        assertThat(event.getRetryCount()).isEqualTo(6);
+    }
+
+    @Test
+    void markFailedAttempt_clearsLeaseSoTheRowCanBeReclaimed() {
+        OutboxEvent event = OutboxEvent.create("42", "{}", OffsetDateTime.now());
+
+        event.markFailedAttempt(OffsetDateTime.now(), "타임아웃");
+
+        assertThat(event.getLeaseExpiresAt()).isNull();
     }
 }

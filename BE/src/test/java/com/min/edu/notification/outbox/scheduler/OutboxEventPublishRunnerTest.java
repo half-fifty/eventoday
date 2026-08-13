@@ -2,6 +2,7 @@ package com.min.edu.notification.outbox.scheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
@@ -36,15 +37,20 @@ class OutboxEventPublishRunnerTest {
         return new OutboxEventPublishRunner(outboxEventRepository, notificationProducer, objectMapper);
     }
 
-    private String payload() throws Exception {
+    private String payload() {
         NotificationEventDto eventDto = NotificationEventDto.create(
             42L, NotificationType.EVENT_SCHEDULE_CHANGED, "EVENT", 10L, "일정 변경", "행사 일정이 변경되었습니다."
         );
         return objectMapper.writeValueAsString(eventDto);
     }
 
+    private void givenClaimSucceeds() {
+        given(outboxEventRepository.claim(anyLong(), any(), any())).willReturn(1);
+    }
+
     @Test
-    void publish_successfulSend_marksEventPublished() throws Exception {
+    void publish_claimSucceeds_marksEventPublished() {
+        givenClaimSucceeds();
         OutboxEvent event = OutboxEvent.create("42", payload(), OffsetDateTime.now());
         given(outboxEventRepository.findById(1L)).willReturn(Optional.of(event));
 
@@ -55,7 +61,8 @@ class OutboxEventPublishRunnerTest {
     }
 
     @Test
-    void publish_kafkaSendThrows_marksFailedAttemptInsteadOfPropagating() throws Exception {
+    void publish_kafkaSendThrows_marksFailedAttemptInsteadOfPropagating() {
+        givenClaimSucceeds();
         OutboxEvent event = OutboxEvent.create("42", payload(), OffsetDateTime.now());
         given(outboxEventRepository.findById(1L)).willReturn(Optional.of(event));
         willThrow(new IllegalStateException("카프카 발행에 실패했습니다.")).given(notificationProducer).send(any());
@@ -67,19 +74,20 @@ class OutboxEventPublishRunnerTest {
     }
 
     @Test
-    void publish_eventNotFound_doesNothing() {
-        given(outboxEventRepository.findById(1L)).willReturn(Optional.empty());
+    void publish_claimFails_doesNothing() {
+        // 다른 인스턴스/스레드가 이미 선점했거나(0건 갱신), 이미 처리된 이벤트인 경우
+        given(outboxEventRepository.claim(anyLong(), any(), any())).willReturn(0);
 
         runner().publish(1L);
 
         verify(notificationProducer, never()).send(any());
+        verify(outboxEventRepository, never()).findById(1L);
     }
 
     @Test
-    void publish_eventAlreadyPublished_doesNothing() throws Exception {
-        OutboxEvent event = OutboxEvent.create("42", payload(), OffsetDateTime.now());
-        event.markPublished(OffsetDateTime.now());
-        given(outboxEventRepository.findById(1L)).willReturn(Optional.of(event));
+    void publish_claimSucceedsButEventMissing_doesNothing() {
+        givenClaimSucceeds();
+        given(outboxEventRepository.findById(1L)).willReturn(Optional.empty());
 
         runner().publish(1L);
 
