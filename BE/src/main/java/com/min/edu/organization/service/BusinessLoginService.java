@@ -1,6 +1,7 @@
 package com.min.edu.organization.service;
 
 import java.time.OffsetDateTime;
+import java.util.Locale;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,8 +18,6 @@ import com.min.edu.member.repository.MemberRepository;
 import com.min.edu.organization.domain.Organization;
 import com.min.edu.organization.domain.OrganizationMember;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
-import com.min.edu.organization.domain.OrganizationRole;
-import com.min.edu.organization.domain.OrganizationStatus;
 import com.min.edu.organization.dto.BusinessLoginRequestDto;
 import com.min.edu.organization.repository.OrganizationMemberRepository;
 import com.min.edu.organization.repository.OrganizationRepository;
@@ -38,19 +37,10 @@ public class BusinessLoginService {
 
     @Transactional
     public TokenDto login(BusinessLoginRequestDto request) {
-        Organization organization = organizationRepository
-            .findByBusinessNumber(request.getBusinessNumber())
-            .orElseThrow(() -> invalidCredentials());
-
-        OrganizationMember organizationMember = organizationMemberRepository
-            .findByOrganizationIdAndOrganizationRole(
-                organization.getId(),
-                OrganizationRole.OWNER
-            )
-            .orElseThrow(() -> invalidCredentials());
+        String email = request.getEmail().trim().toLowerCase(Locale.ROOT);
 
         Member member = memberRepository
-            .findById(organizationMember.getMemberId())
+            .findByEmail(email)
             .orElseThrow(() -> invalidCredentials());
 
         if (member.getPasswordHash() == null
@@ -61,14 +51,24 @@ public class BusinessLoginService {
             throw invalidCredentials();
         }
 
-        if (member.getStatus() != MemberStatus.ACTIVE
-                || organization.getStatus() != OrganizationStatus.ACTIVE
-                || organizationMember.getStatus()
-                    != OrganizationMemberStatus.ACTIVE) {
+        OrganizationMember organizationMember = organizationMemberRepository
+            .findFirstByMemberIdAndStatusOrderByIdAsc(
+                member.getId(),
+                OrganizationMemberStatus.ACTIVE
+            )
+            .orElseThrow(() -> invalidCredentials());
+
+        Organization organization = organizationRepository
+            .findById(organizationMember.getOrganizationId())
+            .orElseThrow(() -> invalidCredentials());
+
+        if (member.getStatus() != MemberStatus.ACTIVE) {
             throw new BusinessException(
                 GlobalErrorCode.MEMBER_LOGIN_RESTRICTED
             );
         }
+
+        requireLoginableOrganization(organization);
 
         member.updateLastLoginAt(OffsetDateTime.now());
 
@@ -86,6 +86,21 @@ public class BusinessLoginService {
             .accessToken(accessToken)
             .refreshToken(refreshToken)
             .build();
+    }
+
+    private void requireLoginableOrganization(Organization organization) {
+        switch (organization.getStatus()) {
+            case ACTIVE -> { }
+            case PENDING -> throw new BusinessException(
+                GlobalErrorCode.ORGANIZATION_APPROVAL_PENDING
+            );
+            case SUSPENDED -> throw new BusinessException(
+                GlobalErrorCode.ORGANIZATION_SUSPENDED
+            );
+            default -> throw new BusinessException(
+                GlobalErrorCode.MEMBER_LOGIN_RESTRICTED
+            );
+        }
     }
 
     private BusinessException invalidCredentials() {

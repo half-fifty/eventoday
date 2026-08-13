@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { advertisementApi } from "../api/advertisementApi.js";
 import { eventApi } from "../api/eventApi.js";
+import { organizationSignupApi } from "../api/organizationSignupApi.js";
 import { platformAdminApi } from "../api/platformAdminApi.js";
 import { AdminExchangeCodeRequestPanel } from "../components/ExchangeCodeRequestPanels.jsx";
 import Icon from "../components/Icon.jsx";
@@ -12,6 +13,7 @@ import useAuth from "../hooks/useAuth.js";
 const menuItems = [
   { key: "dashboard", label: "전체 대시보드", icon: "dashboard" },
   { key: "requests", label: "행사 등록 신청", icon: "verified" },
+  { key: "organization-signups", label: "개최자 가입 심사", icon: "domain_verification" },
   { key: "exchange-codes", label: "외부 예매 티켓 관리", icon: "key" },
   { key: "notices", label: "공지 관리", icon: "article" },
   { key: "accounts", label: "계정 관리", icon: "group" },
@@ -37,6 +39,14 @@ const adStatus = {
   ENDED: "종료", CANCELLED: "취소",
 };
 
+const orgSignupStatus = {
+  PENDING: ["승인 대기", "bg-status-pending/10 text-status-pending"],
+  APPROVED: ["승인", "bg-status-available/10 text-status-available"],
+};
+const orgSignupFilters = [
+  ["PENDING", "승인 대기"], ["APPROVED", "승인"], ["", "전체"],
+];
+
 const accountFilters = [
   ["ALL", "전체"], ["ORGANIZER", "행사 개최자"], ["EXHIBITOR", "참가기업"], ["PERSONAL", "일반 회원"],
 ];
@@ -50,6 +60,8 @@ const formatDateTime = (value) => value
   ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
 const formatMoney = (value) => `${Number(value || 0).toLocaleString("ko-KR")}원`;
 const dataOf = (result, fallback) => result?.data ?? fallback;
+// javascript: 등 위험한 스킴으로 저장된 값이 있어도 클릭 가능한 링크로 렌더링하지 않도록 방어한다.
+const isSafeHttpUrl = (value) => /^https?:\/\//i.test(value || "");
 
 export default function PlatformAdmin() {
   const { member } = useAuth();
@@ -63,6 +75,12 @@ export default function PlatformAdmin() {
   const [audit, setAudit] = useState([]);
   const [eventPage, setEventPage] = useState(0);
   const [eventPageInfo, setEventPageInfo] = useState(null);
+  const [organizationSignups, setOrganizationSignups] = useState([]);
+  const [orgSignupPage, setOrgSignupPage] = useState(0);
+  const [orgSignupPageInfo, setOrgSignupPageInfo] = useState(null);
+  const [orgSignupStatusFilter, setOrgSignupStatusFilter] = useState("PENDING");
+  const [orgSignupDetail, setOrgSignupDetail] = useState(null);
+  const [orgSignupDetailLoading, setOrgSignupDetailLoading] = useState(false);
   const [adPage, setAdPage] = useState(0);
   const [adPageInfo, setAdPageInfo] = useState(null);
   const [accountFilter, setAccountFilter] = useState("ALL");
@@ -77,8 +95,12 @@ export default function PlatformAdmin() {
       platformAdminApi.dashboard(), eventApi.adminList({ page: eventPage, size: 20, sort: "createdAt,desc" }),
       platformAdminApi.accounts(), advertisementApi.adminList({ page: adPage, size: 20, sort: "createdAt,desc" }),
       platformAdminApi.statistics(), platformAdminApi.audit(),
+      organizationSignupApi.adminList({
+        page: orgSignupPage, size: 20,
+        ...(orgSignupStatusFilter ? { status: orgSignupStatusFilter } : {}),
+      }),
     ]);
-    const [dashboardResult, eventResult, accountResult, adResult, statsResult, auditResult] = results;
+    const [dashboardResult, eventResult, accountResult, adResult, statsResult, auditResult, orgSignupResult] = results;
     if (dashboardResult.status === "fulfilled") setDashboard(dataOf(dashboardResult.value, null));
     if (eventResult.status === "fulfilled") {
       const result = dataOf(eventResult.value, {});
@@ -91,10 +113,14 @@ export default function PlatformAdmin() {
     }
     if (statsResult.status === "fulfilled") setStatistics(dataOf(statsResult.value, null));
     if (auditResult.status === "fulfilled") setAudit(dataOf(auditResult.value, []));
+    if (orgSignupResult.status === "fulfilled") {
+      const result = dataOf(orgSignupResult.value, {});
+      setOrganizationSignups(result?.content || []); setOrgSignupPageInfo(result);
+    }
     const failures = results.filter((result) => result.status === "rejected");
     if (failures.length) setError(failures[0].reason?.message || "관리 데이터를 불러오지 못했습니다.");
     setLoading(false);
-  }, [eventPage, adPage]);
+  }, [eventPage, adPage, orgSignupPage, orgSignupStatusFilter]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -123,6 +149,22 @@ export default function PlatformAdmin() {
   };
   const toggleAccount = (account) => runAction(`account-${account.id}`, () =>
     platformAdminApi.changeAccountStatus(account.id, account.status === "ACTIVE" ? "BLOCKED" : "ACTIVE"));
+  const approveOrgSignup = (id) => runAction(`org-signup-${id}`, () => organizationSignupApi.approve(id));
+  const rejectOrgSignup = (id) => {
+    const reason = window.prompt("반려 사유를 입력하세요.");
+    if (reason?.trim()) runAction(`org-signup-${id}`, () => organizationSignupApi.reject(id, reason.trim()));
+  };
+  const openOrgSignupDetail = async (id) => {
+    setOrgSignupDetailLoading(true);
+    try {
+      const response = await organizationSignupApi.adminDetail(id);
+      setOrgSignupDetail(dataOf(response, null));
+    } catch (detailError) {
+      setError(detailError.message || "심사 상세 정보를 불러오지 못했습니다.");
+    } finally {
+      setOrgSignupDetailLoading(false);
+    }
+  };
   const movePage = (key) => { setPage(key); setSidebarOpen(false); };
   const menuClass = (active) => `flex w-full items-center gap-sm rounded-r-xl border-l-[3px] px-md py-sm text-left transition-colors ${active
     ? "border-primary bg-primary/10 font-body-strong text-primary"
@@ -165,6 +207,8 @@ export default function PlatformAdmin() {
 
           {page === "requests" && <section className="space-y-lg"><div><h1 className="font-display-lg text-[26px]">행사 등록 신청</h1><p className="mt-xs text-caption text-ink-muted">개최자가 제출한 행사를 검토하고 승인합니다.</p></div><div className="space-y-md">{requests.length ? requests.map((event) => <article key={event.id} className="rounded-xl border border-hairline bg-white p-lg"><div className="flex flex-wrap items-start justify-between gap-md"><div><p className="font-body-strong">{event.name}</p><p className="text-caption text-ink-muted">조직 #{event.organizerOrganizationId} · {event.venueName || "장소 미정"}</p><p className="text-[11px] text-ink-muted">수정 {formatDateTime(event.updatedAt)}</p></div><div className="flex items-center gap-sm"><StatusBadge status={event.status} />{["SUBMITTED", "UNDER_REVIEW"].includes(event.status) && <><button disabled={actionKey === `event-${event.id}`} onClick={() => approveEvent(event.id)} className="rounded-full bg-status-available px-md py-xs text-caption font-body-strong text-white disabled:opacity-50">승인</button><button disabled={actionKey === `event-${event.id}`} onClick={() => rejectEvent(event.id)} className="rounded-full border border-error/30 px-md py-xs text-caption font-body-strong text-error disabled:opacity-50">반려</button></>}</div></div>{event.rejectionReason && <p className="mt-md rounded-lg bg-error/5 p-sm text-caption text-error">반려 사유: {event.rejectionReason}</p>}</article>) : <div className="rounded-xl border border-hairline bg-white"><Empty text="등록된 행사가 없습니다." /></div>}</div><Pagination result={eventPageInfo} current={eventPage} onChange={setEventPage} /></section>}
 
+          {page === "organization-signups" && <section className="space-y-lg"><div><h1 className="font-display-lg text-[26px]">개최자 가입 심사</h1><p className="mt-xs text-caption text-ink-muted">행사 개최자로 가입 신청한 계정을 검토하고 승인·반려합니다.</p></div><div className="flex flex-wrap gap-xs">{orgSignupFilters.map(([key, label]) => <button key={key || "all"} onClick={() => { setOrgSignupPage(0); setOrgSignupStatusFilter(key); }} className={`rounded-full px-md py-1.5 text-caption font-body-strong ${orgSignupStatusFilter === key ? "bg-primary text-white" : "border border-hairline bg-white"}`}>{label}</button>)}</div><div className="space-y-md">{organizationSignups.length ? organizationSignups.map((review) => { const [label, cls] = orgSignupStatus[review.status] || [review.status, "bg-surface-container text-ink-muted"]; return <article key={review.reviewId} className="rounded-xl border border-hairline bg-white p-lg"><div className="flex flex-wrap items-start justify-between gap-md"><div><p className="font-body-strong">{review.organizationName}</p><p className="text-caption text-ink-muted">대표자 {review.representativeName} · {review.maskedBusinessNumber} · 담당자 {review.managerName || "-"}</p><p className="text-[11px] text-ink-muted">신청 {formatDateTime(review.submittedAt)}</p></div><div className="flex items-center gap-sm"><span className={`rounded-full px-sm py-1 text-[11px] font-bold ${cls}`}>{label}</span><button onClick={() => openOrgSignupDetail(review.reviewId)} className="rounded-full border border-hairline px-md py-xs text-caption font-body-strong">상세 보기</button>{review.status === "PENDING" && <><button disabled={actionKey === `org-signup-${review.reviewId}`} onClick={() => approveOrgSignup(review.reviewId)} className="rounded-full bg-status-available px-md py-xs text-caption font-body-strong text-white disabled:opacity-50">승인</button><button disabled={actionKey === `org-signup-${review.reviewId}`} onClick={() => rejectOrgSignup(review.reviewId)} className="rounded-full border border-error/30 px-md py-xs text-caption font-body-strong text-error disabled:opacity-50">반려</button></>}</div></div></article>; }) : <div className="rounded-xl border border-hairline bg-white"><Empty text="조건에 맞는 가입 신청이 없습니다." /></div>}</div><Pagination result={orgSignupPageInfo} current={orgSignupPage} onChange={setOrgSignupPage} /></section>}
+
           {page === "exchange-codes" && <AdminExchangeCodeRequestPanel />}
 
           {page === "notices" && <PlatformNoticePanel />}
@@ -180,6 +224,38 @@ export default function PlatformAdmin() {
           {page === "audit" && <section className="space-y-lg"><div><h1 className="font-display-lg text-[26px]">감사 로그</h1><p className="mt-xs text-caption text-ink-muted">행사, 광고, 공지의 실제 운영 상태 변경 내역입니다.</p></div><div className="overflow-hidden rounded-xl border border-hairline bg-white">{audit.length ? <div className="divide-y divide-divider-soft">{audit.map((entry) => <div key={entry.id} className="flex gap-md p-lg"><div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary"><Icon name={auditIcon(entry.category)} className="text-[18px]" /></div><div className="min-w-0 flex-1"><p className="font-body-strong text-[14px]">{entry.target}</p><p className="text-caption text-ink-muted">{entry.action}{entry.detail ? ` · ${entry.detail}` : ""}</p></div><time className="text-[11px] text-ink-muted">{formatDateTime(entry.occurredAt)}</time></div>)}</div> : <Empty text="기록된 운영 활동이 없습니다." />}</div></section>}
         </div>
       </main>
+
+      {(orgSignupDetail || orgSignupDetailLoading) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-lg" onClick={() => setOrgSignupDetail(null)}>
+          <div className="max-h-[85vh] w-full max-w-[560px] overflow-y-auto rounded-2xl bg-white p-xl shadow-xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-md flex items-center justify-between">
+              <h3 className="font-display-md text-[18px]">가입 심사 상세</h3>
+              <button onClick={() => setOrgSignupDetail(null)} aria-label="닫기"><Icon name="close" /></button>
+            </div>
+            {orgSignupDetailLoading && <p className="text-caption text-ink-muted">불러오는 중입니다.</p>}
+            {orgSignupDetail && !orgSignupDetailLoading && (
+              <div className="space-y-md text-caption">
+                <div><p className="text-[11px] text-ink-muted">조직명</p><p className="font-body-strong">{orgSignupDetail.organizationName}</p></div>
+                <div><p className="text-[11px] text-ink-muted">대표자명 / 사업자등록번호</p><p>{orgSignupDetail.representativeName} · {orgSignupDetail.maskedBusinessNumber}</p></div>
+                <div><p className="text-[11px] text-ink-muted">담당자</p><p>{orgSignupDetail.managerName || "-"} · {orgSignupDetail.managerPhone || "-"}</p></div>
+                <div><p className="text-[11px] text-ink-muted">로그인 이메일 / 회사 연락처</p><p>{orgSignupDetail.loginEmail} · {orgSignupDetail.contactPhone}</p></div>
+                {orgSignupDetail.addressLine1 && <div><p className="text-[11px] text-ink-muted">주소</p><p>({orgSignupDetail.postalCode}) {orgSignupDetail.addressLine1} {orgSignupDetail.addressLine2}</p></div>}
+                {orgSignupDetail.homepageUrl && <div><p className="text-[11px] text-ink-muted">홈페이지</p>{isSafeHttpUrl(orgSignupDetail.homepageUrl) ? <a href={orgSignupDetail.homepageUrl} target="_blank" rel="noreferrer" className="text-primary underline">{orgSignupDetail.homepageUrl}</a> : <p className="text-ink-muted">{orgSignupDetail.homepageUrl} (허용되지 않는 URL 형식)</p>}</div>}
+                {orgSignupDetail.introduction && <div><p className="text-[11px] text-ink-muted">회사 소개</p><p>{orgSignupDetail.introduction}</p></div>}
+                <div><p className="text-[11px] text-ink-muted">사업자등록증</p>{orgSignupDetail.businessRegistrationFileDownloadUrl ? <a href={orgSignupDetail.businessRegistrationFileDownloadUrl} target="_blank" rel="noreferrer" className="text-primary underline">첨부 파일 열기</a> : <p className="text-ink-muted">첨부된 서류가 없습니다.</p>}</div>
+                <div><p className="text-[11px] text-ink-muted">신청일 / 상태</p><p>{formatDateTime(orgSignupDetail.submittedAt)} · {orgSignupStatus[orgSignupDetail.status]?.[0] || orgSignupDetail.status}</p></div>
+                {orgSignupDetail.rejectionReason && <div><p className="text-[11px] text-ink-muted">반려 사유</p><p className="text-error">{orgSignupDetail.rejectionReason}</p></div>}
+                {orgSignupDetail.status === "PENDING" && (
+                  <div className="flex gap-sm pt-sm">
+                    <button onClick={() => { approveOrgSignup(orgSignupDetail.reviewId); setOrgSignupDetail(null); }} className="rounded-full bg-status-available px-md py-xs text-caption font-body-strong text-white">승인</button>
+                    <button onClick={() => { rejectOrgSignup(orgSignupDetail.reviewId); setOrgSignupDetail(null); }} className="rounded-full border border-error/30 px-md py-xs text-caption font-body-strong text-error">반려</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

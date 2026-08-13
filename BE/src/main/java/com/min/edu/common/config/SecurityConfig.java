@@ -58,6 +58,7 @@ public class SecurityConfig {
                                 "/auth/business/login"
                         ).permitAll()
                         .requestMatchers("/auth/me").authenticated()
+                        .requestMatchers("/admin/organization-signups/**").authenticated()
                         .requestMatchers("/notifications/**").authenticated()
                         // PUBLIC 파일(공개 평면도 이미지 등)은 비로그인 사용자도 내려받을 수 있어야 한다.
                         // 접근 가능 여부(PUBLIC/PRIVATE) 판단은 FileService에서 계속 수행한다.
