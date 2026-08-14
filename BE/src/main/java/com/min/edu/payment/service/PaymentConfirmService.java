@@ -195,22 +195,22 @@ public class PaymentConfirmService {
             PaymentOrder paymentOrder,
             TossConfirmResponse response) {
         if (response == null) {
-            throwInvalidTossConfirmResponse("RESPONSE_MISSING", request.getOrderId(), null);
+            throw invalidTossConfirmResponse("RESPONSE_MISSING", request.getOrderId(), null);
         }
         if (!request.getPaymentKey().equals(response.paymentKey())) {
-            throwInvalidTossConfirmResponse("PAYMENT_KEY_MISMATCH", request.getOrderId(), response);
+            throw invalidTossConfirmResponse("PAYMENT_KEY_MISMATCH", request.getOrderId(), response);
         }
         if (!request.getOrderId().equals(response.orderId())) {
-            throwInvalidTossConfirmResponse("ORDER_ID_MISMATCH", request.getOrderId(), response);
+            throw invalidTossConfirmResponse("ORDER_ID_MISMATCH", request.getOrderId(), response);
         }
         if (response.totalAmount() == null) {
-            throwInvalidTossConfirmResponse("AMOUNT_MISSING", request.getOrderId(), response);
+            throw invalidTossConfirmResponse("AMOUNT_MISSING", request.getOrderId(), response);
         }
         if (response.totalAmount().compareTo(paymentOrder.getTotalAmount()) != 0) {
-            throwInvalidTossConfirmResponse("AMOUNT_MISMATCH", request.getOrderId(), response);
+            throw invalidTossConfirmResponse("AMOUNT_MISMATCH", request.getOrderId(), response);
         }
         if (response.requestedAt() == null) {
-            throwInvalidTossConfirmResponse("REQUESTED_AT_MISSING", request.getOrderId(), response);
+            throw invalidTossConfirmResponse("REQUESTED_AT_MISSING", request.getOrderId(), response);
         }
 
         PaymentMethod requestedMethod = requestedMethod(paymentOrder);
@@ -227,20 +227,20 @@ public class PaymentConfirmService {
 
         if (requestedMethod == PaymentMethod.VIRTUAL_ACCOUNT) {
             if (!TOSS_WAITING_FOR_DEPOSIT_STATUS.equals(response.status())) {
-                throwInvalidTossConfirmResponse("STATUS_MISMATCH", request.getOrderId(), response);
+                throw invalidTossConfirmResponse("STATUS_MISMATCH", request.getOrderId(), response);
             }
             return;
         }
 
         if (!TOSS_DONE_STATUS.equals(response.status())) {
-            throwInvalidTossConfirmResponse("STATUS_MISMATCH", request.getOrderId(), response);
+            throw invalidTossConfirmResponse("STATUS_MISMATCH", request.getOrderId(), response);
         }
         if (response.approvedAt() == null) {
-            throwInvalidTossConfirmResponse("APPROVED_AT_INVALID", request.getOrderId(), response);
+            throw invalidTossConfirmResponse("APPROVED_AT_INVALID", request.getOrderId(), response);
         }
     }
 
-    private void throwInvalidTossConfirmResponse(
+    private BusinessException invalidTossConfirmResponse(
             String reason,
             String requestOrderId,
             TossConfirmResponse response) {
@@ -251,7 +251,7 @@ public class PaymentConfirmService {
             safeStatus(response),
             safeMethod(response)
         );
-        throw new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+        return new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
     }
 
     private String safeOrderId(String requestOrderId, TossConfirmResponse response) {

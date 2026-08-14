@@ -455,13 +455,12 @@ public class RestClientTossPaymentClient implements TossPaymentClient {
     private void logTossDeserializationFailure(String stage, Throwable throwable) {
         Throwable rootCause = rootCause(throwable);
         log.warn(
-            "Toss confirm deserialization failed: stage={}, path={}, value={}, exceptionType={}, rootExceptionType={}, rootMessage={}",
+            "Toss confirm deserialization failed: stage={}, path={}, value={}, exceptionType={}, rootExceptionType={}",
             stage,
             jsonMappingPath(throwable),
             parsedDateTimeValue(rootCause),
             throwable.getClass().getSimpleName(),
-            rootCause == null ? null : rootCause.getClass().getSimpleName(),
-            rootCause == null ? null : rootCause.getMessage()
+            rootCause == null ? null : rootCause.getClass().getSimpleName()
         );
     }
 

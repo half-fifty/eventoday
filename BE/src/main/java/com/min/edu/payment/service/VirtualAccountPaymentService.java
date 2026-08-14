@@ -146,28 +146,28 @@ public class VirtualAccountPaymentService {
 
     private void validateVirtualAccountResponse(TossConfirmResponse tossResponse) {
         if (tossResponse == null) {
-            throwInvalidVirtualAccountResponse("RESPONSE_MISSING", null);
+            throw invalidVirtualAccountResponse("RESPONSE_MISSING", null);
         }
         if (tossResponse.secret() == null || tossResponse.secret().isBlank()) {
-            throwInvalidVirtualAccountResponse("SECRET_MISSING", tossResponse);
+            throw invalidVirtualAccountResponse("SECRET_MISSING", tossResponse);
         }
         if (tossResponse.virtualAccount() == null) {
-            throwInvalidVirtualAccountResponse("VIRTUAL_ACCOUNT_MISSING", tossResponse);
+            throw invalidVirtualAccountResponse("VIRTUAL_ACCOUNT_MISSING", tossResponse);
         }
         if (tossResponse.virtualAccount().accountNumber() == null
                 || tossResponse.virtualAccount().accountNumber().isBlank()) {
-            throwInvalidVirtualAccountResponse("ACCOUNT_NUMBER_MISSING", tossResponse);
+            throw invalidVirtualAccountResponse("ACCOUNT_NUMBER_MISSING", tossResponse);
         }
         if (tossResponse.virtualAccount().bankCode() == null
                 || tossResponse.virtualAccount().bankCode().isBlank()) {
-            throwInvalidVirtualAccountResponse("BANK_CODE_MISSING", tossResponse);
+            throw invalidVirtualAccountResponse("BANK_CODE_MISSING", tossResponse);
         }
         if (tossResponse.virtualAccount().dueDate() == null) {
-            throwInvalidVirtualAccountResponse("DUE_DATE_MISSING", tossResponse);
+            throw invalidVirtualAccountResponse("DUE_DATE_MISSING", tossResponse);
         }
     }
 
-    private void throwInvalidVirtualAccountResponse(
+    private BusinessException invalidVirtualAccountResponse(
             String reason,
             TossConfirmResponse tossResponse) {
         log.warn(
@@ -177,6 +177,6 @@ public class VirtualAccountPaymentService {
             tossResponse == null ? null : tossResponse.status(),
             tossResponse == null ? null : tossResponse.method()
         );
-        throw new BusinessException(GlobalErrorCode.VIRTUAL_ACCOUNT_REQUIRED);
+        return new BusinessException(GlobalErrorCode.VIRTUAL_ACCOUNT_REQUIRED);
     }
 }
