@@ -15,16 +15,15 @@ import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.support.PaymentSecretHasher;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class VirtualAccountPaymentService {
-
-    private static final ZoneId TOSS_VIRTUAL_ACCOUNT_ZONE = ZoneId.of("Asia/Seoul");
 
     private final PaymentOrderRepository paymentOrderRepository;
     private final TicketOrderRepository ticketOrderRepository;
@@ -102,7 +101,7 @@ public class VirtualAccountPaymentService {
                 tossResponse.virtualAccount().bankCode(),
                 tossResponse.virtualAccount().accountNumber(),
                 tossResponse.virtualAccount().customerName(),
-                toTossVirtualAccountDueAt(tossResponse.virtualAccount().dueDate()),
+                tossResponse.virtualAccount().dueDate(),
                 PaymentSecretHasher.sha256(tossResponse.secret()),
                 tossResponse.status(),
                 now
@@ -146,17 +145,38 @@ public class VirtualAccountPaymentService {
     }
 
     private void validateVirtualAccountResponse(TossConfirmResponse tossResponse) {
-        if (tossResponse.secret() == null
-                || tossResponse.secret().isBlank()
-                || tossResponse.virtualAccount() == null
-                || tossResponse.virtualAccount().accountNumber() == null
-                || tossResponse.virtualAccount().accountNumber().isBlank()
-                || tossResponse.virtualAccount().dueDate() == null) {
-            throw new BusinessException(GlobalErrorCode.VIRTUAL_ACCOUNT_REQUIRED);
+        if (tossResponse == null) {
+            throw invalidVirtualAccountResponse("RESPONSE_MISSING", null);
+        }
+        if (tossResponse.secret() == null || tossResponse.secret().isBlank()) {
+            throw invalidVirtualAccountResponse("SECRET_MISSING", tossResponse);
+        }
+        if (tossResponse.virtualAccount() == null) {
+            throw invalidVirtualAccountResponse("VIRTUAL_ACCOUNT_MISSING", tossResponse);
+        }
+        if (tossResponse.virtualAccount().accountNumber() == null
+                || tossResponse.virtualAccount().accountNumber().isBlank()) {
+            throw invalidVirtualAccountResponse("ACCOUNT_NUMBER_MISSING", tossResponse);
+        }
+        if (tossResponse.virtualAccount().bankCode() == null
+                || tossResponse.virtualAccount().bankCode().isBlank()) {
+            throw invalidVirtualAccountResponse("BANK_CODE_MISSING", tossResponse);
+        }
+        if (tossResponse.virtualAccount().dueDate() == null) {
+            throw invalidVirtualAccountResponse("DUE_DATE_MISSING", tossResponse);
         }
     }
 
-    private OffsetDateTime toTossVirtualAccountDueAt(java.time.LocalDateTime dueDate) {
-        return dueDate.atZone(TOSS_VIRTUAL_ACCOUNT_ZONE).toOffsetDateTime();
+    private BusinessException invalidVirtualAccountResponse(
+            String reason,
+            TossConfirmResponse tossResponse) {
+        log.warn(
+            "Invalid Toss virtual account response: reason={}, orderId={}, status={}, method={}",
+            reason,
+            tossResponse == null ? null : tossResponse.orderId(),
+            tossResponse == null ? null : tossResponse.status(),
+            tossResponse == null ? null : tossResponse.method()
+        );
+        return new BusinessException(GlobalErrorCode.VIRTUAL_ACCOUNT_REQUIRED);
     }
 }

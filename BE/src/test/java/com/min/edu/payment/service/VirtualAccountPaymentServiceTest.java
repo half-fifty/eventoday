@@ -1,10 +1,13 @@
 package com.min.edu.payment.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
+import com.min.edu.common.exception.BusinessException;
+import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
@@ -21,7 +24,6 @@ import com.min.edu.payment.repository.PaymentVirtualAccountRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -80,19 +82,64 @@ class VirtualAccountPaymentServiceTest {
         assertThat(captor.getValue().getTossStatus()).isEqualTo("WAITING_FOR_DEPOSIT");
     }
 
+    @Test
+    void saveWaitingForDeposit_rejectsVirtualAccountResponseWithoutBankCode() {
+        VirtualAccountPaymentService service = new VirtualAccountPaymentService(
+            paymentOrderRepository,
+            ticketOrderRepository,
+            paymentRepository,
+            virtualAccountRepository
+        );
+        PaymentOrder paymentOrder = pendingVirtualAccountOrder();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+        given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.saveWaitingForDeposit(
+                paymentOrder,
+                "payment-key",
+                virtualAccountTossResponseWithoutBankCode()
+            ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.VIRTUAL_ACCOUNT_REQUIRED);
+    }
+
     private TossConfirmResponse virtualAccountTossResponse() {
         return new TossConfirmResponse(
             "payment-key",
             "ORDER-1",
             BigDecimal.valueOf(10000),
             "WAITING_FOR_DEPOSIT",
-            "VIRTUAL_ACCOUNT",
+            "가상계좌",
             "secret",
             new TossConfirmResponse.VirtualAccount(
                 "1234567890",
                 "088",
                 "tester",
-                LocalDateTime.parse("2026-08-03T10:30:00")
+                OffsetDateTime.parse("2026-08-03T10:30:00+09:00")
+            ),
+            OffsetDateTime.parse("2026-08-03T10:00:00+09:00"),
+            null
+        );
+    }
+
+    private TossConfirmResponse virtualAccountTossResponseWithoutBankCode() {
+        return new TossConfirmResponse(
+            "payment-key",
+            "ORDER-1",
+            BigDecimal.valueOf(10000),
+            "WAITING_FOR_DEPOSIT",
+            "가상계좌",
+            "secret",
+            new TossConfirmResponse.VirtualAccount(
+                "1234567890",
+                null,
+                "tester",
+                OffsetDateTime.parse("2026-08-03T10:30:00+09:00")
             ),
             OffsetDateTime.parse("2026-08-03T10:00:00+09:00"),
             null
@@ -133,7 +180,7 @@ class VirtualAccountPaymentServiceTest {
             .paymentOrderId(1L)
             .pgProvider(PaymentProvider.TOSS_PAYMENTS)
             .paymentKey("payment-key")
-            .method("VIRTUAL_ACCOUNT")
+            .method("가상계좌")
             .amount(BigDecimal.valueOf(10000))
             .status(PaymentStatus.WAITING_FOR_DEPOSIT.name())
             .requestedAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))

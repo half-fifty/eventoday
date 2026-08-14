@@ -23,6 +23,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderStatus;
 import com.min.edu.payment.domain.PaymentOrderType;
@@ -59,6 +60,9 @@ class PaymentConfirmServiceTest {
 
     @Mock
     private PaymentFinalizer paymentFinalizer;
+
+    @Mock
+    private VirtualAccountPaymentService virtualAccountPaymentService;
 
     @Spy
     private PaymentFinalizationExceptionTranslator exceptionTranslator =
@@ -390,6 +394,91 @@ class PaymentConfirmServiceTest {
         verify(tossPaymentClient, never()).confirm(any());
     }
 
+    @Test
+    void confirm_acceptsWaitingVirtualAccountTossResponseWithKoreanMethodAndNullApprovedAt() {
+        ConfirmPaymentRequest request = request();
+        PaymentOrder paymentOrder = virtualAccountOrder();
+        TicketOrder ticketOrder = pendingTicketOrder();
+        TossConfirmResponse tossResponse = new TossConfirmResponse(
+            "payment-key",
+            "ORDER-1",
+            BigDecimal.valueOf(10000),
+            "WAITING_FOR_DEPOSIT",
+            "가상계좌",
+            OffsetDateTime.now(),
+            null
+        );
+        ConfirmPaymentResponse response = response();
+
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(ticketOrder));
+        given(tossPaymentClient.confirm(any())).willReturn(tossResponse);
+        given(virtualAccountPaymentService.saveWaitingForDeposit(
+            paymentOrder,
+            "payment-key",
+            tossResponse
+        )).willReturn(response);
+
+        paymentConfirmService.confirm(10L, null, request);
+
+        verify(virtualAccountPaymentService).saveWaitingForDeposit(
+            paymentOrder,
+            "payment-key",
+            tossResponse
+        );
+        verify(paymentFinalizer, never()).finalizePayment(any(), any());
+    }
+
+    @Test
+    void confirm_rejectsVirtualAccountTossResponseWithWrongMethod() {
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(virtualAccountOrder()));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+        given(tossPaymentClient.confirm(any())).willReturn(new TossConfirmResponse(
+            "payment-key",
+            "ORDER-1",
+            BigDecimal.valueOf(10000),
+            "WAITING_FOR_DEPOSIT",
+            "카드",
+            OffsetDateTime.now(),
+            null
+        ));
+
+        assertBusinessException(
+            () -> paymentConfirmService.confirm(10L, null, request()),
+            GlobalErrorCode.PAYMENT_METHOD_MISMATCH
+        );
+
+        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
+    }
+
+    @Test
+    void confirm_rejectsVirtualAccountTossResponseWithWrongStatus() {
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(virtualAccountOrder()));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+        given(tossPaymentClient.confirm(any())).willReturn(new TossConfirmResponse(
+            "payment-key",
+            "ORDER-1",
+            BigDecimal.valueOf(10000),
+            "DONE",
+            "가상계좌",
+            OffsetDateTime.now(),
+            OffsetDateTime.now()
+        ));
+
+        assertBusinessException(
+            () -> paymentConfirmService.confirm(10L, null, request()),
+            GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID
+        );
+
+        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
+    }
+
     private void assertBusinessException(
             Runnable runnable,
             GlobalErrorCode errorCode) {
@@ -450,6 +539,21 @@ class PaymentConfirmServiceTest {
             .expiresAt(OffsetDateTime.now().minusMinutes(1))
             .createdAt(OffsetDateTime.now().minusMinutes(10))
             .updatedAt(OffsetDateTime.now().minusMinutes(10))
+            .build();
+    }
+
+    private PaymentOrder virtualAccountOrder() {
+        return PaymentOrder.builder()
+            .id(1L)
+            .orderNo("ORDER-1")
+            .buyerMemberId(10L)
+            .orderType(PaymentOrderType.EVENT_TICKET)
+            .totalAmount(BigDecimal.valueOf(10000))
+            .requestedPaymentMethod(PaymentMethod.VIRTUAL_ACCOUNT)
+            .status(PaymentOrderStatus.PENDING.name())
+            .expiresAt(OffsetDateTime.now().plusMinutes(10))
+            .createdAt(OffsetDateTime.now())
+            .updatedAt(OffsetDateTime.now())
             .build();
     }
 
