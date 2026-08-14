@@ -448,10 +448,13 @@ export default function ContentManagementPanel({ eventId }) {
                   <p className="mt-1 line-clamp-2 whitespace-pre-line text-caption text-ink-muted">{item.content}</p>
                 )}
 
-                {/* CONTENT-006/007: 첨부파일 다운로드 (권한 검증은 BE FileService에서 수행) */}
+                {/* CONTENT-006/007: 첨부파일 다운로드.
+                    콘텐츠 첨부는 PRIVATE이라 /v1/files 경로로는 업로더만 받을 수 있어,
+                    audience 검증을 통과한 응답에 담겨 온 downloadUrl(Presigned)을 사용한다. */}
                 {item.fileId && (
                   <div className="mt-sm">
                     <FileDownloadLink
+                      downloadUrl={item.downloadUrl}
                       fileId={item.fileId}
                       fileName={item.fileName || "첨부파일"}
                       fileSize={item.fileSize}
