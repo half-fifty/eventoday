@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { admissionApi } from "../api/admissionApi.js";
 import TopNav from "../components/TopNav.jsx";
+import { shareOrDownloadAdmissionTicketImage } from "../utils/admissionTicketImage.js";
 
 const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
@@ -28,6 +29,9 @@ export default function AdmissionTicketDetail() {
   const [qrUrl, setQrUrl] = useState("");
   const [qrLoading, setQrLoading] = useState(false);
   const [qrError, setQrError] = useState("");
+  const [savingImage, setSavingImage] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +52,26 @@ export default function AdmissionTicketDetail() {
       cancelled = true;
     };
   }, [admissionTicketId]);
+
+  const saveTicketImage = async () => {
+    if (!ticket || !qrUrl || savingImage) return;
+    setSavingImage(true);
+    setSaveMessage("");
+    setSaveError("");
+    try {
+      const result = await shareOrDownloadAdmissionTicketImage({
+        ticket,
+        qrImageUrl: qrUrl,
+      });
+      if (result.action === "downloaded") {
+        setSaveMessage("입장권 이미지가 저장되었습니다.");
+      }
+    } catch {
+      setSaveError("입장권 이미지를 저장하지 못했습니다.");
+    } finally {
+      setSavingImage(false);
+    }
+  };
 
   useEffect(() => {
     if (!ticket?.qrAvailable) {
@@ -137,6 +161,18 @@ export default function AdmissionTicketDetail() {
               {ticket.qrAvailable && qrUrl && !qrLoading && !qrError && (
                 <>
                   <img src={qrUrl} alt={`${ticket.eventName} 입장 QR`} className="mx-auto h-56 w-56 rounded-xl border border-hairline bg-white p-sm" />
+                  <div className="mt-lg flex flex-wrap justify-center gap-sm">
+                    <button
+                      type="button"
+                      onClick={saveTicketImage}
+                      disabled={savingImage}
+                      className="flex w-fit items-center gap-xs rounded-full border border-primary px-xl py-md text-caption font-body-strong text-primary transition-colors hover:bg-primary/5 disabled:opacity-50"
+                    >
+                      {savingImage ? "저장 중..." : "이미지 저장"}
+                    </button>
+                  </div>
+                  {saveMessage && <p className="mt-sm text-caption text-primary">{saveMessage}</p>}
+                  {saveError && <p className="mt-sm rounded-lg bg-error/10 p-sm text-caption text-error">{saveError}</p>}
                   <Link
                     to={`/events/${ticket.eventId}/ongoing`}
                     className="mx-auto mt-lg flex w-fit items-center gap-xs rounded-full bg-primary px-xl py-md text-caption font-body-strong text-white transition-colors hover:bg-primary-focus"
