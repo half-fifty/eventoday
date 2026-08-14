@@ -5,6 +5,7 @@ import { exchangeCodeApi } from "../api/exchangeCodeApi.js";
 import { paymentApi } from "../api/paymentApi.js";
 import TopNav from "../components/TopNav.jsx";
 import { REFUND_BANK_GROUPS, REFUND_BANKS } from "../constants/refundBanks.js";
+import { shareOrDownloadAdmissionTicketImage } from "../utils/admissionTicketImage.js";
 
 const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
@@ -43,6 +44,9 @@ export default function GuestReservationManagement() {
   const [refunding, setRefunding] = useState(false);
   const [qrUrls, setQrUrls] = useState({});
   const [qrErrors, setQrErrors] = useState({});
+  const [savingTicketImageId, setSavingTicketImageId] = useState(null);
+  const [ticketImageMessages, setTicketImageMessages] = useState({});
+  const [ticketImageErrors, setTicketImageErrors] = useState({});
   const loadGenerationRef = useRef(0);
 
   const loadAll = useCallback(async () => {
@@ -139,6 +143,33 @@ export default function GuestReservationManagement() {
       setActionError(requestError.message || "입장권 발급에 실패했습니다.");
     } finally {
       setRedeemingId(null);
+    }
+  };
+
+  const saveTicketImage = async (ticket) => {
+    const qrImageUrl = qrUrls[ticket.admissionTicketId];
+    if (!qrImageUrl || savingTicketImageId) return;
+    setSavingTicketImageId(ticket.admissionTicketId);
+    setTicketImageMessages((current) => ({ ...current, [ticket.admissionTicketId]: "" }));
+    setTicketImageErrors((current) => ({ ...current, [ticket.admissionTicketId]: "" }));
+    try {
+      const result = await shareOrDownloadAdmissionTicketImage({
+        ticket,
+        qrImageUrl,
+      });
+      if (result.action === "downloaded" || result.action === "shared") {
+        setTicketImageMessages((current) => ({
+          ...current,
+          [ticket.admissionTicketId]: "입장권 이미지가 저장되었습니다.",
+        }));
+      }
+    } catch {
+      setTicketImageErrors((current) => ({
+        ...current,
+        [ticket.admissionTicketId]: "입장권 이미지를 저장하지 못했습니다.",
+      }));
+    } finally {
+      setSavingTicketImageId(null);
     }
   };
 
@@ -351,11 +382,31 @@ export default function GuestReservationManagement() {
                         </span>
                       </div>
                       {ticket.status === "ISSUED" && qrUrls[ticket.admissionTicketId] && (
-                        <img
-                          src={qrUrls[ticket.admissionTicketId]}
-                          alt={`${ticket.eventName} 입장 QR`}
-                          className="mx-auto h-48 w-48 rounded-xl border border-hairline bg-white p-sm"
-                        />
+                        <>
+                          <img
+                            src={qrUrls[ticket.admissionTicketId]}
+                            alt={`${ticket.eventName} 입장 QR`}
+                            className="mx-auto h-48 w-48 rounded-xl border border-hairline bg-white p-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => saveTicketImage(ticket)}
+                            disabled={savingTicketImageId === ticket.admissionTicketId}
+                            className="mx-auto mt-sm flex w-fit rounded-full border border-primary px-lg py-sm text-caption font-body-strong text-primary disabled:opacity-50"
+                          >
+                            {savingTicketImageId === ticket.admissionTicketId ? "저장 중..." : "이미지 저장"}
+                          </button>
+                          {ticketImageMessages[ticket.admissionTicketId] && (
+                            <p className="mt-xs text-center text-caption text-primary">
+                              {ticketImageMessages[ticket.admissionTicketId]}
+                            </p>
+                          )}
+                          {ticketImageErrors[ticket.admissionTicketId] && (
+                            <p className="mt-xs text-center text-caption text-error">
+                              {ticketImageErrors[ticket.admissionTicketId]}
+                            </p>
+                          )}
+                        </>
                       )}
                       {qrErrors[ticket.admissionTicketId] && (
                         <p className="text-caption text-error">{qrErrors[ticket.admissionTicketId]}</p>
