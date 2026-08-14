@@ -4,6 +4,7 @@ import { admissionApi } from "../api/admissionApi.js";
 import { exchangeCodeApi } from "../api/exchangeCodeApi.js";
 import { paymentApi } from "../api/paymentApi.js";
 import TopNav from "../components/TopNav.jsx";
+import { REFUND_BANK_GROUPS, REFUND_BANKS } from "../constants/refundBanks.js";
 
 const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
@@ -258,12 +259,23 @@ export default function GuestReservationManagement() {
                       />
                       {(payment?.method === "VIRTUAL_ACCOUNT" || payment?.method === "가상계좌" || Boolean(payment?.virtualAccount)) && (
                         <div className="grid gap-sm sm:grid-cols-3">
-                          <input
+                          <select
+                            required
                             value={refundAccount.bank}
                             onChange={(event) => setRefundAccount((current) => ({ ...current, bank: event.target.value }))}
-                            placeholder="은행"
                             className="h-11 rounded-lg border border-hairline px-md outline-none focus:border-primary-focus"
-                          />
+                          >
+                            <option value="">은행을 선택해주세요</option>
+                            {REFUND_BANK_GROUPS.map((group) => (
+                              <optgroup key={group} label={group}>
+                                {REFUND_BANKS.filter((bank) => bank.group === group).map((bank) => (
+                                  <option key={bank.code} value={bank.code}>
+                                    {bank.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
                           <input
                             value={refundAccount.accountNumber}
                             onChange={(event) => setRefundAccount((current) => ({ ...current, accountNumber: event.target.value }))}
