@@ -10,9 +10,15 @@ import com.min.edu.event.domain.EventContentType;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.domain.EventStatus;
 import com.min.edu.event.dto.EventContentDtos;
+import com.min.edu.admission.domain.AdmissionTicketStatus;
+import com.min.edu.event.repository.EventAdmissionTicketRepository;
+import com.min.edu.event.repository.EventBoothAssignmentRepository;
 import com.min.edu.event.repository.EventContentRepository;
 import com.min.edu.event.repository.EventMemberRepository;
+import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventRepository;
+import com.min.edu.organization.domain.OrganizationMember;
+import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.file.domain.FileAccessLevel;
 import com.min.edu.file.domain.FileAsset;
@@ -49,9 +55,17 @@ public class EventContentService {
     // 전체 공지 목록(CONTENT-API-006) 페이지 크기 상한 - BoothApplicationService와 동일
     private static final int MAX_PAGE_SIZE = 100;
 
+    // 관람객(VISITOR) 판정 시 유효한 입장권으로 인정하는 상태.
+    // 취소·만료 티켓 보유자는 관람객으로 보지 않는다.
+    private static final List<AdmissionTicketStatus> VALID_TICKET_STATUSES =
+            List.of(AdmissionTicketStatus.ISSUED, AdmissionTicketStatus.USED);
+
     private final EventContentRepository eventContentRepository;
     private final EventRepository eventRepository;
     private final EventMemberRepository eventMemberRepository;
+    private final EventOrganizationMemberRepository eventOrganizationMemberRepository;
+    private final EventBoothAssignmentRepository eventBoothAssignmentRepository;
+    private final EventAdmissionTicketRepository eventAdmissionTicketRepository;
     private final FileService fileService;
     private final FileAssetRepository fileAssetRepository;
     private final FileStorageService fileStorageService;
@@ -61,9 +75,10 @@ public class EventContentService {
     /**
      * 공지·자료 목록 조회
      *
-     * 권한별 audience 필터링:
+     * 권한별 audience 필터링 (판정 규칙은 {@link #resolveAllowedAudiences} 참고):
      * - PLATFORM_ADMIN 또는 해당 행사 EVENT_MANAGER → ALL / EXHIBITOR / VISITOR 전체 조회
-     * - 그 외 (일반 회원·비로그인) → ALL audience만 조회
+     * - 일반 회원 → ALL + 참가기업·관람객 해당 시 각 audience 추가 조회
+     * - 비로그인 → ALL audience만 조회
      *
      * @param eventId     행사 ID
      * @param contentType 콘텐츠 유형 필터 (null이면 전체)
@@ -103,7 +118,7 @@ public class EventContentService {
         Map<Long, FileAsset> fileAssets = loadFileAssets(contents);
 
         return contents.stream()
-                .map(c -> EventContentDtos.Summary.from(c, findFileAsset(fileAssets, c.getFileId())))
+                .map(c -> toSummary(c, fileAssets))
                 .toList();
     }
 
@@ -171,7 +186,7 @@ public class EventContentService {
         List<EventContentDtos.BoardItem> items = contents.stream()
                 .map(c -> new EventContentDtos.BoardItem(
                         eventNames.get(c.getEventId()),
-                        EventContentDtos.Summary.from(c, findFileAsset(fileAssets, c.getFileId()))))
+                        toSummary(c, fileAssets)))
                 .toList();
 
         return new EventContentDtos.BoardPageResponse(
@@ -209,6 +224,22 @@ public class EventContentService {
         return fileId != null ? fileAssets.get(fileId) : null;
     }
 
+    /**
+     * 첨부파일 Presigned URL 생성 (CONTENT-006/007)
+     *
+     * 콘텐츠 첨부는 PRIVATE으로 저장되어 /v1/files 다운로드로는 업로더 본인만 접근할 수 있다.
+     * audience 검증을 통과한 요청에만 URL을 발급해 실제 열람 권한과 일치시킨다.
+     */
+    private String presignedUrl(FileAsset fileAsset) {
+        return fileAsset != null ? fileStorageService.generatePresignedUrl(fileAsset.getStorageKey()) : null;
+    }
+
+    /** FileAsset 조회와 URL 발급을 함께 처리해 목록 변환에서 재사용한다 */
+    private EventContentDtos.Summary toSummary(EventContent content, Map<Long, FileAsset> fileAssets) {
+        FileAsset fileAsset = findFileAsset(fileAssets, content.getFileId());
+        return EventContentDtos.Summary.from(content, fileAsset, presignedUrl(fileAsset));
+    }
+
     /** 콘텐츠 목록의 fileId를 모아 FileAsset을 일괄 조회 (fileId → FileAsset 맵) */
     private Map<Long, FileAsset> loadFileAssets(List<EventContent> contents) {
         List<Long> fileIds = contents.stream()
@@ -226,9 +257,11 @@ public class EventContentService {
     /**
      * 공지·자료 상세 조회
      *
-     * 권한별 audience 접근 제어:
+     * 권한별 audience 접근 제어 (판정 규칙은 {@link #resolveAllowedAudiences} 참고):
      * - PLATFORM_ADMIN / 해당 행사 EVENT_MANAGER → audience 제한 없음
-     * - 그 외 → ALL audience 콘텐츠만 접근 가능 (EXHIBITOR·VISITOR는 403)
+     * - 일반 회원 → ALL + 참가기업·관람객 해당 시 각 audience 접근 가능
+     * - 비로그인 → ALL만 접근 가능
+     * 허용되지 않은 audience의 콘텐츠에 접근하면 403
      *
      * @param contentId 콘텐츠 ID
      * @param member    인증 회원 (비로그인이면 null)
@@ -252,7 +285,7 @@ public class EventContentService {
                 ? fileAssetRepository.findById(content.getFileId()).orElse(null)
                 : null;
 
-        return EventContentDtos.Summary.from(content, fileAsset);
+        return EventContentDtos.Summary.from(content, fileAsset, presignedUrl(fileAsset));
     }
 
     /**
@@ -314,7 +347,8 @@ public class EventContentService {
         );
 
         try {
-            return EventContentDtos.Summary.from(eventContentRepository.save(content), uploadedAsset);
+            return EventContentDtos.Summary.from(
+                    eventContentRepository.save(content), uploadedAsset, presignedUrl(uploadedAsset));
         } catch (Exception e) {
             // 트랜잭션 롤백 시 S3 고아 파일 보상 삭제
             if (uploadedStorageKey != null) {
@@ -389,7 +423,8 @@ public class EventContentService {
                     ? newAsset
                     : (fileId != null ? fileAssetRepository.findById(fileId).orElse(null) : null);
 
-            EventContentDtos.Summary result = EventContentDtos.Summary.from(content, resultAsset);
+            EventContentDtos.Summary result =
+                    EventContentDtos.Summary.from(content, resultAsset, presignedUrl(resultAsset));
 
             // 기존 파일 삭제는 커밋 이후로 미룬다 (EventContentFileCleanupListener)
             // 커밋 전에 지우면 이후 롤백 시 S3 객체가 복구되지 않아
@@ -466,21 +501,67 @@ public class EventContentService {
     }
 
     /**
-     * 권한에 따른 조회 가능 audience 목록 결정
+     * 권한에 따른 조회 가능 audience 목록 결정 (CONTENT-003)
+     * - 비로그인: ALL만
      * - PLATFORM_ADMIN / 해당 행사 EVENT_MANAGER: 전체 audience (ALL, EXHIBITOR, VISITOR)
-     * - 그 외: ALL만
+     * - 그 외 일반 회원: ALL + 아래 판정을 통과한 audience
+     *   - EXHIBITOR: 소속 조직이 해당 행사에서 부스를 배정받은 경우 ({@link #isExhibitor})
+     *   - VISITOR: 해당 행사의 유효한 입장권을 보유한 경우 ({@link #isVisitor})
+     *
+     * 목록 조회·상세 조회가 모두 이 메서드를 사용하므로,
+     * 접근 정책을 바꿀 때는 여기만 수정하면 두 경로에 함께 적용된다.
      */
     private List<EventContentAudience> resolveAllowedAudiences(
             Long eventId, AuthenticatedMemberDto member) {
-        if (member != null) {
-            if (member.getPlatformRole() == PlatformRole.PLATFORM_ADMIN) {
-                return Arrays.asList(EventContentAudience.values());
-            }
-            if (eventMemberRepository.existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
-                    eventId, member.getMemberId(), EventRole.EVENT_MANAGER)) {
-                return Arrays.asList(EventContentAudience.values());
-            }
+        // 비로그인 사용자는 전체 공개 콘텐츠만 볼 수 있다
+        if (member == null) {
+            return List.of(EventContentAudience.ALL);
         }
-        return List.of(EventContentAudience.ALL);
+        if (member.getPlatformRole() == PlatformRole.PLATFORM_ADMIN) {
+            return Arrays.asList(EventContentAudience.values());
+        }
+        if (eventMemberRepository.existsByEventIdAndMemberIdAndEventRoleAndActiveTrue(
+                eventId, member.getMemberId(), EventRole.EVENT_MANAGER)) {
+            return Arrays.asList(EventContentAudience.values());
+        }
+
+        // CONTENT-003: 전체 공개에 더해, 참가기업·관람객에 해당하면 각 대상 콘텐츠도 볼 수 있다
+        List<EventContentAudience> allowed = new ArrayList<>();
+        allowed.add(EventContentAudience.ALL);
+        if (isExhibitor(eventId, member.getMemberId())) {
+            allowed.add(EventContentAudience.EXHIBITOR);
+        }
+        if (isVisitor(eventId, member.getMemberId())) {
+            allowed.add(EventContentAudience.VISITOR);
+        }
+        return allowed;
+    }
+
+    /**
+     * 참가기업 판정 (CONTENT-003)
+     * 회원이 활성 상태로 소속된 조직 중 하나가 해당 행사에서 부스를 배정받았으면 참가기업으로 본다.
+     * 조직 내 역할(OWNER/MANAGER/STAFF)은 구분하지 않는다 — 자료 열람은 소속 구성원 전체에 필요하다.
+     */
+    private boolean isExhibitor(Long eventId, Long memberId) {
+        List<Long> organizationIds = eventOrganizationMemberRepository
+                .findAllByMemberIdAndStatus(memberId, OrganizationMemberStatus.ACTIVE)
+                .stream()
+                .map(OrganizationMember::getOrganizationId)
+                .distinct()
+                .toList();
+        if (organizationIds.isEmpty()) {
+            return false;
+        }
+        return eventBoothAssignmentRepository
+                .existsByEventIdAndAssignedOrganizationIdIn(eventId, organizationIds);
+    }
+
+    /**
+     * 관람객 판정 (CONTENT-003)
+     * 해당 행사의 유효한 입장권(발급·사용 완료)을 보유하면 관람객으로 본다.
+     */
+    private boolean isVisitor(Long eventId, Long memberId) {
+        return eventAdmissionTicketRepository
+                .existsEventAdmissionTicket(eventId, memberId, VALID_TICKET_STATUSES);
     }
 }

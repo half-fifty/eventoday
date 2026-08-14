@@ -297,8 +297,12 @@ export default function EventDetail() {
                           <div className="px-lg pb-lg space-y-sm">
                             {content.content && <p className="text-caption whitespace-pre-line bg-surface-pearl rounded-lg p-md">{content.content}</p>}
                             {/* fileName·fileSize: BE Summary에 포함된 원본 파일명·크기 (다운로드 파일명으로 사용) */}
+                            {/* downloadUrl: 콘텐츠 첨부는 PRIVATE으로 저장되어 내부 다운로드 API로는
+                                업로더 본인만 접근할 수 있다. audience 검증을 통과한 응답에 실려 오는
+                                Presigned URL을 사용한다 (CONTENT-006/007) */}
                             {content.fileId && (
                               <FileDownloadLink
+                                downloadUrl={content.downloadUrl}
                                 fileId={content.fileId}
                                 fileName={content.fileName || "첨부파일"}
                                 fileSize={content.fileSize}
