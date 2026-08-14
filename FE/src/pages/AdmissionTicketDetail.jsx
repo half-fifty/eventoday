@@ -63,7 +63,7 @@ export default function AdmissionTicketDetail() {
         ticket,
         qrImageUrl: qrUrl,
       });
-      if (result.action === "downloaded") {
+      if (result.action === "downloaded" || result.action === "shared") {
         setSaveMessage("입장권 이미지가 저장되었습니다.");
       }
     } catch {

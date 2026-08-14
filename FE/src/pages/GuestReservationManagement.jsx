@@ -157,7 +157,7 @@ export default function GuestReservationManagement() {
         ticket,
         qrImageUrl,
       });
-      if (result.action === "downloaded") {
+      if (result.action === "downloaded" || result.action === "shared") {
         setTicketImageMessages((current) => ({
           ...current,
           [ticket.admissionTicketId]: "입장권 이미지가 저장되었습니다.",

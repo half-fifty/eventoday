@@ -63,14 +63,40 @@ const drawCenteredWrappedText = (context, text, x, y, maxWidth, lineHeight, maxL
   const lines = [];
   let currentLine = "";
 
+  const splitOversizedToken = (token) => {
+    const chunks = [];
+    let currentChunk = "";
+    Array.from(token).forEach((character) => {
+      const nextChunk = currentChunk + character;
+      if (!currentChunk || context.measureText(nextChunk).width <= maxWidth) {
+        currentChunk = nextChunk;
+        return;
+      }
+      chunks.push(currentChunk);
+      currentChunk = character;
+    });
+    if (currentChunk) chunks.push(currentChunk);
+    return chunks;
+  };
+
+  const pushToken = (token) => {
+    const parts = context.measureText(token).width > maxWidth
+      ? splitOversizedToken(token)
+      : [token];
+
+    parts.forEach((part) => {
+      const nextLine = currentLine ? `${currentLine} ${part}` : part;
+      if (context.measureText(nextLine).width <= maxWidth) {
+        currentLine = nextLine;
+        return;
+      }
+      if (currentLine) lines.push(currentLine);
+      currentLine = part;
+    });
+  };
+
   words.forEach((word) => {
-    const nextLine = currentLine ? `${currentLine} ${word}` : word;
-    if (context.measureText(nextLine).width <= maxWidth) {
-      currentLine = nextLine;
-      return;
-    }
-    if (currentLine) lines.push(currentLine);
-    currentLine = word;
+    pushToken(word);
   });
   if (currentLine) lines.push(currentLine);
 
