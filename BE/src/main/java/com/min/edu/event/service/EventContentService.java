@@ -75,9 +75,10 @@ public class EventContentService {
     /**
      * 공지·자료 목록 조회
      *
-     * 권한별 audience 필터링:
+     * 권한별 audience 필터링 (판정 규칙은 {@link #resolveAllowedAudiences} 참고):
      * - PLATFORM_ADMIN 또는 해당 행사 EVENT_MANAGER → ALL / EXHIBITOR / VISITOR 전체 조회
-     * - 그 외 (일반 회원·비로그인) → ALL audience만 조회
+     * - 일반 회원 → ALL + 참가기업·관람객 해당 시 각 audience 추가 조회
+     * - 비로그인 → ALL audience만 조회
      *
      * @param eventId     행사 ID
      * @param contentType 콘텐츠 유형 필터 (null이면 전체)
@@ -256,9 +257,11 @@ public class EventContentService {
     /**
      * 공지·자료 상세 조회
      *
-     * 권한별 audience 접근 제어:
+     * 권한별 audience 접근 제어 (판정 규칙은 {@link #resolveAllowedAudiences} 참고):
      * - PLATFORM_ADMIN / 해당 행사 EVENT_MANAGER → audience 제한 없음
-     * - 그 외 → ALL audience 콘텐츠만 접근 가능 (EXHIBITOR·VISITOR는 403)
+     * - 일반 회원 → ALL + 참가기업·관람객 해당 시 각 audience 접근 가능
+     * - 비로그인 → ALL만 접근 가능
+     * 허용되지 않은 audience의 콘텐츠에 접근하면 403
      *
      * @param contentId 콘텐츠 ID
      * @param member    인증 회원 (비로그인이면 null)
@@ -498,9 +501,15 @@ public class EventContentService {
     }
 
     /**
-     * 권한에 따른 조회 가능 audience 목록 결정
+     * 권한에 따른 조회 가능 audience 목록 결정 (CONTENT-003)
+     * - 비로그인: ALL만
      * - PLATFORM_ADMIN / 해당 행사 EVENT_MANAGER: 전체 audience (ALL, EXHIBITOR, VISITOR)
-     * - 그 외: ALL만
+     * - 그 외 일반 회원: ALL + 아래 판정을 통과한 audience
+     *   - EXHIBITOR: 소속 조직이 해당 행사에서 부스를 배정받은 경우 ({@link #isExhibitor})
+     *   - VISITOR: 해당 행사의 유효한 입장권을 보유한 경우 ({@link #isVisitor})
+     *
+     * 목록 조회·상세 조회가 모두 이 메서드를 사용하므로,
+     * 접근 정책을 바꿀 때는 여기만 수정하면 두 경로에 함께 적용된다.
      */
     private List<EventContentAudience> resolveAllowedAudiences(
             Long eventId, AuthenticatedMemberDto member) {
