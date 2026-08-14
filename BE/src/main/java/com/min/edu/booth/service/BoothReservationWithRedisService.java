@@ -7,6 +7,7 @@ import com.min.edu.booth.domain.BoothReservationSlot;
 import com.min.edu.booth.domain.BoothReservationStatus;
 import com.min.edu.booth.domain.BoothReservationSlotStatus;
 import com.min.edu.booth.dto.BoothReservationAdminResponse;
+import com.min.edu.booth.dto.BoothReservationListResponse;
 import com.min.edu.booth.dto.BoothReservationResponse;
 import com.min.edu.booth.dto.CreateBoothReservationRequest;
 import com.min.edu.booth.event.BoothVacancyEvent;
@@ -15,6 +16,8 @@ import com.min.edu.booth.repository.BoothReservationRepository;
 import com.min.edu.booth.repository.BoothReservationSlotRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.domain.Event;
+import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.Member;
 import com.min.edu.member.repository.MemberRepository;
 import java.util.List;
@@ -24,6 +27,8 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -41,6 +46,7 @@ public class BoothReservationWithRedisService {
     private final BoothRepository boothRepository;
     private final BoothManagerPermissionChecker boothManagerPermissionChecker;
     private final MemberRepository memberRepository;
+    private final EventRepository eventRepository;
     private final RedisReservationService redisReservationService;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -79,6 +85,55 @@ public class BoothReservationWithRedisService {
                         slotsById.get(reservation.getBoothReservationSlotId()),
                         membersById.get(reservation.getMemberId())))
                 .toList();
+    }
+
+    // 회원의 모든 부스 예약 목록 (행사 전체에 걸쳐, 최신순) - "내 예약 목록" 화면용
+    @Transactional(readOnly = true)
+    public Page<BoothReservationListResponse> listMyReservations(Long memberId, Pageable pageable) {
+        Page<BoothReservation> reservations = reservationRepository.findAllByMemberIdOrderByReservedAtDescIdDesc(memberId, pageable);
+
+        List<Long> boothIds = reservations.getContent().stream()
+                .map(BoothReservation::getBoothId).distinct().toList();
+        Map<Long, Booth> boothsById = boothRepository.findAllById(boothIds).stream()
+                .collect(Collectors.toMap(Booth::getId, Function.identity()));
+
+        List<Long> slotIds = reservations.getContent().stream()
+                .map(BoothReservation::getBoothReservationSlotId).distinct().toList();
+        Map<Long, BoothReservationSlot> slotsById = slotRepository.findAllById(slotIds).stream()
+                .collect(Collectors.toMap(BoothReservationSlot::getId, Function.identity()));
+
+        List<Long> eventIds = boothsById.values().stream()
+                .map(Booth::getEventId).distinct().toList();
+        Map<Long, Event> eventsById = eventRepository.findAllById(eventIds).stream()
+                .collect(Collectors.toMap(Event::getId, Function.identity()));
+
+        return reservations.map(reservation -> {
+            Booth booth = boothsById.get(reservation.getBoothId());
+            BoothReservationSlot slot = slotsById.get(reservation.getBoothReservationSlotId());
+            Event event = booth != null ? eventsById.get(booth.getEventId()) : null;
+            return toListResponse(reservation, booth, slot, event);
+        });
+    }
+
+    private BoothReservationListResponse toListResponse(
+            BoothReservation reservation, Booth booth, BoothReservationSlot slot, Event event) {
+        return BoothReservationListResponse.builder()
+                .id(reservation.getId())
+                .boothId(reservation.getBoothId())
+                .boothCode(booth != null ? booth.getBoothCode() : null)
+                .boothDisplayName(booth != null ? booth.getDisplayName() : null)
+                .eventId(event != null ? event.getId() : null)
+                .eventName(event != null ? event.getName() : null)
+                .slotId(reservation.getBoothReservationSlotId())
+                .slotStartAt(slot != null ? slot.getStartAt() : null)
+                .slotEndAt(slot != null ? slot.getEndAt() : null)
+                .partySize(reservation.getPartySize())
+                .status(reservation.getStatus())
+                .reservedAt(reservation.getReservedAt())
+                .cancelledAt(reservation.getCancelledAt())
+                .checkedInAt(reservation.getCheckedInAt())
+                .noShowAt(reservation.getNoShowAt())
+                .build();
     }
 
     // 운영자: 예약자 출석 수동 체크 (true=방문 확인, false=노쇼 처리)

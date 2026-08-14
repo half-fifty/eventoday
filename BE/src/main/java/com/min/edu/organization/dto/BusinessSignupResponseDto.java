@@ -1,5 +1,7 @@
 package com.min.edu.organization.dto;
 
+import com.min.edu.organization.domain.OrganizationStatus;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -9,4 +11,5 @@ public class BusinessSignupResponseDto {
 
     private Long memberId;
     private Long organizationId;
+    private OrganizationStatus organizationStatus;
 }

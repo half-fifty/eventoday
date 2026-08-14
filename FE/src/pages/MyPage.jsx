@@ -6,6 +6,8 @@ import { admissionApi } from "../api/admissionApi.js";
 import { eventApi } from "../api/eventApi.js";
 import { exchangeCodeApi } from "../api/exchangeCodeApi.js";
 import { paymentApi } from "../api/paymentApi.js";
+import { getMyReviews } from "../api/boothReviewApi.js";
+import { listMyReservations, cancelReservation } from "../api/boothReservationApi.js";
 import useAuth from "../hooks/useAuth.js";
 import { useNotifications } from "../notifications/NotificationContext.jsx";
 
@@ -13,6 +15,7 @@ const tabs = [
   { key: "tickets", label: "예매내역", icon: "confirmation_number" },
   { key: "refunds", label: "환불내역", icon: "payments" },
   { key: "qr", label: "입장 QR", icon: "qr_code_2" },
+  { key: "boothReservations", label: "부스 예약", icon: "storefront" },
   { key: "notif", label: "알림", icon: "notifications" },
   { key: "profile", label: "회원정보", icon: "person" },
 ];
@@ -25,6 +28,8 @@ const pageInfo = (result) => ({
 });
 const orderStatusLabel = {
   PENDING: "대기",
+  PENDING_PAYMENT: "결제 대기",
+  WAITING_FOR_DEPOSIT: "입금 대기",
   PAID: "결제 완료",
   CONFIRMED: "확정",
   CANCELLED: "취소",
@@ -54,6 +59,29 @@ const admissionStatusLabel = {
   USED: "입장 완료",
   CANCELLED: "취소",
   EXPIRED: "만료",
+};
+
+const boothReservationStatusLabel = {
+  RESERVED: "예약 완료",
+  CHECKED_IN: "체크인",
+  COMPLETED: "이용 완료",
+  NO_SHOW: "노쇼",
+  CANCELLED: "취소됨",
+};
+const boothReservationStatusColor = {
+  RESERVED: "status-available",
+  CHECKED_IN: "status-pending",
+  COMPLETED: "status-assigned",
+  NO_SHOW: "status-visited",
+  CANCELLED: "status-blocked",
+};
+const formatSlotRange = (startAt, endAt) => {
+  if (!startAt) return "-";
+  const start = new Date(startAt);
+  const datePart = start.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
+  const startTime = start.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  const endTime = endAt ? new Date(endAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "";
+  return `${datePart} ${startTime}${endTime ? `~${endTime}` : ""}`;
 };
 
 export default function MyPage() {
@@ -91,8 +119,19 @@ export default function MyPage() {
   );
   const [code, setCode] = useState("");
   const [redeemMsg, setRedeemMsg] = useState(null); // { ok, text }
-  const [rating, setRating] = useState(0);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [myReviews, setMyReviews] = useState([]);
+  const [myReviewsPage, setMyReviewsPage] = useState(0);
+  const [myReviewsPageInfo, setMyReviewsPageInfo] = useState({ number: 0, totalPages: 1 });
+  const [myReviewsLoading, setMyReviewsLoading] = useState(false);
+  const [myReviewsError, setMyReviewsError] = useState("");
+  const [boothReservations, setBoothReservations] = useState([]);
+  const [boothReservationsPage, setBoothReservationsPage] = useState(0);
+  const [boothReservationsPageInfo, setBoothReservationsPageInfo] = useState({ number: 0, totalPages: 1 });
+  const [boothReservationsLoading, setBoothReservationsLoading] = useState(false);
+  const [boothReservationsError, setBoothReservationsError] = useState("");
+  const [boothReservationsReloadToken, setBoothReservationsReloadToken] = useState(0);
+  const [cancellingReservationId, setCancellingReservationId] = useState(null);
   const [ticketOrders, setTicketOrders] = useState([]);
   const [ticketOrdersPage, setTicketOrdersPage] = useState(0);
   const [ticketOrdersPageInfo, setTicketOrdersPageInfo] = useState({ number: 0, totalPages: 1 });
@@ -264,6 +303,69 @@ export default function MyPage() {
       cancelled = true;
     };
   }, [admissionTicketsPage, isBusinessMember, tab]);
+
+  // 내가 작성한 부스 후기 목록. 이 엔드포인트는 다른 마이페이지 API와 달리 ApiResponse({ data: ... })
+  // 래핑 없이 Page를 그대로 반환한다.
+  useEffect(() => {
+    if (isBusinessMember || tab !== "profile") return;
+    let cancelled = false;
+    setMyReviewsLoading(true);
+    setMyReviewsError("");
+    getMyReviews({ page: myReviewsPage, size: 10 })
+      .then((result) => {
+        if (!cancelled) {
+          setMyReviews(result?.content || []);
+          setMyReviewsPageInfo({ number: result?.number || 0, totalPages: result?.totalPages || 1 });
+        }
+      })
+      .catch((requestError) => {
+        if (!cancelled) setMyReviewsError(requestError.message || "작성한 후기를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setMyReviewsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusinessMember, myReviewsPage, tab]);
+
+  // 내 부스 예약 목록: 행사 전체에 걸쳐 내가 예약한 모든 부스 예약. ApiResponse 래핑 없음.
+  useEffect(() => {
+    if (isBusinessMember || tab !== "boothReservations") return;
+    let cancelled = false;
+    setBoothReservationsLoading(true);
+    setBoothReservationsError("");
+    listMyReservations({ page: boothReservationsPage, size: 10 })
+      .then((result) => {
+        if (!cancelled) {
+          setBoothReservations(result?.content || []);
+          setBoothReservationsPageInfo({ number: result?.number || 0, totalPages: result?.totalPages || 1 });
+        }
+      })
+      .catch((requestError) => {
+        if (!cancelled) setBoothReservationsError(requestError.message || "부스 예약 목록을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setBoothReservationsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusinessMember, boothReservationsPage, tab, boothReservationsReloadToken]);
+
+  const handleCancelBoothReservation = async (reservation) => {
+    if (cancellingReservationId) return;
+    if (!window.confirm("예약을 취소하시겠어요?")) return;
+    setCancellingReservationId(reservation.id);
+    try {
+      await cancelReservation(reservation.boothId, reservation.id);
+      setBoothReservationsReloadToken((value) => value + 1);
+    } catch (requestError) {
+      setBoothReservationsError(requestError.message || "예약 취소에 실패했습니다.");
+    } finally {
+      setCancellingReservationId(null);
+    }
+  };
 
   useEffect(() => {
     if (isBusinessMember || isPlatformAdmin) return;
@@ -608,6 +710,11 @@ export default function MyPage() {
                       <p className="font-body-strong truncate">{order.eventName}</p>
                       <p className="text-caption text-ink-muted">주문 {order.orderNo} · {order.quantity}매 · {formatMoney(order.totalAmount)}</p>
                       <p className="text-[11px] text-ink-muted">주문 일시 {formatDateTime(order.createdAt)}</p>
+                      {order.ticketOrderStatus === "PENDING_PAYMENT" && order.virtualAccount && (
+                        <p className="text-[11px] text-primary">
+                          입금기한 {formatDateTime(order.virtualAccount.dueAt)}
+                        </p>
+                      )}
                     </div>
                     <span className="text-[11px] font-bold px-sm py-1 rounded-full bg-primary-container/10 text-primary-focus">
                       {orderStatusLabel[order.ticketOrderStatus] || order.ticketOrderStatus}
@@ -712,6 +819,58 @@ export default function MyPage() {
               )}
             </div>
           )}
+
+          {/* BOOTH RESERVATIONS */}
+          {tab === "boothReservations" && (
+            <div className="space-y-md">
+              {boothReservationsLoading && <p className="text-caption text-ink-muted">부스 예약을 불러오는 중입니다.</p>}
+              {boothReservationsError && <p className="text-caption text-error">{boothReservationsError}</p>}
+              {!boothReservationsLoading && !boothReservationsError && boothReservations.length === 0 && (
+                <p className="text-center text-ink-muted py-xxl">
+                  <Icon name="storefront" className="text-[32px] block mb-sm" />
+                  예약한 부스가 없어요
+                </p>
+              )}
+              {boothReservations.map((reservation) => (
+                <div key={reservation.id} className="bg-white rounded-2xl border border-hairline p-lg">
+                  <div className="flex justify-between items-start mb-sm">
+                    <div className="min-w-0">
+                      {reservation.eventName && <p className="text-[11px] text-ink-muted mb-1 truncate">{reservation.eventName}</p>}
+                      <Link
+                        to={`/booth-detail?eventId=${reservation.eventId}&boothId=${reservation.boothId}`}
+                        className="font-body-strong hover:underline"
+                      >
+                        {reservation.boothDisplayName || reservation.boothCode}
+                      </Link>
+                    </div>
+                    <span className={`flex-shrink-0 text-[11px] font-bold px-sm py-1 rounded-full bg-${boothReservationStatusColor[reservation.status]}/10 text-${boothReservationStatusColor[reservation.status]}`}>
+                      {boothReservationStatusLabel[reservation.status] || reservation.status}
+                    </span>
+                  </div>
+                  <p className="text-caption text-ink-muted">
+                    {formatSlotRange(reservation.slotStartAt, reservation.slotEndAt)} · {reservation.partySize}명
+                  </p>
+                  {reservation.status === "RESERVED" && (
+                    <button
+                      onClick={() => handleCancelBoothReservation(reservation)}
+                      disabled={cancellingReservationId === reservation.id}
+                      className="mt-sm text-caption font-body-strong text-error disabled:opacity-40"
+                    >
+                      {cancellingReservationId === reservation.id ? "취소 중..." : "예약 취소"}
+                    </button>
+                  )}
+                </div>
+              ))}
+              {!boothReservationsError && (
+                <Pager
+                  pageInfo={boothReservationsPageInfo}
+                  loading={boothReservationsLoading}
+                  onPrev={() => setBoothReservationsPage((page) => Math.max(0, page - 1))}
+                  onNext={() => setBoothReservationsPage((page) => Math.min(boothReservationsPageInfo.totalPages - 1, page + 1))}
+                />
+              )}
+            </div>
+          )}
           {/* PROFILE */}
           {tab === "profile" && (
             <div className="space-y-lg">
@@ -727,24 +886,52 @@ export default function MyPage() {
                   </>
                 )}
               </div>
-              {!isBusinessMember && <div className="bg-white rounded-2xl border border-hairline p-lg">
-                <h3 className="font-body-strong text-body-strong mb-md">행사 참여내역 · 후기</h3>
-                <div className="flex justify-between items-center mb-sm">
-                  <p className="font-body-strong text-caption">2026 서울 푸드테크 박람회</p>
-                  <span className="text-caption text-ink-muted">08.14 방문</span>
+              {!isBusinessMember && (
+                <div className="bg-white rounded-2xl border border-hairline p-lg">
+                  <h3 className="font-body-strong text-body-strong mb-md">내가 작성한 후기</h3>
+                  {myReviewsLoading && <p className="text-caption text-ink-muted">후기를 불러오는 중입니다.</p>}
+                  {myReviewsError && <p className="text-caption text-error">{myReviewsError}</p>}
+                  {!myReviewsLoading && !myReviewsError && myReviews.length === 0 && (
+                    <p className="text-center text-ink-muted py-lg">
+                      <Icon name="rate_review" className="text-[28px] block mb-sm" />
+                      아직 작성한 후기가 없어요
+                    </p>
+                  )}
+                  {myReviews.length > 0 && (
+                    <div className="divide-y divide-divider-soft">
+                      {myReviews.map((review) => (
+                        <Link
+                          key={review.id}
+                          to={`/booth-detail?eventId=${review.eventId}&boothId=${review.boothId}`}
+                          className="block py-md hover:bg-surface-pearl transition-colors -mx-lg px-lg"
+                        >
+                          <div className="flex justify-between items-center mb-1">
+                            <p className="font-body-strong text-caption">{review.boothDisplayName || review.boothCode}</p>
+                            <span className="text-[11px] text-ink-muted">
+                              {review.createdAt ? new Date(review.createdAt).toLocaleDateString("ko-KR") : ""}
+                            </span>
+                          </div>
+                          {review.eventName && <p className="text-[11px] text-ink-muted mb-1">{review.eventName}</p>}
+                          <div className="flex mb-1">
+                            {[1, 2, 3, 4, 5].map((i) => (
+                              <Icon key={i} name="star" fill={i <= review.rating} className={`text-[14px] ${i <= review.rating ? "text-amber-500" : "text-hairline"}`} />
+                            ))}
+                          </div>
+                          {review.comment && <p className="text-caption text-on-surface-variant">{review.comment}</p>}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                  {!myReviewsError && (
+                    <Pager
+                      pageInfo={myReviewsPageInfo}
+                      loading={myReviewsLoading}
+                      onPrev={() => setMyReviewsPage((page) => Math.max(0, page - 1))}
+                      onNext={() => setMyReviewsPage((page) => Math.min(myReviewsPageInfo.totalPages - 1, page + 1))}
+                    />
+                  )}
                 </div>
-                <div className="flex gap-1 mb-sm">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <button key={i} onClick={() => setRating(i)} className={`material-symbols-outlined text-[20px] ${i <= rating ? "icon-fill text-amber-500" : "text-hairline"}`}>
-                      star
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-sm">
-                  <input type="text" placeholder="한 줄 후기를 남겨보세요" className="flex-1 h-[40px] rounded-lg border border-hairline px-sm text-caption outline-none focus:border-primary-focus" />
-                  <button className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center"><Icon name="check" className="text-[18px]" /></button>
-                </div>
-              </div>}
+              )}
               <button onClick={handleLogout} disabled={isLoggingOut} className="w-full h-[46px] border border-hairline rounded-full font-body-strong flex items-center justify-center gap-1 disabled:cursor-not-allowed disabled:opacity-50"><Icon name="logout" className="text-[18px]" />{isLoggingOut ? "처리 중" : "로그아웃"}</button>
             </div>
           )}

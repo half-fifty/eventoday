@@ -1,0 +1,162 @@
+package com.min.edu.payment.service;
+
+import com.min.edu.common.exception.BusinessException;
+import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentOrder;
+import com.min.edu.payment.domain.PaymentProvider;
+import com.min.edu.payment.domain.PaymentVirtualAccount;
+import com.min.edu.payment.domain.TicketOrder;
+import com.min.edu.payment.dto.response.ConfirmPaymentResponse;
+import com.min.edu.payment.repository.PaymentOrderRepository;
+import com.min.edu.payment.repository.PaymentRepository;
+import com.min.edu.payment.repository.PaymentVirtualAccountRepository;
+import com.min.edu.payment.repository.TicketOrderRepository;
+import com.min.edu.payment.support.PaymentSecretHasher;
+import com.min.edu.payment.toss.dto.TossConfirmResponse;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+public class VirtualAccountPaymentService {
+
+    private static final ZoneId TOSS_VIRTUAL_ACCOUNT_ZONE = ZoneId.of("Asia/Seoul");
+
+    private final PaymentOrderRepository paymentOrderRepository;
+    private final TicketOrderRepository ticketOrderRepository;
+    private final PaymentRepository paymentRepository;
+    private final PaymentVirtualAccountRepository virtualAccountRepository;
+
+    @Transactional
+    public ConfirmPaymentResponse getWaitingForDeposit(
+            PaymentOrder paymentOrder,
+            String paymentKey) {
+        PaymentOrder lockedOrder = paymentOrderRepository
+            .findByOrderNoForUpdate(paymentOrder.getOrderNo())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_ORDER_NOT_FOUND));
+        TicketOrder ticketOrder = ticketOrderRepository
+            .findByPaymentOrderId(lockedOrder.getId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+        Payment payment = paymentRepository.findByPaymentOrderId(lockedOrder.getId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+        if (!lockedOrder.isWaitingForDeposit()
+                || !payment.isWaitingForDeposit()
+                || !paymentKey.equals(payment.getPaymentKey())) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+        }
+
+        return waitingResponse(payment, lockedOrder, ticketOrder);
+    }
+
+    @Transactional
+    public ConfirmPaymentResponse saveWaitingForDeposit(
+            PaymentOrder paymentOrder,
+            String paymentKey,
+            TossConfirmResponse tossResponse) {
+        PaymentOrder lockedOrder = paymentOrderRepository
+            .findByOrderNoForUpdate(paymentOrder.getOrderNo())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_ORDER_NOT_FOUND));
+
+        TicketOrder ticketOrder = ticketOrderRepository
+            .findByPaymentOrderId(lockedOrder.getId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+
+        if (lockedOrder.isWaitingForDeposit()) {
+            Payment payment = paymentRepository.findByPaymentOrderId(lockedOrder.getId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+            if (!paymentKey.equals(payment.getPaymentKey())) {
+                throw new BusinessException(GlobalErrorCode.PAYMENT_ALREADY_PROCESSED);
+            }
+            return waitingResponse(payment, lockedOrder, ticketOrder);
+        }
+
+        if (!lockedOrder.isPending() || !ticketOrder.isPendingPayment()) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+        }
+
+        if (paymentRepository.findByPaymentOrderId(lockedOrder.getId()).isPresent()) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT);
+        }
+
+        validateVirtualAccountResponse(tossResponse);
+
+        OffsetDateTime now = OffsetDateTime.now();
+        Payment payment = paymentRepository.saveAndFlush(Payment.waitingForDeposit(
+            lockedOrder.getId(),
+            PaymentProvider.TOSS_PAYMENTS,
+            paymentKey,
+            tossResponse.method(),
+            tossResponse.totalAmount(),
+            tossResponse.requestedAt(),
+            now
+        ));
+
+        lockedOrder.markWaitingForDeposit(now);
+        PaymentVirtualAccount virtualAccount = virtualAccountRepository.save(
+            PaymentVirtualAccount.create(
+                payment.getId(),
+                tossResponse.virtualAccount().bankCode(),
+                tossResponse.virtualAccount().accountNumber(),
+                tossResponse.virtualAccount().customerName(),
+                toTossVirtualAccountDueAt(tossResponse.virtualAccount().dueDate()),
+                PaymentSecretHasher.sha256(tossResponse.secret()),
+                tossResponse.status(),
+                now
+            )
+        );
+
+        return ConfirmPaymentResponse.waitingForDeposit(
+            payment,
+            lockedOrder.getOrderNo(),
+            ticketOrder,
+            new ConfirmPaymentResponse.VirtualAccountResponse(
+                virtualAccount.getBankCode(),
+                virtualAccount.getAccountNumber(),
+                virtualAccount.getCustomerName(),
+                payment.getAmount(),
+                virtualAccount.getDueAt()
+            )
+        );
+    }
+
+    private ConfirmPaymentResponse waitingResponse(
+            Payment payment,
+            PaymentOrder paymentOrder,
+            TicketOrder ticketOrder) {
+        PaymentVirtualAccount virtualAccount = virtualAccountRepository
+            .findByPaymentId(payment.getId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+
+        return ConfirmPaymentResponse.waitingForDeposit(
+            payment,
+            paymentOrder.getOrderNo(),
+            ticketOrder,
+            new ConfirmPaymentResponse.VirtualAccountResponse(
+                virtualAccount.getBankCode(),
+                virtualAccount.getAccountNumber(),
+                virtualAccount.getCustomerName(),
+                payment.getAmount(),
+                virtualAccount.getDueAt()
+            )
+        );
+    }
+
+    private void validateVirtualAccountResponse(TossConfirmResponse tossResponse) {
+        if (tossResponse.secret() == null
+                || tossResponse.secret().isBlank()
+                || tossResponse.virtualAccount() == null
+                || tossResponse.virtualAccount().accountNumber() == null
+                || tossResponse.virtualAccount().accountNumber().isBlank()
+                || tossResponse.virtualAccount().dueDate() == null) {
+            throw new BusinessException(GlobalErrorCode.VIRTUAL_ACCOUNT_REQUIRED);
+        }
+    }
+
+    private OffsetDateTime toTossVirtualAccountDueAt(java.time.LocalDateTime dueDate) {
+        return dueDate.atZone(TOSS_VIRTUAL_ACCOUNT_ZONE).toOffsetDateTime();
+    }
+}

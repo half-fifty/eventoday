@@ -1,13 +1,17 @@
 package com.min.edu.event.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
 import com.min.edu.admin.service.PlatformAuditService;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
+import com.min.edu.common.exception.BusinessException;
+import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.dto.EventDtos;
+import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.event.repository.AdmissionEventProjection;
 import com.min.edu.event.repository.EventBoothRecruitmentRepository;
 import com.min.edu.event.repository.EventExhibitCategoryRepository;
@@ -17,9 +21,12 @@ import com.min.edu.event.repository.EventOrganizationRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.event.repository.ExhibitCategoryRepository;
 import com.min.edu.member.domain.PlatformRole;
+import com.min.edu.organization.domain.OrganizationMemberStatus;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -90,10 +97,53 @@ class EventServiceTest {
         assertThat(service.findMyAdmissionEvents(actor(30L))).isEmpty();
     }
 
+    @Test
+    void create_rejectsWhenSalesStartEqualsEffectiveEndWithNullSalesEnd() {
+        EventService service = service();
+        OffsetDateTime eventEndAt = OffsetDateTime.now().plusDays(1);
+        EventDtos.SaveRequest request = saveRequest(
+                eventEndAt.minusHours(1),
+                null,
+                eventEndAt);
+        given(organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
+                org.mockito.ArgumentMatchers.eq(100L),
+                org.mockito.ArgumentMatchers.eq(10L),
+                org.mockito.ArgumentMatchers.eq(OrganizationMemberStatus.ACTIVE),
+                org.mockito.ArgumentMatchers.anyCollection()))
+                .willReturn(true);
+
+        assertThatThrownBy(() -> service.create(100L, request, actor(10L)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(GlobalErrorCode.INVALID_INPUT_VALUE);
+    }
+
+    @Test
+    void create_rejectsWhenSalesStartAfterEffectiveEndWithNullSalesEnd() {
+        EventService service = service();
+        OffsetDateTime eventEndAt = OffsetDateTime.now().plusDays(1);
+        EventDtos.SaveRequest request = saveRequest(
+                eventEndAt.minusMinutes(30),
+                null,
+                eventEndAt);
+        given(organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatusAndOrganizationRoleIn(
+                org.mockito.ArgumentMatchers.eq(100L),
+                org.mockito.ArgumentMatchers.eq(10L),
+                org.mockito.ArgumentMatchers.eq(OrganizationMemberStatus.ACTIVE),
+                org.mockito.ArgumentMatchers.anyCollection()))
+                .willReturn(true);
+
+        assertThatThrownBy(() -> service.create(100L, request, actor(10L)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(GlobalErrorCode.INVALID_INPUT_VALUE);
+    }
+
     private EventService service() {
         return new EventService(eventRepository, eventMemberRepository, organizationMemberRepository,
                 organizationRepository, boothRecruitmentRepository, exhibitCategoryRepository,
-                eventExhibitCategoryRepository, applicationEventPublisher, platformAuditService);
+                eventExhibitCategoryRepository, applicationEventPublisher, platformAuditService,
+                new EventOperationDeadlinePolicy());
     }
 
     private AuthenticatedMemberDto actor(Long memberId) {
@@ -128,5 +178,38 @@ class EventServiceTest {
                 return role;
             }
         };
+    }
+
+    private EventDtos.SaveRequest saveRequest(
+            OffsetDateTime ticketSalesStartAt,
+            OffsetDateTime ticketSalesEndAt,
+            OffsetDateTime endAt) {
+        return new EventDtos.SaveRequest(
+                "event",
+                "EXPO",
+                "short",
+                "description",
+                "venue",
+                "서울시 강남구 테헤란로 1",
+                "contact@example.com",
+                "010-1234-5678",
+                "12345",
+                "detail",
+                null,
+                null,
+                null,
+                Set.of("IT"),
+                endAt.minusDays(1),
+                endAt,
+                ticketSalesStartAt,
+                ticketSalesEndAt,
+                BigDecimal.ZERO,
+                100,
+                5,
+                1L,
+                false,
+                false,
+                false,
+                10);
     }
 }

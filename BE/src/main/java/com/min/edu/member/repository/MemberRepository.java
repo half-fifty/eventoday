@@ -10,6 +10,8 @@ import com.min.edu.member.domain.OauthProvider;
 public interface MemberRepository extends JpaRepository<Member, Long>{
     boolean existsByEmail(String email);
 
+    Optional<Member> findByEmail(String email);
+
     Optional<Member> findByOauthProviderAndOauthSubject(OauthProvider
          oauthProvider, String oauthSubject
     );

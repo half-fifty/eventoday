@@ -232,6 +232,26 @@ class PaymentQueryServiceTest {
             public OffsetDateTime getApprovedAt() {
                 return OffsetDateTime.parse("2026-08-03T10:01:00+09:00");
             }
+
+            @Override
+            public String getVirtualAccountBankCode() {
+                return null;
+            }
+
+            @Override
+            public String getVirtualAccountNumber() {
+                return null;
+            }
+
+            @Override
+            public String getVirtualAccountCustomerName() {
+                return null;
+            }
+
+            @Override
+            public OffsetDateTime getVirtualAccountDueAt() {
+                return null;
+            }
         };
     }
 

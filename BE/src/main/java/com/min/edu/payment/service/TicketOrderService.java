@@ -16,6 +16,7 @@ import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderStatus;
+import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.domain.TicketOrderStatus;
 import com.min.edu.payment.dto.request.CreateTicketOrderRequest;
@@ -38,6 +39,7 @@ import lombok.RequiredArgsConstructor;
 public class TicketOrderService {
 
     private static final long PAYMENT_EXPIRATION_MINUTES = 10L;
+    private static final long VIRTUAL_ACCOUNT_EXPIRATION_MINUTES = 30L;
 
     private final EventTicketReader eventTicketReader;
     private final TicketInventoryGateway ticketInventoryGateway;
@@ -110,8 +112,9 @@ public class TicketOrderService {
                 getGuestBuyerEmail(buyerMemberId, request.getBuyer()),
                 getGuestBuyerPhone(buyerMemberId, request.getBuyer()),
                 totalAmount,
+                selectedPaymentMethod(request),
                 PaymentOrderStatus.PENDING,
-                now.plusMinutes(PAYMENT_EXPIRATION_MINUTES),
+                paymentExpiresAt(selectedPaymentMethod(request), now),
                 now
             )
         );
@@ -152,6 +155,7 @@ public class TicketOrderService {
                 getGuestBuyerEmail(buyerMemberId, request.getBuyer()),
                 getGuestBuyerPhone(buyerMemberId, request.getBuyer()),
                 totalAmount,
+                PaymentMethod.CARD,
                 PaymentOrderStatus.PAID,
                 null,
                 now
@@ -245,6 +249,20 @@ public class TicketOrderService {
 
     private boolean isFree(BigDecimal unitPrice) {
         return unitPrice.compareTo(BigDecimal.ZERO) == 0;
+    }
+
+    private PaymentMethod selectedPaymentMethod(CreateTicketOrderRequest request) {
+        return request.getPaymentMethod() == null
+            ? PaymentMethod.CARD
+            : request.getPaymentMethod();
+    }
+
+    private OffsetDateTime paymentExpiresAt(PaymentMethod paymentMethod, OffsetDateTime now) {
+        if (paymentMethod == PaymentMethod.VIRTUAL_ACCOUNT) {
+            return now.plusMinutes(VIRTUAL_ACCOUNT_EXPIRATION_MINUTES);
+        }
+
+        return now.plusMinutes(PAYMENT_EXPIRATION_MINUTES);
     }
 
     private String getGuestBuyerName(

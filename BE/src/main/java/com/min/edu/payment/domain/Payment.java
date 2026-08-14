@@ -83,12 +83,65 @@ public class Payment {
             .build();
     }
 
+    public static Payment waitingForDeposit(
+            Long paymentOrderId,
+            String pgProvider,
+            String paymentKey,
+            String method,
+            BigDecimal amount,
+            OffsetDateTime requestedAt,
+            OffsetDateTime now) {
+        return Payment.builder()
+            .paymentOrderId(paymentOrderId)
+            .pgProvider(pgProvider)
+            .paymentKey(paymentKey)
+            .method(method)
+            .amount(amount)
+            .status(PaymentStatus.WAITING_FOR_DEPOSIT.name())
+            .requestedAt(requestedAt)
+            .updatedAt(now)
+            .build();
+    }
+
     public boolean isPaid() {
         return PaymentStatus.PAID.name().equals(status);
     }
 
+    public boolean isWaitingForDeposit() {
+        return PaymentStatus.WAITING_FOR_DEPOSIT.name().equals(status);
+    }
+
+    public boolean isExpired() {
+        return PaymentStatus.EXPIRED.name().equals(status);
+    }
+
     public boolean isRefunded() {
         return PaymentStatus.REFUNDED.name().equals(status);
+    }
+
+    public void markPaid(
+            String method,
+            OffsetDateTime requestedAt,
+            OffsetDateTime approvedAt,
+            OffsetDateTime now) {
+        if (!isWaitingForDeposit()) {
+            throw new IllegalStateException("Payment is not waiting for deposit.");
+        }
+
+        this.method = method;
+        this.status = PaymentStatus.PAID.name();
+        this.requestedAt = requestedAt;
+        this.approvedAt = approvedAt;
+        this.updatedAt = now;
+    }
+
+    public void expire(OffsetDateTime now) {
+        if (!isWaitingForDeposit()) {
+            throw new IllegalStateException("Payment is not waiting for deposit.");
+        }
+
+        this.status = PaymentStatus.EXPIRED.name();
+        this.updatedAt = now;
     }
 
     public void markRefunded(OffsetDateTime now) {

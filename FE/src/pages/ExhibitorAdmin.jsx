@@ -9,7 +9,7 @@ import {
 } from "../api/boothApplicationApi.js";
 import { getPublicRecruitment } from "../api/recruitmentApi.js";
 import { listAllPublicBooths, updateBoothIntro } from "../api/boothApi.js";
-import { listReservationSlots, createReservationSlot, closeReservationSlot, reopenReservationSlot, deleteReservationSlot, listReservationsForManager, markReservationAttendance } from "../api/boothReservationApi.js";
+import { listReservationSlots, createReservationSlot, updateReservationSlot, closeReservationSlot, reopenReservationSlot, deleteReservationSlot, listReservationsForManager, markReservationAttendance } from "../api/boothReservationApi.js";
 import { uploadFile, fileDownloadUrl } from "../api/fileApi.js";
 
 const buildReservationSlotRange = (date, startTime, endTime) => {
@@ -40,6 +40,16 @@ const EMPTY_SLOT_FORM = { startTime: "11:00", endTime: "11:30", capacity: "" };
 const formatSlotRange = (startAt, endAt) => {
   const timeLabel = (iso) => new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
   return `${timeLabel(startAt)}~${timeLabel(endAt)}`;
+};
+
+const isoToTimeValue = (iso) => {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+const isoToDateValue = (iso) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
 const reservationStatusMeta = {
@@ -219,6 +229,9 @@ export default function ExhibitorAdmin() {
   const [closingSlotId, setClosingSlotId] = useState(null);
   const [deletingSlotId, setDeletingSlotId] = useState(null);
   const [slotError, setSlotError] = useState("");
+  const [editingSlotId, setEditingSlotId] = useState(null);
+  const [editSlotForm, setEditSlotForm] = useState(EMPTY_SLOT_FORM);
+  const [savingSlotEdit, setSavingSlotEdit] = useState(false);
 
   const loadSlots = async (application) => {
     setLoadingSlots(true);
@@ -239,6 +252,7 @@ export default function ExhibitorAdmin() {
     setSlotForm(EMPTY_SLOT_FORM);
     setSlotError("");
     setConfirmingDeleteSlotId(null);
+    setEditingSlotId(null);
     loadSlots(application);
   };
 
@@ -269,6 +283,52 @@ export default function ExhibitorAdmin() {
       setSlotError(requestError.message || "시간대를 추가하지 못했습니다.");
     } finally {
       setSavingSlot(false);
+    }
+  };
+
+  const startEditingSlot = (slot) => {
+    setConfirmingDeleteSlotId(null);
+    setEditingSlotId(slot.id);
+    setEditSlotForm({
+      date: isoToDateValue(slot.startAt),
+      startTime: isoToTimeValue(slot.startAt),
+      endTime: isoToTimeValue(slot.endAt),
+      capacity: String(slot.capacity),
+    });
+    setSlotError("");
+  };
+
+  const cancelEditingSlot = () => {
+    setEditingSlotId(null);
+    setSlotError("");
+  };
+
+  const handleUpdateSlot = async (application, slot) => {
+    if (savingSlotEdit) return;
+    if (!editSlotForm.startTime || !editSlotForm.endTime) {
+      setSlotError("시작·종료 시간을 입력해 주세요.");
+      return;
+    }
+    if (editSlotForm.endTime <= editSlotForm.startTime) {
+      setSlotError("종료 시간은 시작 시간보다 늦어야 합니다.");
+      return;
+    }
+    const capacity = Number(editSlotForm.capacity);
+    if (!Number.isInteger(capacity) || capacity <= 0) {
+      setSlotError("정원은 1 이상의 숫자로 입력해 주세요.");
+      return;
+    }
+    const { startAt: startAtIso, endAt: endAtIso } = buildReservationSlotRange(editSlotForm.date, editSlotForm.startTime, editSlotForm.endTime);
+    setSavingSlotEdit(true);
+    setSlotError("");
+    try {
+      await updateReservationSlot(application.boothId, slot.id, { startAt: startAtIso, endAt: endAtIso, capacity });
+      setEditingSlotId(null);
+      await loadSlots(application);
+    } catch (requestError) {
+      setSlotError(requestError.message || "시간대를 수정하지 못했습니다.");
+    } finally {
+      setSavingSlotEdit(false);
     }
   };
 
@@ -581,12 +641,73 @@ export default function ExhibitorAdmin() {
                               <div className="space-y-1">
                                 {slots.map((slot) => {
                                   const isOn = slot.status === "OPEN";
+                                  const isEditing = editingSlotId === slot.id;
+
+                                  if (isEditing) {
+                                    return (
+                                      <div key={slot.id} className="space-y-sm rounded-lg border border-primary px-md py-sm text-[11px]">
+                                        <div className="grid grid-cols-1 gap-sm sm:grid-cols-3">
+                                          <label className="text-[11px] text-ink-muted">
+                                            시작 시간
+                                            <input
+                                              type="time"
+                                              value={editSlotForm.startTime}
+                                              onChange={(e) => setEditSlotForm({ ...editSlotForm, startTime: e.target.value })}
+                                              className="mt-1 w-full rounded-lg border border-hairline px-sm py-1.5"
+                                            />
+                                          </label>
+                                          <label className="text-[11px] text-ink-muted">
+                                            종료 시간
+                                            <input
+                                              type="time"
+                                              value={editSlotForm.endTime}
+                                              onChange={(e) => setEditSlotForm({ ...editSlotForm, endTime: e.target.value })}
+                                              className="mt-1 w-full rounded-lg border border-hairline px-sm py-1.5"
+                                            />
+                                          </label>
+                                          <label className="text-[11px] text-ink-muted">
+                                            정원
+                                            <input
+                                              type="number"
+                                              min="1"
+                                              value={editSlotForm.capacity}
+                                              onChange={(e) => setEditSlotForm({ ...editSlotForm, capacity: e.target.value })}
+                                              className="mt-1 w-full rounded-lg border border-hairline px-sm py-1.5"
+                                            />
+                                          </label>
+                                        </div>
+                                        <div className="flex gap-sm">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleUpdateSlot(application, slot)}
+                                            disabled={savingSlotEdit}
+                                            className="rounded-full bg-primary px-lg py-1 font-body-strong text-white disabled:opacity-40"
+                                          >
+                                            {savingSlotEdit ? "저장 중..." : "저장"}
+                                          </button>
+                                          <button type="button" onClick={cancelEditingSlot} className="text-ink-muted">
+                                            취소
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+
                                   return (
                                     <div key={slot.id} className="flex items-center justify-between gap-sm rounded-lg border border-hairline px-md py-sm text-[11px]">
                                       <span className={isOn ? "" : "text-ink-muted line-through"}>
                                         {formatSlotRange(slot.startAt, slot.endAt)} · {slot.reservedCount}/{slot.capacity}명
                                       </span>
                                       <div className="flex flex-shrink-0 items-center gap-sm">
+                                        <button
+                                          type="button"
+                                          onClick={() => startEditingSlot(slot)}
+                                          aria-label="이 시간대 수정"
+                                          title="수정"
+                                          className="text-ink-muted hover:text-primary"
+                                        >
+                                          <Icon name="edit" className="text-[16px]" />
+                                        </button>
                                         <button
                                           type="button"
                                           onClick={() => handleToggleSlot(application, slot)}

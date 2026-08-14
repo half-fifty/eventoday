@@ -4,6 +4,7 @@ import java.util.Locale;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
@@ -21,15 +22,17 @@ public class BusinessSignupService {
     private final BusinessSignupPersistenceService persistenceService;
     private final PasswordEncoder passwordEncoder;
 
-    public BusinessSignupResponseDto signup(BusinessSignupRequestDto request) {
+    public BusinessSignupResponseDto signup(
+            BusinessSignupRequestDto request,
+            MultipartFile certificateFile) {
         validateBusiness(request);
 
-        String email = request.getContactEmail()
+        String email = request.getEmail()
             .trim()
             .toLowerCase(Locale.ROOT);
         String passwordHash = passwordEncoder.encode(request.getPassword());
 
-        return persistenceService.save(request, email, passwordHash);
+        return persistenceService.save(request, email, passwordHash, certificateFile);
     }
 
     private void validateBusiness(BusinessSignupRequestDto request) {

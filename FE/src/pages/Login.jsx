@@ -28,7 +28,7 @@ export default function Login() {
   const [params] = useSearchParams();
   const { loading, isAuthenticated, refreshMember } = useAuth();
   const [loginType, setLoginType] = useState("social");
-  const [businessNumber, setBusinessNumber] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [businessLoginError, setBusinessLoginError] = useState("");
   const [isBusinessLoginLoading, setIsBusinessLoginLoading] = useState(false);
@@ -80,7 +80,7 @@ export default function Login() {
     setIsBusinessLoginLoading(true);
 
     try {
-      await loginBusiness({ businessNumber, password });
+      await loginBusiness({ email, password });
     } catch (error) {
       setBusinessLoginError(
         error.message || "사업자 로그인에 실패했습니다."
@@ -201,20 +201,16 @@ export default function Login() {
           ) : (
             <form onSubmit={handleBusinessLogin} className="space-y-md">
               <label className="block">
-                <span className="mb-xs block text-caption text-white/70">사업자등록번호 / 고유번호</span>
+                <span className="mb-xs block text-caption text-white/70">이메일</span>
                 <input
                   type="text"
-                  inputMode="numeric"
                   autoComplete="username"
-                  value={businessNumber}
-                  onChange={(event) => setBusinessNumber(event.target.value.replace(/\D/g, "").slice(0, 10))}
-                  placeholder="숫자 10자리"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="가입 시 등록한 이메일"
                   required
                   className="h-[48px] w-full rounded-xl border border-white/20 bg-white/10 px-md text-white outline-none placeholder:text-white/30 focus:border-primary-on-dark"
                 />
-                <span className="mt-xs block text-[12px] leading-relaxed text-white/50">
-                  일반 사업자는 사업자등록번호를, 비영리단체·공공기관은 고유번호를 입력해 주세요.
-                </span>
               </label>
               <label className="block">
                 <span className="mb-xs block text-caption text-white/70">비밀번호</span>

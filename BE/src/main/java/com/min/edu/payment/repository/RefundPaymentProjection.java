@@ -15,6 +15,8 @@ public interface RefundPaymentProjection {
 
     String getPaymentStatus();
 
+    String getPaymentMethod();
+
     String getOrderNo();
 
     Long getBuyerMemberId();
@@ -30,6 +32,8 @@ public interface RefundPaymentProjection {
     String getEventName();
 
     OffsetDateTime getEventStartAt();
+
+    OffsetDateTime getEventEndAt();
 
     Integer getQuantity();
 

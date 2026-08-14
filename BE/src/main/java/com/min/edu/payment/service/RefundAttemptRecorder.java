@@ -26,7 +26,8 @@ public class RefundAttemptRecorder {
     public PaymentRefund prepare(
             RefundPaymentProjection payment,
             Long requesterMemberId,
-            CreateRefundRequest request) {
+            CreateRefundRequest request,
+            OffsetDateTime refundAttemptedAt) {
         PaymentRefund existingRefund = paymentRefundRepository
             .findByPaymentId(payment.getPaymentId())
             .orElse(null);
@@ -41,7 +42,7 @@ public class RefundAttemptRecorder {
                     requesterMemberId,
                     payment.getPaymentAmount(),
                     request.getReason(),
-                    OffsetDateTime.now()
+                    refundAttemptedAt
                 );
                 return existingRefund;
             }
@@ -54,7 +55,7 @@ public class RefundAttemptRecorder {
             requesterMemberId,
             payment.getPaymentAmount(),
             request.getReason(),
-            OffsetDateTime.now()
+            refundAttemptedAt
         );
         return paymentRefundRepository.saveAndFlush(refund);
     }
