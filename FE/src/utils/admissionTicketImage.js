@@ -196,9 +196,71 @@ const canShareFile = (file) =>
   && typeof navigator.share === "function"
   && navigator.canShare({ files: [file] });
 
+const canUseSaveFilePicker = () =>
+  typeof window !== "undefined"
+  && typeof window.showSaveFilePicker === "function"
+  && !isMobileLikeDevice();
+
+const isMobileLikeDevice = () => {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+
+  if (navigator.userAgentData?.mobile === true) {
+    return true;
+  }
+
+  return typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(pointer: coarse)").matches
+    && window.matchMedia("(hover: none)").matches;
+};
+
+const isUserCancellation = (error) =>
+  error?.name === "AbortError";
+
+const chooseSaveFile = (filename) =>
+  window.showSaveFilePicker({
+    suggestedName: filename,
+    types: [
+      {
+        description: "PNG Image",
+        accept: {
+          [PNG_TYPE]: [".png"],
+        },
+      },
+    ],
+  });
+
+const writeBlobToFile = async (fileHandle, blob) => {
+  const writable = await fileHandle.createWritable();
+  try {
+    await writable.write(blob);
+  } finally {
+    await writable.close();
+  }
+};
+
 export const shareOrDownloadAdmissionTicketImage = async ({ ticket, qrImageUrl }) => {
-  const blob = await createAdmissionTicketImageBlob({ ticket, qrImageUrl });
   const filename = createAdmissionTicketFilename(ticket);
+
+  if (canUseSaveFilePicker()) {
+    let fileHandle;
+    try {
+      fileHandle = await chooseSaveFile(filename);
+    } catch (error) {
+      if (isUserCancellation(error)) {
+        return { action: "cancelled", filename };
+      }
+      throw error;
+    }
+
+    const blob = await createAdmissionTicketImageBlob({ ticket, qrImageUrl });
+    await writeBlobToFile(fileHandle, blob);
+    return { action: "downloaded", filename };
+  }
+
+  const blob = await createAdmissionTicketImageBlob({ ticket, qrImageUrl });
   const file = new File([blob], filename, { type: PNG_TYPE });
 
   if (canShareFile(file)) {
@@ -210,7 +272,7 @@ export const shareOrDownloadAdmissionTicketImage = async ({ ticket, qrImageUrl }
       });
       return { action: "shared", filename };
     } catch (error) {
-      if (error?.name === "AbortError") {
+      if (isUserCancellation(error)) {
         return { action: "cancelled", filename };
       }
       throw error;
