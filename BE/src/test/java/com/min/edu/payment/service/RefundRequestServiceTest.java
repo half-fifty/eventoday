@@ -20,6 +20,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import com.min.edu.admission.domain.ExchangeCodeStatus;
@@ -36,8 +39,10 @@ import com.min.edu.payment.repository.RefundPaymentProjection;
 import com.min.edu.payment.support.OrderAccessTokenProvider;
 import com.min.edu.payment.toss.TossPaymentClient;
 import com.min.edu.payment.toss.TossPaymentClientException;
+import com.min.edu.payment.toss.dto.TossCancelRequest;
 import com.min.edu.payment.toss.dto.TossCancelResponse;
 
+@ExtendWith(OutputCaptureExtension.class)
 class RefundRequestServiceTest {
 
     private PaymentRepository paymentRepository;
@@ -125,6 +130,39 @@ class RefundRequestServiceTest {
         );
 
         assertThat(response.getPaymentId()).isEqualTo(1L);
+    }
+
+    @Test
+    void refund_sendsVirtualAccountRefundBankCodeToToss() {
+        RefundPaymentProjection payment = projection(10L, "VIRTUAL_ACCOUNT");
+        PaymentRefund preparedRefund = requestedRefund();
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        given(refundAttemptRecorder.prepare(any(), any(), any(), any()))
+            .willReturn(preparedRefund);
+        given(tossPaymentClient.cancel(any())).willReturn(tossResponse());
+        given(refundFinalizer.finalizeRefund(any(), any(), any(), any(), any()))
+            .willReturn(refundResponse());
+        CreateRefundRequest request = refundRequestWithAccount("06");
+
+        service.refund(10L, null, 1L, request);
+
+        ArgumentCaptor<TossCancelRequest> captor =
+            ArgumentCaptor.forClass(TossCancelRequest.class);
+        verify(tossPaymentClient).cancel(captor.capture());
+        assertThat(captor.getValue().refundReceiveAccount()).isNotNull();
+        assertThat(captor.getValue().refundReceiveAccount().bank()).isEqualTo("06");
+    }
+
+    @Test
+    void refund_allowsRepresentativeOfficialBankCodes() {
+        assertThat(com.min.edu.payment.toss.TossBankCodes.isSupportedBankCode("11"))
+            .isTrue();
+        assertThat(com.min.edu.payment.toss.TossBankCodes.isSupportedBankCode("88"))
+            .isTrue();
+        assertThat(com.min.edu.payment.toss.TossBankCodes.isSupportedBankCode("90"))
+            .isTrue();
+        assertThat(com.min.edu.payment.toss.TossBankCodes.isSupportedBankCode("54"))
+            .isTrue();
     }
 
     @Test
@@ -300,6 +338,82 @@ class RefundRequestServiceTest {
     }
 
     @Test
+    void refund_rejectsBankNameBeforeCallingToss() {
+        given(paymentRepository.findRefundPaymentById(1L))
+            .willReturn(Optional.of(projection(10L, "VIRTUAL_ACCOUNT")));
+
+        assertThatThrownBy(() -> service.refund(
+            10L,
+            null,
+            1L,
+            refundRequestWithAccount("KB 국민")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.REFUND_RECEIVE_ACCOUNT_INVALID);
+
+        verify(tossPaymentClient, never()).cancel(any());
+        verify(refundAttemptRecorder, never()).prepare(any(), any(), any(), any());
+    }
+
+    @Test
+    void refund_rejectsUnknownBankCodeBeforeCallingToss() {
+        given(paymentRepository.findRefundPaymentById(1L))
+            .willReturn(Optional.of(projection(10L, "VIRTUAL_ACCOUNT")));
+
+        assertThatThrownBy(() -> service.refund(
+            10L,
+            null,
+            1L,
+            refundRequestWithAccount("999")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.REFUND_RECEIVE_ACCOUNT_INVALID);
+
+        verify(tossPaymentClient, never()).cancel(any());
+        verify(refundAttemptRecorder, never()).prepare(any(), any(), any(), any());
+    }
+
+    @Test
+    void refund_requiresReceiveAccountForVirtualAccountPayment() {
+        given(paymentRepository.findRefundPaymentById(1L))
+            .willReturn(Optional.of(projection(10L, "VIRTUAL_ACCOUNT")));
+
+        assertThatThrownBy(() -> service.refund(
+            10L,
+            null,
+            1L,
+            new CreateRefundRequest("reason")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.REFUND_RECEIVE_ACCOUNT_REQUIRED);
+
+        verify(tossPaymentClient, never()).cancel(any());
+        verify(refundAttemptRecorder, never()).prepare(any(), any(), any(), any());
+    }
+
+    @Test
+    void refund_allowsCardRefundWithoutReceiveAccount() {
+        RefundPaymentProjection payment = projection(10L, "CARD");
+        PaymentRefund preparedRefund = requestedRefund();
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        given(refundAttemptRecorder.prepare(any(), any(), any(), any()))
+            .willReturn(preparedRefund);
+        given(tossPaymentClient.cancel(any())).willReturn(tossResponse());
+        given(refundFinalizer.finalizeRefund(any(), any(), any(), any(), any()))
+            .willReturn(refundResponse());
+
+        service.refund(10L, null, 1L, new CreateRefundRequest("reason"));
+
+        ArgumentCaptor<TossCancelRequest> captor =
+            ArgumentCaptor.forClass(TossCancelRequest.class);
+        verify(tossPaymentClient).cancel(captor.capture());
+        assertThat(captor.getValue().refundReceiveAccount()).isNull();
+    }
+
+    @Test
     void refund_returnsExistingCompletedRefundWithoutToss() {
         RefundPaymentProjection payment = projection(
             10L,
@@ -354,6 +468,45 @@ class RefundRequestServiceTest {
 
         verify(refundAttemptRecorder).markFailed(preparedRefund.getId());
         verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void refund_logsOnlySafeTossCancelRejectionDiagnostics(CapturedOutput output) {
+        RefundPaymentProjection payment = projection(10L, "VIRTUAL_ACCOUNT");
+        PaymentRefund preparedRefund = requestedRefund();
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(payment));
+        given(refundAttemptRecorder.prepare(any(), any(), any(), any())).willReturn(preparedRefund);
+        given(tossPaymentClient.cancel(any())).willThrow(new TossPaymentClientException(
+            GlobalErrorCode.REFUND_REJECTED,
+            "INVALID_REFUND_ACCOUNT_NUMBER"
+        ));
+
+        assertThatThrownBy(() -> service.refund(
+            10L,
+            null,
+            1L,
+            new CreateRefundRequest(
+                "reason",
+                new CreateRefundRequest.RefundReceiveAccountRequest(
+                    "06",
+                    "1234567890",
+                    "holder"
+                )
+            )
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.REFUND_REJECTED);
+
+        assertThat(output)
+            .contains("stage=TOSS_CANCEL")
+            .contains("refundId=1")
+            .contains("paymentId=1")
+            .contains("tossErrorCode=INVALID_REFUND_ACCOUNT_NUMBER")
+            .contains("exceptionType=TossPaymentClientException")
+            .doesNotContain("1234567890")
+            .doesNotContain("holder")
+            .doesNotContain("payment-key");
     }
 
     @Test
@@ -619,6 +772,17 @@ class RefundRequestServiceTest {
         return refund;
     }
 
+    private CreateRefundRequest refundRequestWithAccount(String bankCode) {
+        return new CreateRefundRequest(
+            "reason",
+            new CreateRefundRequest.RefundReceiveAccountRequest(
+                bankCode,
+                "1234567890",
+                "holder"
+            )
+        );
+    }
+
     private DataIntegrityViolationException paymentRefundUniqueViolation() {
         ConstraintViolationException cause = new ConstraintViolationException(
             "duplicate",
@@ -629,8 +793,13 @@ class RefundRequestServiceTest {
     }
 
     private RefundPaymentProjection projection(Long buyerMemberId) {
+        return projection(buyerMemberId, "CARD");
+    }
+
+    private RefundPaymentProjection projection(Long buyerMemberId, String paymentMethod) {
         return projection(
             buyerMemberId,
+            paymentMethod,
             "PAID",
             "PAID",
             "CONFIRMED",
@@ -646,13 +815,32 @@ class RefundRequestServiceTest {
             String ticketOrderStatus,
             OffsetDateTime eventStartAt,
             OffsetDateTime eventEndAt) {
+        return projection(
+            buyerMemberId,
+            "CARD",
+            paymentStatus,
+            paymentOrderStatus,
+            ticketOrderStatus,
+            eventStartAt,
+            eventEndAt
+        );
+    }
+
+    private RefundPaymentProjection projection(
+            Long buyerMemberId,
+            String paymentMethod,
+            String paymentStatus,
+            String paymentOrderStatus,
+            String ticketOrderStatus,
+            OffsetDateTime eventStartAt,
+            OffsetDateTime eventEndAt) {
         return new RefundPaymentProjection() {
             @Override public Long getPaymentId() { return 1L; }
             @Override public Long getPaymentOrderId() { return 11L; }
             @Override public String getPaymentKey() { return "payment-key"; }
             @Override public BigDecimal getPaymentAmount() { return BigDecimal.valueOf(10000); }
             @Override public String getPaymentStatus() { return paymentStatus; }
-            @Override public String getPaymentMethod() { return "CARD"; }
+            @Override public String getPaymentMethod() { return paymentMethod; }
             @Override public String getOrderNo() { return "ORDER-1"; }
             @Override public Long getBuyerMemberId() { return buyerMemberId; }
             @Override public BigDecimal getTotalAmount() { return BigDecimal.valueOf(10000); }

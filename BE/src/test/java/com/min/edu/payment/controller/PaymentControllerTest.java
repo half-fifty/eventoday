@@ -338,6 +338,26 @@ class PaymentControllerTest {
     }
 
     @Test
+    void refundPayment_returnsBadRequestForBlankRefundBank() throws Exception {
+        mockMvc.perform(post("/payments/1/refunds")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "reason":"reason",
+                      "refundReceiveAccount":{
+                        "bank":"",
+                        "accountNumber":"1234567890",
+                        "holderName":"holder"
+                      }
+                    }
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value(GlobalErrorCode.INVALID_INPUT_VALUE.getCode()));
+
+        verifyNoInteractions(refundRequestService);
+    }
+
+    @Test
     void getMyRefunds_requiresPrincipalAtServiceAndMapsPage() throws Exception {
         authenticate(10L);
         given(refundQueryService.getMyRefunds(eq(10L), eq(0), eq(20)))
