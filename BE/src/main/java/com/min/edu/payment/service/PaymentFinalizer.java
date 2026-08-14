@@ -11,15 +11,18 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderType;
 import com.min.edu.payment.domain.PaymentProvider;
+import com.min.edu.payment.domain.PaymentVirtualAccount;
 import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.dto.request.ConfirmPaymentRequest;
 import com.min.edu.payment.dto.response.ConfirmPaymentResponse;
 import com.min.edu.payment.event.TicketReservationCompletedEvent;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
+import com.min.edu.payment.repository.PaymentVirtualAccountRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
 import com.min.edu.advertisement.domain.Advertisement;
@@ -38,6 +41,7 @@ public class PaymentFinalizer {
     private final PaymentOrderRepository paymentOrderRepository;
     private final TicketOrderRepository ticketOrderRepository;
     private final PaymentRepository paymentRepository;
+    private final PaymentVirtualAccountRepository virtualAccountRepository;
     private final TicketExchangeCodeIssuer ticketExchangeCodeIssuer;
     private final AdvertisementRepository advertisementRepository;
     private final EventRepository eventRepository;
@@ -97,28 +101,22 @@ public class PaymentFinalizer {
             return completedResponse(paymentOrder, ticketOrder, advertisement, request.getPaymentKey());
         }
 
-        validateFinalizable(paymentOrder, ticketOrder, advertisement, request);
+        validateFinalizable(paymentOrder, ticketOrder, advertisement, request, tossResponse);
 
         Payment existingPayment = paymentRepository
             .findByPaymentOrderId(paymentOrder.getId())
             .orElse(null);
-        if (existingPayment != null) {
-            throw new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT);
-        }
 
         OffsetDateTime now = OffsetDateTime.now();
-        Payment payment = paymentRepository.saveAndFlush(Payment.approved(
-            paymentOrder.getId(),
-            PaymentProvider.TOSS_PAYMENTS,
-            request.getPaymentKey(),
-            tossResponse.method(),
-            request.getAmount(),
-            tossResponse.requestedAt(),
-            tossResponse.approvedAt(),
+        Payment payment = completePayment(
+            existingPayment,
+            paymentOrder,
+            request,
+            tossResponse,
             now
-        ));
+        );
 
-        paymentOrder.markPaid(now);
+        markPaymentOrderPaid(paymentOrder, now);
         if (ticketOrder != null) {
             ticketOrder.confirm(tossResponse.approvedAt(), now);
             ticketExchangeCodeIssuer.issueIfAbsent(ticketOrder, paymentOrder.getBuyerMemberId(), now);
@@ -153,7 +151,10 @@ public class PaymentFinalizer {
             PaymentOrder paymentOrder,
             TicketOrder ticketOrder,
             Advertisement advertisement,
-            ConfirmPaymentRequest request) {
+            ConfirmPaymentRequest request,
+            TossConfirmResponse tossResponse) {
+        validateTossFinalizationResponse(request, paymentOrder, tossResponse);
+
         if (paymentOrder.getOrderType() != PaymentOrderType.EVENT_TICKET
                 && paymentOrder.getOrderType() != PaymentOrderType.EVENT_AD) {
             throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
@@ -163,16 +164,129 @@ public class PaymentFinalizer {
             throw new BusinessException(GlobalErrorCode.PAYMENT_AMOUNT_MISMATCH);
         }
 
+        PaymentMethod requestedMethod = requestedMethod(paymentOrder);
+        if (!requestedMethod.matchesTossMethod(tossResponse.method())) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_METHOD_MISMATCH);
+        }
+
         if (paymentOrder.getTotalAmount().signum() <= 0) {
             throw new BusinessException(GlobalErrorCode.PAYMENT_NOT_REQUIRED);
         }
 
-        if (!paymentOrder.isPending()
+        boolean finalizablePaymentOrder = paymentOrder.isPending()
+            || paymentOrder.isWaitingForDeposit();
+        if (!finalizablePaymentOrder
                 || (ticketOrder != null && !ticketOrder.isPendingPayment())
                 || (advertisement != null && advertisement.getStatus() != AdvertisementStatus.PAYMENT_PENDING)
                 || (advertisement == null && ticketOrder == null)) {
             throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
         }
+    }
+
+    private void validateTossFinalizationResponse(
+            ConfirmPaymentRequest request,
+            PaymentOrder paymentOrder,
+            TossConfirmResponse tossResponse) {
+        if (tossResponse == null
+                || tossResponse.paymentKey() == null
+                || tossResponse.orderId() == null
+                || tossResponse.totalAmount() == null
+                || tossResponse.requestedAt() == null
+                || tossResponse.approvedAt() == null
+                || !"DONE".equals(tossResponse.status())
+                || !request.getPaymentKey().equals(tossResponse.paymentKey())
+                || !request.getOrderId().equals(tossResponse.orderId())
+                || request.getAmount().compareTo(tossResponse.totalAmount()) != 0
+                || paymentOrder.getTotalAmount().compareTo(tossResponse.totalAmount()) != 0) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+        }
+    }
+
+    private Payment completePayment(
+            Payment existingPayment,
+            PaymentOrder paymentOrder,
+            ConfirmPaymentRequest request,
+            TossConfirmResponse tossResponse,
+            OffsetDateTime now) {
+        if (requestedMethod(paymentOrder) == PaymentMethod.VIRTUAL_ACCOUNT) {
+            return completeWaitingVirtualAccount(
+                existingPayment,
+                request,
+                tossResponse,
+                now
+            );
+        }
+
+        if (existingPayment != null) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT);
+        }
+
+        return paymentRepository.saveAndFlush(Payment.approved(
+            paymentOrder.getId(),
+            PaymentProvider.TOSS_PAYMENTS,
+            request.getPaymentKey(),
+            tossResponse.method(),
+            request.getAmount(),
+            tossResponse.requestedAt(),
+            tossResponse.approvedAt(),
+            now
+        ));
+    }
+
+    private Payment completeWaitingVirtualAccount(
+            Payment existingPayment,
+            ConfirmPaymentRequest request,
+            TossConfirmResponse tossResponse,
+            OffsetDateTime now) {
+        if (existingPayment == null) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT);
+        }
+
+        if (!request.getPaymentKey().equals(existingPayment.getPaymentKey())
+                || request.getAmount().compareTo(existingPayment.getAmount()) != 0) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT);
+        }
+
+        if (existingPayment.isPaid()) {
+            return existingPayment;
+        }
+
+        if (!existingPayment.isWaitingForDeposit()) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+        }
+
+        existingPayment.markPaid(
+            tossResponse.method(),
+            tossResponse.requestedAt(),
+            tossResponse.approvedAt(),
+            now
+        );
+        Payment payment = paymentRepository.saveAndFlush(existingPayment);
+        PaymentVirtualAccount virtualAccount = virtualAccountRepository
+            .findByPaymentId(payment.getId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+        virtualAccount.markDeposited(tossResponse.status(), tossResponse.approvedAt(), now);
+        return payment;
+    }
+
+    private void markPaymentOrderPaid(PaymentOrder paymentOrder, OffsetDateTime now) {
+        if (paymentOrder.isPending()) {
+            paymentOrder.markPaid(now);
+            return;
+        }
+
+        if (paymentOrder.isWaitingForDeposit()) {
+            paymentOrder.markPaidFromWaiting(now);
+            return;
+        }
+
+        throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+    }
+
+    private PaymentMethod requestedMethod(PaymentOrder paymentOrder) {
+        return paymentOrder.getRequestedPaymentMethod() == null
+            ? PaymentMethod.CARD
+            : paymentOrder.getRequestedPaymentMethod();
     }
 
     private void setLocalLockTimeout(long lockTimeoutMs) {
