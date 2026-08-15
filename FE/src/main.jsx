@@ -26,6 +26,7 @@ import OrganizerAdvertisements from "./pages/OrganizerAdvertisements.jsx";
 import AdvertisementPaymentResult from "./pages/AdvertisementPaymentResult.jsx";
 import TicketPaymentResult from "./pages/TicketPaymentResult.jsx";
 import Notices from "./pages/Notices.jsx";
+import NoticeDetail from "./pages/NoticeDetail.jsx";
 import TicketOrderDetail from "./pages/TicketOrderDetail.jsx";
 import PaymentDetail from "./pages/PaymentDetail.jsx";
 import RefundDetail from "./pages/RefundDetail.jsx";
@@ -59,6 +60,7 @@ const router = createBrowserRouter([
   { path: "/events", element: <EventList /> },
   { path: "/venues", element: <VenueGuide /> },
   { path: "/notices", element: <Notices /> },
+  { path: "/notices/:noticeId", element: <NoticeDetail /> },
   { path: "/booth-detail", element: <BoothDetail /> },
   { path: "/booth-apply", element: <BoothApply /> },
   {

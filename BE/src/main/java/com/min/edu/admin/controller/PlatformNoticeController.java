@@ -6,7 +6,6 @@ import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.common.response.ApiResponse;
-import java.util.List;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,6 +13,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -31,10 +31,24 @@ public class PlatformNoticeController {
         this.service = service;
     }
 
-    /** 사이트 공지 목록 (공개 — 비로그인 포함) */
+    /**
+     * 사이트 공지 목록 (공개 — 비로그인 포함)
+     *
+     * 공지사항 페이지에서 페이지 이동과 검색에 사용한다.
+     * 파라미터를 생략하면 첫 페이지 20건을 반환한다.
+     */
     @GetMapping("/platform-notices")
-    public ApiResponse<List<PlatformAdminDtos.Notice>> notices() {
-        return ApiResponse.success(service.notices());
+    public ApiResponse<PlatformAdminDtos.NoticePageResponse> notices(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String keyword) {
+        return ApiResponse.success(service.notices(page, size, keyword));
+    }
+
+    /** 사이트 공지 상세 (공개 — 비로그인 포함) */
+    @GetMapping("/platform-notices/{noticeId}")
+    public ApiResponse<PlatformAdminDtos.Notice> notice(@PathVariable Long noticeId) {
+        return ApiResponse.success(service.notice(noticeId));
     }
 
     /** 사이트 공지 등록 (PLATFORM_ADMIN) */

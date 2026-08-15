@@ -32,6 +32,20 @@ public final class PlatformAdminDtos {
             Long noticeId, String title, String content, boolean pinned,
             OffsetDateTime publishedAt, OffsetDateTime updatedAt) {}
 
+    /**
+     * 플랫폼 공지 목록 페이징 응답
+     * EventContentDtos.BoardPageResponse와 동일한 필드 구성
+     */
+    public record NoticePageResponse(
+            List<Notice> content,
+            int page,
+            int size,
+            long totalElements,
+            int totalPages,
+            boolean first,
+            boolean last,
+            boolean empty) {}
+
     /** 플랫폼 공지 등록 요청 */
     public record NoticeCreateRequest(String title, String content, boolean pinned) {}
 
