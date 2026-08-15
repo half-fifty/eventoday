@@ -3,6 +3,13 @@ package com.min.edu.payment.toss.dto;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import java.io.IOException;
 
 public record TossConfirmResponse(
         String paymentKey,
@@ -41,7 +48,8 @@ public record TossConfirmResponse(
             String accountNumber,
             String bankCode,
             String customerName,
-            LocalDateTime dueDate
+            @JsonDeserialize(using = TossVirtualAccountDueDateDeserializer.class)
+            OffsetDateTime dueDate
     ) {
 
         @Override
@@ -51,6 +59,31 @@ public record TossConfirmResponse(
                 + ", customerName=***, dueDate="
                 + dueDate
                 + "]";
+        }
+    }
+
+    public static class TossVirtualAccountDueDateDeserializer
+            extends JsonDeserializer<OffsetDateTime> {
+
+        private static final ZoneId TOSS_VIRTUAL_ACCOUNT_ZONE =
+            ZoneId.of("Asia/Seoul");
+
+        @Override
+        public OffsetDateTime deserialize(
+                JsonParser parser,
+                DeserializationContext context) throws IOException {
+            String value = parser.getValueAsString();
+            if (value == null || value.isBlank()) {
+                return null;
+            }
+
+            try {
+                return OffsetDateTime.parse(value);
+            } catch (java.time.format.DateTimeParseException exception) {
+                return LocalDateTime.parse(value)
+                    .atZone(TOSS_VIRTUAL_ACCOUNT_ZONE)
+                    .toOffsetDateTime();
+            }
         }
     }
 

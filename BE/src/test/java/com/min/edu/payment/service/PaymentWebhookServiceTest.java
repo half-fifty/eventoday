@@ -7,7 +7,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 
@@ -291,7 +290,7 @@ class PaymentWebhookServiceTest {
                 "1234567890",
                 "088",
                 "tester",
-                LocalDateTime.parse("2026-08-03T10:30:00")
+                OffsetDateTime.parse("2026-08-03T10:30:00+09:00")
             ),
             requestedAt(),
             "DONE".equals(status) ? approvedAt() : null

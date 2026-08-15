@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { paymentApi } from "../api/paymentApi.js";
 import TopNav from "../components/TopNav.jsx";
 import useAuth from "../hooks/useAuth.js";
+import { REFUND_BANK_GROUPS, REFUND_BANKS } from "../constants/refundBanks.js";
 
 const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
@@ -204,13 +205,23 @@ export default function PaymentDetail() {
                     <div className="grid gap-sm rounded-xl bg-surface-container p-md sm:grid-cols-3">
                       <label className="block">
                         <span className="text-caption text-ink-muted">은행</span>
-                        <input
+                        <select
                           required
-                          maxLength={20}
                           value={refundAccount.bank}
                           onChange={(event) => setRefundAccount((current) => ({ ...current, bank: event.target.value }))}
                           className="mt-xs h-11 w-full rounded-lg border border-hairline px-md outline-none focus:border-primary-focus"
-                        />
+                        >
+                          <option value="">은행을 선택해주세요</option>
+                          {REFUND_BANK_GROUPS.map((group) => (
+                            <optgroup key={group} label={group}>
+                              {REFUND_BANKS.filter((bank) => bank.group === group).map((bank) => (
+                                <option key={bank.code} value={bank.code}>
+                                  {bank.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
                       </label>
                       <label className="block">
                         <span className="text-caption text-ink-muted">계좌번호</span>

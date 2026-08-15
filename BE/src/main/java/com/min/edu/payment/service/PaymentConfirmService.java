@@ -25,9 +25,11 @@ import com.min.edu.advertisement.domain.AdvertisementStatus;
 import com.min.edu.advertisement.repository.AdvertisementRepository;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentConfirmService {
 
     private static final String TOSS_DONE_STATUS = "DONE";
@@ -192,29 +194,78 @@ public class PaymentConfirmService {
             ConfirmPaymentRequest request,
             PaymentOrder paymentOrder,
             TossConfirmResponse response) {
-        if (!request.getPaymentKey().equals(response.paymentKey())
-                || !request.getOrderId().equals(response.orderId())
-                || response.totalAmount() == null
-                || response.totalAmount().compareTo(paymentOrder.getTotalAmount()) != 0
-                || response.requestedAt() == null) {
-            throw new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+        if (response == null) {
+            throw invalidTossConfirmResponse("RESPONSE_MISSING", request.getOrderId(), null);
+        }
+        if (!request.getPaymentKey().equals(response.paymentKey())) {
+            throw invalidTossConfirmResponse("PAYMENT_KEY_MISMATCH", request.getOrderId(), response);
+        }
+        if (!request.getOrderId().equals(response.orderId())) {
+            throw invalidTossConfirmResponse("ORDER_ID_MISMATCH", request.getOrderId(), response);
+        }
+        if (response.totalAmount() == null) {
+            throw invalidTossConfirmResponse("AMOUNT_MISSING", request.getOrderId(), response);
+        }
+        if (response.totalAmount().compareTo(paymentOrder.getTotalAmount()) != 0) {
+            throw invalidTossConfirmResponse("AMOUNT_MISMATCH", request.getOrderId(), response);
+        }
+        if (response.requestedAt() == null) {
+            throw invalidTossConfirmResponse("REQUESTED_AT_MISSING", request.getOrderId(), response);
         }
 
         PaymentMethod requestedMethod = requestedMethod(paymentOrder);
         if (!requestedMethod.matchesTossMethod(response.method())) {
+            log.warn(
+                "Invalid Toss payment method: reason={}, orderId={}, status={}, method={}",
+                "METHOD_MISMATCH",
+                safeOrderId(request.getOrderId(), response),
+                safeStatus(response),
+                safeMethod(response)
+            );
             throw new BusinessException(GlobalErrorCode.PAYMENT_METHOD_MISMATCH);
         }
 
         if (requestedMethod == PaymentMethod.VIRTUAL_ACCOUNT) {
             if (!TOSS_WAITING_FOR_DEPOSIT_STATUS.equals(response.status())) {
-                throw new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+                throw invalidTossConfirmResponse("STATUS_MISMATCH", request.getOrderId(), response);
             }
             return;
         }
 
-        if (!TOSS_DONE_STATUS.equals(response.status()) || response.approvedAt() == null) {
-            throw new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+        if (!TOSS_DONE_STATUS.equals(response.status())) {
+            throw invalidTossConfirmResponse("STATUS_MISMATCH", request.getOrderId(), response);
         }
+        if (response.approvedAt() == null) {
+            throw invalidTossConfirmResponse("APPROVED_AT_INVALID", request.getOrderId(), response);
+        }
+    }
+
+    private BusinessException invalidTossConfirmResponse(
+            String reason,
+            String requestOrderId,
+            TossConfirmResponse response) {
+        log.warn(
+            "Invalid Toss confirm response: reason={}, orderId={}, status={}, method={}",
+            reason,
+            safeOrderId(requestOrderId, response),
+            safeStatus(response),
+            safeMethod(response)
+        );
+        return new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID);
+    }
+
+    private String safeOrderId(String requestOrderId, TossConfirmResponse response) {
+        return response == null || response.orderId() == null
+            ? requestOrderId
+            : response.orderId();
+    }
+
+    private String safeStatus(TossConfirmResponse response) {
+        return response == null ? null : response.status();
+    }
+
+    private String safeMethod(TossConfirmResponse response) {
+        return response == null ? null : response.method();
     }
 
     private ConfirmPaymentResponse finalizeWithoutToss(ConfirmPaymentRequest request) {

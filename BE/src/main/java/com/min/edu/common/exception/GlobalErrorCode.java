@@ -88,6 +88,7 @@ public enum GlobalErrorCode implements ErrorCode {
     VIRTUAL_ACCOUNT_REQUIRED(HttpStatus.BAD_GATEWAY, "PAYMENT_502_003", "가상계좌 결제 정보가 부족합니다."),
     VIRTUAL_ACCOUNT_SECRET_MISMATCH(HttpStatus.FORBIDDEN, "PAYMENT_403_002", "가상계좌 결제 요청 검증에 실패했습니다."),
     REFUND_RECEIVE_ACCOUNT_REQUIRED(HttpStatus.BAD_REQUEST, "REFUND_400_002", "가상계좌 결제 환불 계좌 정보가 필요합니다."),
+    REFUND_RECEIVE_ACCOUNT_INVALID(HttpStatus.BAD_REQUEST, "REFUND_400_003", "가상계좌 결제 환불 계좌 정보가 유효하지 않습니다."),
     PAYMENT_GATEWAY_ERROR(HttpStatus.BAD_GATEWAY, "PAYMENT_502_001", "결제 대행사 응답 처리에 실패했습니다."),
     PAYMENT_GATEWAY_RESPONSE_INVALID(HttpStatus.BAD_GATEWAY, "PAYMENT_502_002", "결제 대행사 응답이 유효하지 않습니다."),
     PAYMENT_GATEWAY_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "PAYMENT_504_001", "결제 대행사 응답 시간이 초과되었습니다."),

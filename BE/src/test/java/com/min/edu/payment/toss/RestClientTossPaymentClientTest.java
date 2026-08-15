@@ -7,12 +7,16 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.toss.dto.TossCancelRequest;
@@ -22,6 +26,7 @@ import com.min.edu.payment.toss.dto.TossConfirmResponse;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+@ExtendWith(OutputCaptureExtension.class)
 class RestClientTossPaymentClientTest {
 
     private HttpServer server;
@@ -286,6 +291,64 @@ class RestClientTossPaymentClientTest {
             new RestClientTossPaymentClient(properties).confirm(request());
 
         assertThat(response.paymentKey()).isEqualTo("payment-key");
+    }
+
+    @Test
+    void confirm_deserializesVirtualAccountSandboxDateFormats() throws Exception {
+        startServer(exchange -> respond(exchange, 200, """
+            {
+              "paymentKey":"payment-key",
+              "orderId":"ORDER-1",
+              "totalAmount":10000,
+              "status":"WAITING_FOR_DEPOSIT",
+              "method":"VIRTUAL_ACCOUNT",
+              "secret":"secret-value",
+              "virtualAccount":{
+                "accountNumber":"1234567890",
+                "bankCode":"088",
+                "customerName":"tester",
+                "dueDate":"2026-08-03T10:30:00"
+              },
+              "requestedAt":"2026-08-03T10:00:00+09:00",
+              "approvedAt":null
+            }
+            """));
+
+        TossConfirmResponse response = client().confirm(request());
+
+        assertThat(response.status()).isEqualTo("WAITING_FOR_DEPOSIT");
+        assertThat(response.requestedAt().toInstant())
+            .isEqualTo(OffsetDateTime.parse("2026-08-03T10:00:00+09:00").toInstant());
+        assertThat(response.approvedAt()).isNull();
+        assertThat(response.virtualAccount().dueDate().toString())
+            .isEqualTo("2026-08-03T10:30+09:00");
+    }
+
+    @Test
+    void confirm_mapsMalformedSuccessfulResponseToGatewayResponseInvalid(
+            CapturedOutput output) throws Exception {
+        startServer(exchange -> respond(exchange, 200, """
+            {
+              "paymentKey":"payment-key",
+              "orderId":"ORDER-1",
+              "totalAmount":10000,
+              "status":"WAITING_FOR_DEPOSIT",
+              "method":"VIRTUAL_ACCOUNT",
+              "requestedAt":"not-a-date"
+            }
+            """));
+
+        assertClientException(
+            () -> client().confirm(request()),
+            GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID
+        );
+        assertThat(output)
+            .contains("TOSS_CONFIRM_DESERIALIZATION_ERROR")
+            .contains("Toss confirm deserialization failed")
+            .contains("path=requestedAt")
+            .contains("value=not-a-date")
+            .contains("exceptionType=")
+            .contains("rootExceptionType=");
     }
 
     @Test
