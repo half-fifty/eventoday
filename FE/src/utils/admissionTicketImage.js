@@ -236,9 +236,16 @@ const writeBlobToFile = async (fileHandle, blob) => {
   const writable = await fileHandle.createWritable();
   try {
     await writable.write(blob);
-  } finally {
-    await writable.close();
+  } catch (error) {
+    try {
+      await writable.abort();
+    } catch {
+      // Preserve the original write error if stream cleanup fails.
+    }
+    throw error;
   }
+
+  await writable.close();
 };
 
 export const shareOrDownloadAdmissionTicketImage = async ({ ticket, qrImageUrl }) => {
