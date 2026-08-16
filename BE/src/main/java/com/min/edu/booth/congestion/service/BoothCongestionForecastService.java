@@ -55,6 +55,34 @@ public class BoothCongestionForecastService {
         }
     }
 
+    private void validateForecastInput(
+            Integer forecastHour,
+            LocalDate forecastDate,
+            CongestionLevel predictedLevel,
+            Integer waitTime,
+            BigDecimal capacityRate
+    ) {
+        if (isInvalidForecastInput(forecastHour, forecastDate, predictedLevel, waitTime, capacityRate)) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+
+    private boolean isInvalidForecastInput(
+            Integer forecastHour,
+            LocalDate forecastDate,
+            CongestionLevel predictedLevel,
+            Integer waitTime,
+            BigDecimal capacityRate
+    ) {
+        return forecastHour == null || forecastHour < 0 || forecastHour > 23
+                || forecastDate == null
+                || predictedLevel == null
+                || (waitTime != null && waitTime < 0)
+                || (capacityRate != null
+                    && (capacityRate.signum() < 0
+                        || capacityRate.compareTo(BigDecimal.valueOf(100)) > 0));
+    }
+
     /**
      * 혼잡도 예측 데이터 저장
      */
@@ -67,6 +95,8 @@ public class BoothCongestionForecastService {
             Integer waitTime,
             BigDecimal capacityRate
     ) {
+        validateForecastInput(forecastHour, forecastDate, predictedLevel, waitTime, capacityRate);
+
         Booth booth = boothRepository.findById(boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.BOOTH_NOT_FOUND));
 
@@ -90,9 +120,22 @@ public class BoothCongestionForecastService {
     public void saveForecastBatch(Long boothId, LocalDate forecastDate, List<BoothCongestionForecast> forecasts) {
         requireBoothExists(boothId);
 
-        boolean mismatched = forecasts.stream().anyMatch(forecast ->
-                !boothId.equals(forecast.getBooth().getId()) || !forecastDate.equals(forecast.getForecastDate()));
-        if (mismatched) {
+        if (forecasts == null || forecasts.isEmpty()) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        boolean invalid = forecasts.stream().anyMatch(forecast ->
+                forecast == null
+                        || forecast.getBooth() == null
+                        || !boothId.equals(forecast.getBooth().getId())
+                        || !forecastDate.equals(forecast.getForecastDate())
+                        || isInvalidForecastInput(
+                                forecast.getForecastHour(),
+                                forecast.getForecastDate(),
+                                forecast.getPredictedCongestionLevel(),
+                                forecast.getPredictedWaitTime(),
+                                forecast.getPredictedCapacityRate()));
+        if (invalid) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 

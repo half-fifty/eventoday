@@ -150,27 +150,30 @@ export default function EventDetail() {
     setRecommendationError("");
     setRecommendedBooths(null);
     
-    Promise.all([
+    Promise.allSettled([
       getRecommendedBooths(eventId),
       listPublicBooths(eventId, { page: 0, size: 1000 })
     ])
-      .then(([recommendationData, boothsData]) => {
+      .then(([recommendationResult, boothsResult]) => {
         if (cancelled) return;
-        
-        // 부스 정보를 id 맵으로 변환
-        const booths = boothsData?.content ?? boothsData ?? [];
-        const boothMap = {};
-        booths.forEach(booth => {
-          boothMap[booth.id] = booth;
-        });
-        setBoothsMap(boothMap);
-        
-        // ApiResponse 래핑 확인 후 처리
-        const response = recommendationData?.data ?? recommendationData;
-        setRecommendedBooths(response);
-      })
-      .catch((requestError) => {
-        if (!cancelled) {
+
+        if (boothsResult.status === "fulfilled") {
+          // 부스 정보를 id 맵으로 변환
+          const boothsData = boothsResult.value;
+          const booths = boothsData?.content ?? boothsData ?? [];
+          const boothMap = {};
+          booths.forEach(booth => {
+            boothMap[booth.id] = booth;
+          });
+          setBoothsMap(boothMap);
+        }
+
+        if (recommendationResult.status === "fulfilled") {
+          // ApiResponse 래핑 확인 후 처리
+          const response = recommendationResult.value?.data ?? recommendationResult.value;
+          setRecommendedBooths(response);
+        } else {
+          const requestError = recommendationResult.reason;
           setRecommendationError(requestError instanceof ApiError ? requestError.message : "추천 부스를 불러오지 못했습니다.");
         }
       })
