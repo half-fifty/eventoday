@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.OffsetDateTime;
@@ -103,7 +105,28 @@ public class FileService {
             throw new BusinessException(GlobalErrorCode.FILE_UPLOAD_FAILED);
         }
 
+        // 이 메서드 자체는 커밋됐지만, 이 트랜잭션에 참여한 상위 트랜잭션(예: 회원가입)이
+        // 나중에 롤백되면 DB의 file_assets 행은 함께 롤백되는 반면 S3 객체는 그대로 남는다.
+        // 상위 트랜잭션 완료 시점에 롤백 여부를 확인해 S3 고아 파일을 보상 삭제한다.
+        registerCompensatingDeleteOnRollback(storageKey);
+
         return FileUploadResponseDto.from(saved);
+    }
+
+    private void registerCompensatingDeleteOnRollback(String storageKey) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
+                    log.warn("상위 트랜잭션 롤백으로 S3 파일 보상 삭제. storageKey={}", storageKey);
+                    fileStorageService.delete(storageKey);
+                }
+            }
+        });
     }
 
     /**
@@ -135,6 +158,30 @@ public class FileService {
     public String getFileDownloadUrl(Long fileId, Long memberId) {
         FileAsset fileAsset = findAndCheckAccess(fileId, memberId);
         return fileStorageService.generatePresignedUrl(fileAsset.getStorageKey());
+    }
+
+    /**
+     * 플랫폼 관리자가 심사 등의 목적으로 소유자 제한 없이 파일을 열람할 때 사용한다.
+     * 호출하는 쪽에서 PLATFORM_ADMIN 권한 검증을 이미 마쳤다는 전제로 소유자 검사를 생략한다.
+     */
+    @Transactional(readOnly = true)
+    public String getFileDownloadUrlForAdmin(Long fileId) {
+        FileAsset fileAsset = fileAssetRepository.findById(fileId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.FILE_NOT_FOUND));
+        return fileStorageService.generatePresignedUrl(fileAsset.getStorageKey());
+    }
+
+    /**
+     * 플랫폼 관리자가 심사 자료 등을 완전히 폐기할 때 사용한다. DB 메타데이터와
+     * 저장소 원본을 함께 삭제한다. 호출하는 쪽에서 권한 검증을 이미 마쳤다는 전제로
+     * 소유자 검사를 생략한다.
+     */
+    @Transactional
+    public void deleteFile(Long fileId) {
+        fileAssetRepository.findById(fileId).ifPresent(fileAsset -> {
+            fileStorageService.delete(fileAsset.getStorageKey());
+            fileAssetRepository.delete(fileAsset);
+        });
     }
 
     /**

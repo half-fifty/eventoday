@@ -17,6 +17,11 @@ public final class EventContentDtos {
      * 공지·자료 목록·상세 응답 DTO
      * pinned(상단 고정), publishedAt(게시일시) 포함
      * fileName·fileSize: 첨부파일 원본명·크기 (FE 다운로드 파일명 표시용, 없으면 null)
+     *
+     * downloadUrl: 첨부파일 Presigned URL (CONTENT-006/007)
+     * 콘텐츠 첨부는 PRIVATE으로 저장되어 /v1/files 다운로드로는 업로더 본인만 접근할 수 있다.
+     * audience 검증을 통과한 요청에만 URL을 내려주는 방식으로 접근 권한을 맞춘다.
+     * (부스 신청 첨부 목록 APP-API-009과 동일한 방식)
      */
     public record Summary(
             Long contentId,
@@ -29,15 +34,20 @@ public final class EventContentDtos {
             Long fileId,
             String fileName,
             Long fileSize,
+            String downloadUrl,
             String version,
             boolean pinned,
             OffsetDateTime publishedAt
     ) {
         public static Summary from(EventContent ec) {
-            return from(ec, null);
+            return from(ec, null, null);
         }
 
         public static Summary from(EventContent ec, FileAsset fileAsset) {
+            return from(ec, fileAsset, null);
+        }
+
+        public static Summary from(EventContent ec, FileAsset fileAsset, String downloadUrl) {
             return new Summary(
                     ec.getId(),
                     ec.getEventId(),
@@ -49,6 +59,7 @@ public final class EventContentDtos {
                     ec.getFileId(),
                     fileAsset != null ? fileAsset.getOriginalName() : null,
                     fileAsset != null ? fileAsset.getFileSize() : null,
+                    downloadUrl,
                     ec.getVersion(),
                     ec.isPinned(),
                     ec.getPublishedAt()

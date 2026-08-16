@@ -79,6 +79,7 @@ class RefundAttemptRecorderTest {
             @Override public String getPaymentKey() { return "payment-key"; }
             @Override public BigDecimal getPaymentAmount() { return BigDecimal.valueOf(10000); }
             @Override public String getPaymentStatus() { return "PAID"; }
+            @Override public String getPaymentMethod() { return "CARD"; }
             @Override public String getOrderNo() { return "ORDER-1"; }
             @Override public Long getBuyerMemberId() { return 10L; }
             @Override public BigDecimal getTotalAmount() { return BigDecimal.valueOf(10000); }

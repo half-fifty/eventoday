@@ -53,6 +53,10 @@ public class PaymentOrder {
     @Column(name = "total_amount", nullable = false, precision = 12, scale = 0)
     private BigDecimal totalAmount;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "requested_payment_method", nullable = false, length = 30)
+    private PaymentMethod requestedPaymentMethod;
+
     @Column(name = "status", nullable = false, length = 30)
     private String status;
 
@@ -72,6 +76,7 @@ public class PaymentOrder {
             String buyerEmail,
             String buyerPhone,
             BigDecimal totalAmount,
+            PaymentMethod requestedPaymentMethod,
             PaymentOrderStatus status,
             OffsetDateTime expiresAt,
             OffsetDateTime now) {
@@ -83,6 +88,7 @@ public class PaymentOrder {
             .buyerPhone(buyerPhone)
             .orderType(PaymentOrderType.EVENT_TICKET)
             .totalAmount(totalAmount)
+            .requestedPaymentMethod(requestedPaymentMethod)
             .status(status.name())
             .expiresAt(expiresAt)
             .createdAt(now)
@@ -105,6 +111,7 @@ public class PaymentOrder {
             .buyerEmail(buyerEmail)
             .orderType(PaymentOrderType.EVENT_AD)
             .totalAmount(totalAmount)
+            .requestedPaymentMethod(PaymentMethod.CARD)
             .status(PaymentOrderStatus.PENDING.name())
             .expiresAt(expiresAt)
             .createdAt(now)
@@ -120,6 +127,14 @@ public class PaymentOrder {
         return PaymentOrderStatus.PENDING.name().equals(status);
     }
 
+    public boolean isWaitingForDeposit() {
+        return PaymentOrderStatus.WAITING_FOR_DEPOSIT.name().equals(status);
+    }
+
+    public boolean isExpired() {
+        return PaymentOrderStatus.EXPIRED.name().equals(status);
+    }
+
     public boolean isRefunded() {
         return PaymentOrderStatus.REFUNDED.name().equals(status);
     }
@@ -130,6 +145,33 @@ public class PaymentOrder {
         }
 
         this.status = PaymentOrderStatus.PAID.name();
+        this.updatedAt = now;
+    }
+
+    public void markWaitingForDeposit(OffsetDateTime now) {
+        if (!isPending()) {
+            throw new IllegalStateException("Payment order is not pending.");
+        }
+
+        this.status = PaymentOrderStatus.WAITING_FOR_DEPOSIT.name();
+        this.updatedAt = now;
+    }
+
+    public void markPaidFromWaiting(OffsetDateTime now) {
+        if (!isWaitingForDeposit()) {
+            throw new IllegalStateException("Payment order is not waiting for deposit.");
+        }
+
+        this.status = PaymentOrderStatus.PAID.name();
+        this.updatedAt = now;
+    }
+
+    public void expire(OffsetDateTime now) {
+        if (!isPending() && !isWaitingForDeposit()) {
+            throw new IllegalStateException("Payment order cannot expire.");
+        }
+
+        this.status = PaymentOrderStatus.EXPIRED.name();
         this.updatedAt = now;
     }
 

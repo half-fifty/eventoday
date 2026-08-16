@@ -1,11 +1,13 @@
 package com.min.edu.organization.controller;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.min.edu.common.response.ApiResponse;
 import com.min.edu.organization.dto.BusinessSignupRequestDto;
@@ -22,10 +24,14 @@ public class BusinessSignupController {
 
     private final BusinessSignupService businessSignupService;
 
-    @PostMapping("/signup")
+    @PostMapping(value = "/signup", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<BusinessSignupResponseDto> signup(
-            @Valid @RequestBody BusinessSignupRequestDto request) {
-        return ApiResponse.success(businessSignupService.signup(request));
+            @Valid @RequestPart("data") BusinessSignupRequestDto request,
+            @RequestPart(value = "certificateFile", required = false)
+                MultipartFile certificateFile) {
+        return ApiResponse.success(
+            businessSignupService.signup(request, certificateFile)
+        );
     }
 }

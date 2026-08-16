@@ -15,6 +15,9 @@ public interface EventOrganizationMemberRepository extends JpaRepository<Organiz
             Collection<OrganizationRole> roles);
     List<OrganizationMember> findAllByMemberIdAndStatusAndOrganizationRoleIn(
             Long memberId, OrganizationMemberStatus status, Collection<OrganizationRole> roles);
+    /** 역할과 무관하게 회원이 속한 조직 (공지 공개 대상 판정용 - CONTENT-003) */
+    List<OrganizationMember> findAllByMemberIdAndStatus(
+            Long memberId, OrganizationMemberStatus status);
     List<OrganizationMember> findAllByOrganizationIdAndStatusAndOrganizationRoleIn(
             Long organizationId, OrganizationMemberStatus status, Collection<OrganizationRole> roles);
 }

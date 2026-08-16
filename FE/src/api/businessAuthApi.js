@@ -24,13 +24,22 @@ const verifyBusiness = async (verificationData) => {
   return response.data;
 };
 
-const signupBusiness = async (signupData) => {
+const buildBusinessFormData = (data, certificateFile) => {
+  const formData = new FormData();
+  formData.append(
+    "data",
+    new Blob([JSON.stringify(data)], { type: "application/json" })
+  );
+  if (certificateFile) {
+    formData.append("certificateFile", certificateFile);
+  }
+  return formData;
+};
+
+const signupBusiness = async (signupData, certificateFile) => {
   const response = await apiRequest("/auth/business/signup", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(signupData),
+    body: buildBusinessFormData(signupData, certificateFile),
   });
 
   return response.data;

@@ -10,6 +10,7 @@ import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.policy.EventOperationDeadlinePolicy;
+import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrderStatus;
 import com.min.edu.payment.domain.PaymentRefund;
 import com.min.edu.payment.domain.PaymentStatus;
@@ -22,6 +23,7 @@ import com.min.edu.payment.repository.RefundPaymentProjection;
 import com.min.edu.payment.support.OrderAccessTokenProvider;
 import com.min.edu.payment.toss.TossPaymentClient;
 import com.min.edu.payment.toss.TossPaymentClientException;
+import com.min.edu.payment.toss.TossBankCodes;
 import com.min.edu.payment.toss.dto.TossCancelRequest;
 import com.min.edu.payment.toss.dto.TossCancelResponse;
 
@@ -71,7 +73,7 @@ public class RefundRequestService {
         }
 
         OffsetDateTime refundAttemptedAt = OffsetDateTime.now();
-        validateRefundableBeforeToss(payment, refundAttemptedAt);
+        validateRefundableBeforeToss(payment, request, refundAttemptedAt);
 
         PaymentRefund preparedRefund =
             prepareRefundAttempt(payment, memberId, request, refundAttemptedAt);
@@ -81,7 +83,7 @@ public class RefundRequestService {
 
         TossCancelResponse tossResponse;
         try {
-            tossResponse = cancelWithToss(payment, request);
+            tossResponse = cancelWithToss(preparedRefund.getId(), payment, request);
             validateTossCancelResponse(payment, tossResponse);
         } catch (RuntimeException exception) {
             if (shouldMarkRefundFailed(exception)) {
@@ -146,6 +148,7 @@ public class RefundRequestService {
 
     private void validateRefundableBeforeToss(
             RefundPaymentProjection payment,
+            CreateRefundRequest request,
             OffsetDateTime refundAttemptedAt) {
         if (!PaymentStatus.PAID.name().equals(payment.getPaymentStatus())
                 || !PaymentOrderStatus.PAID.name().equals(payment.getPaymentOrderStatus())
@@ -162,6 +165,16 @@ public class RefundRequestService {
                 payment.getTicketOrderId(),
                 ExchangeCodeStatus.REDEEMED)) {
             throw new BusinessException(GlobalErrorCode.USED_TICKET_CANNOT_BE_REFUNDED);
+        }
+
+        if (PaymentMethod.VIRTUAL_ACCOUNT.matchesTossMethod(payment.getPaymentMethod())
+                && request.getRefundReceiveAccount() == null) {
+            throw new BusinessException(GlobalErrorCode.REFUND_RECEIVE_ACCOUNT_REQUIRED);
+        }
+
+        if (PaymentMethod.VIRTUAL_ACCOUNT.matchesTossMethod(payment.getPaymentMethod())
+                && !TossBankCodes.isSupportedBankCode(request.getRefundReceiveAccount().getBank())) {
+            throw new BusinessException(GlobalErrorCode.REFUND_RECEIVE_ACCOUNT_INVALID);
         }
     }
 
@@ -192,21 +205,47 @@ public class RefundRequestService {
     }
 
     private TossCancelResponse cancelWithToss(
+            Long refundId,
             RefundPaymentProjection payment,
             CreateRefundRequest request) {
         try {
             return tossPaymentClient.cancel(new TossCancelRequest(
                 payment.getPaymentKey(),
                 request.getReason(),
-                toTossAmount(payment.getPaymentAmount())
+                toTossAmount(payment.getPaymentAmount()),
+                refundReceiveAccount(payment, request)
             ));
         } catch (TossPaymentClientException exception) {
             if (ALREADY_CANCELED_PAYMENT.equals(exception.getTossErrorCode())) {
                 return recoverAlreadyCanceledPayment(payment);
             }
 
+            logTossCancelRejected(refundId, payment, exception);
             throw new BusinessException(exception.getErrorCode());
         }
+    }
+
+    private TossCancelRequest.RefundReceiveAccount refundReceiveAccount(
+            RefundPaymentProjection payment,
+            CreateRefundRequest request) {
+        if (!PaymentMethod.VIRTUAL_ACCOUNT.matchesTossMethod(payment.getPaymentMethod())) {
+            return null;
+        }
+
+        CreateRefundRequest.RefundReceiveAccountRequest account =
+            request.getRefundReceiveAccount();
+        if (account == null) {
+            throw new BusinessException(GlobalErrorCode.REFUND_RECEIVE_ACCOUNT_REQUIRED);
+        }
+        if (!TossBankCodes.isSupportedBankCode(account.getBank())) {
+            throw new BusinessException(GlobalErrorCode.REFUND_RECEIVE_ACCOUNT_INVALID);
+        }
+
+        return new TossCancelRequest.RefundReceiveAccount(
+            account.getBank(),
+            account.getAccountNumber(),
+            account.getHolderName()
+        );
     }
 
     private TossCancelResponse recoverAlreadyCanceledPayment(RefundPaymentProjection payment) {
@@ -254,6 +293,19 @@ public class RefundRequestService {
             payment.getPaymentOrderId(),
             payment.getOrderNo(),
             exception
+        );
+    }
+
+    private void logTossCancelRejected(
+            Long refundId,
+            RefundPaymentProjection payment,
+            TossPaymentClientException exception) {
+        log.warn(
+            "Toss refund cancel rejected. stage=TOSS_CANCEL, refundId={}, paymentId={}, tossErrorCode={}, exceptionType={}",
+            refundId,
+            payment.getPaymentId(),
+            exception.getTossErrorCode(),
+            exception.getClass().getSimpleName()
         );
     }
 

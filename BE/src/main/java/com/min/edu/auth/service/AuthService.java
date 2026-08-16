@@ -14,6 +14,7 @@ import com.min.edu.member.repository.MemberRepository;
 import com.min.edu.organization.domain.Organization;
 import com.min.edu.organization.domain.OrganizationMember;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
+import com.min.edu.organization.domain.OrganizationStatus;
 import com.min.edu.organization.repository.OrganizationMemberRepository;
 import com.min.edu.organization.repository.OrganizationRepository;
 
@@ -77,6 +78,8 @@ public class AuthService {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
 
+        requireActiveOrganizationIfBusinessMember(memberId);
+
         String newAccessToken = jwtTokenProvider.createAccessToken(
             member.getId(),
             member.getPlatformRole()
@@ -105,6 +108,27 @@ public class AuthService {
 
         if (refreshTokenService.matches(memberId, refreshToken)) {
             refreshTokenService.delete(memberId);
+        }
+    }
+
+    private void requireActiveOrganizationIfBusinessMember(Long memberId) {
+        OrganizationMember organizationMember = organizationMemberRepository
+            .findFirstByMemberIdAndStatusOrderByIdAsc(
+                memberId,
+                OrganizationMemberStatus.ACTIVE
+            )
+            .orElse(null);
+
+        if (organizationMember == null) {
+            return;
+        }
+
+        Organization organization = organizationRepository
+            .findById(organizationMember.getOrganizationId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        if (organization.getStatus() != OrganizationStatus.ACTIVE) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
     }
 

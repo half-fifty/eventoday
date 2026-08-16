@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { paymentApi } from "../api/paymentApi.js";
 import TopNav from "../components/TopNav.jsx";
 import useAuth from "../hooks/useAuth.js";
+import { REFUND_BANK_GROUPS, REFUND_BANKS } from "../constants/refundBanks.js";
 
 const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
@@ -12,6 +13,7 @@ const formatMoney = (value) =>
 
 const statusLabel = {
   READY: "결제 대기",
+  WAITING_FOR_DEPOSIT: "입금 대기",
   DONE: "결제 완료",
   PAID: "결제 완료",
   FAILED: "결제 실패",
@@ -41,6 +43,7 @@ export default function PaymentDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reason, setReason] = useState("");
+  const [refundAccount, setRefundAccount] = useState({ bank: "", accountNumber: "", holderName: "" });
   const [submitting, setSubmitting] = useState(false);
   const [refundMessage, setRefundMessage] = useState("");
   const [refundError, setRefundError] = useState("");
@@ -80,6 +83,8 @@ export default function PaymentDetail() {
 
   const canShowRefundForm =
     payment?.paymentStatus === "PAID" && payment?.ticketOrderStatus === "CONFIRMED";
+  const isVirtualAccountPayment =
+    payment?.method === "VIRTUAL_ACCOUNT" || payment?.method === "가상계좌" || Boolean(payment?.virtualAccount);
 
   const submitRefund = async (event) => {
     event.preventDefault();
@@ -89,17 +94,31 @@ export default function PaymentDetail() {
       setRefundError("환불 사유를 입력해 주세요.");
       return;
     }
+    if (isVirtualAccountPayment && (!refundAccount.bank.trim() || !refundAccount.accountNumber.trim() || !refundAccount.holderName.trim())) {
+      setRefundError("가상계좌 환불을 받을 계좌 정보를 입력해 주세요.");
+      return;
+    }
     if (!window.confirm("해당 결제 전체를 환불 신청하시겠습니까?")) return;
 
     setSubmitting(true);
     setRefundError("");
     setRefundMessage("");
     try {
-      const result = await paymentApi.requestRefund(paymentId, { reason: trimmedReason }, orderAccessToken);
+      const result = await paymentApi.requestRefund(paymentId, {
+        reason: trimmedReason,
+        ...(isVirtualAccountPayment ? {
+          refundReceiveAccount: {
+            bank: refundAccount.bank.trim(),
+            accountNumber: refundAccount.accountNumber.trim(),
+            holderName: refundAccount.holderName.trim(),
+          },
+        } : {}),
+      }, orderAccessToken);
       const refund = result?.data || null;
       setCreatedRefund(refund);
       setRefundMessage("환불 신청이 처리되었습니다.");
       setReason("");
+      setRefundAccount({ bank: "", accountNumber: "", holderName: "" });
       await loadPayment();
     } catch (requestError) {
       setRefundError(requestError.message || "환불 신청에 실패했습니다.");
@@ -150,6 +169,16 @@ export default function PaymentDetail() {
                 <Info label="요청 시각" value={formatDateTime(payment.requestedAt)} />
                 <Info label="승인 시각" value={formatDateTime(payment.approvedAt)} />
               </div>
+              {payment.virtualAccount && (
+                <div className="mt-lg rounded-xl border border-primary/20 bg-primary/5 p-md">
+                  <p className="text-caption text-ink-muted">입금 계좌</p>
+                  <p className="mt-xs font-body-strong">{payment.virtualAccount.bankCode || "은행"} {payment.virtualAccount.accountNumber}</p>
+                  <p className="text-caption text-ink-muted">
+                    예금주 {payment.virtualAccount.customerName || "-"} · 입금액 {formatMoney(payment.virtualAccount.amount || payment.amount)}
+                  </p>
+                  <p className="text-caption text-ink-muted">입금기한 {formatDateTime(payment.virtualAccount.dueAt)}</p>
+                </div>
+              )}
             </div>
 
             <div className="rounded-2xl border border-hairline bg-white p-xl">
@@ -172,6 +201,50 @@ export default function PaymentDetail() {
                       placeholder="환불 사유를 입력해 주세요."
                     />
                   </label>
+                  {isVirtualAccountPayment && (
+                    <div className="grid gap-sm rounded-xl bg-surface-container p-md sm:grid-cols-3">
+                      <label className="block">
+                        <span className="text-caption text-ink-muted">은행</span>
+                        <select
+                          required
+                          value={refundAccount.bank}
+                          onChange={(event) => setRefundAccount((current) => ({ ...current, bank: event.target.value }))}
+                          className="mt-xs h-11 w-full rounded-lg border border-hairline px-md outline-none focus:border-primary-focus"
+                        >
+                          <option value="">은행을 선택해주세요</option>
+                          {REFUND_BANK_GROUPS.map((group) => (
+                            <optgroup key={group} label={group}>
+                              {REFUND_BANKS.filter((bank) => bank.group === group).map((bank) => (
+                                <option key={bank.code} value={bank.code}>
+                                  {bank.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-caption text-ink-muted">계좌번호</span>
+                        <input
+                          required
+                          maxLength={40}
+                          value={refundAccount.accountNumber}
+                          onChange={(event) => setRefundAccount((current) => ({ ...current, accountNumber: event.target.value }))}
+                          className="mt-xs h-11 w-full rounded-lg border border-hairline px-md outline-none focus:border-primary-focus"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-caption text-ink-muted">예금주</span>
+                        <input
+                          required
+                          maxLength={100}
+                          value={refundAccount.holderName}
+                          onChange={(event) => setRefundAccount((current) => ({ ...current, holderName: event.target.value }))}
+                          className="mt-xs h-11 w-full rounded-lg border border-hairline px-md outline-none focus:border-primary-focus"
+                        />
+                      </label>
+                    </div>
+                  )}
                   {refundError && <p className="rounded-lg bg-error/10 p-sm text-caption text-error">{refundError}</p>}
                   {refundMessage && (
                     <div className="rounded-lg bg-primary/10 p-sm text-caption text-primary">
