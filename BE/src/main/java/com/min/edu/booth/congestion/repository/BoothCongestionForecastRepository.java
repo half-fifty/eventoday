@@ -36,13 +36,14 @@ public interface BoothCongestionForecastRepository extends JpaRepository<BoothCo
     );
 
     // 최적 시간대 1개 (가장 빨리 오는 LOW 시간)
-    @Query("SELECT bcf FROM BoothCongestionForecast bcf " +
-            "WHERE bcf.booth.id = :boothId " +
-            "AND bcf.forecastDate = :forecastDate " +
-            "AND bcf.predictedCongestionLevel = 'LOW' " +
-            "ORDER BY bcf.forecastHour ASC LIMIT 1")
-    Optional<BoothCongestionForecast> findBestTimeSlot(
-            @Param("boothId") Long boothId,
-            @Param("forecastDate") LocalDate forecastDate
+    Optional<BoothCongestionForecast> findFirstByBooth_IdAndForecastDateAndPredictedCongestionLevelOrderByForecastHourAsc(
+            Long boothId,
+            LocalDate forecastDate,
+            CongestionLevel predictedCongestionLevel
     );
+
+    default Optional<BoothCongestionForecast> findBestTimeSlot(Long boothId, LocalDate forecastDate) {
+        return findFirstByBooth_IdAndForecastDateAndPredictedCongestionLevelOrderByForecastHourAsc(
+                boothId, forecastDate, CongestionLevel.LOW);
+    }
 }
