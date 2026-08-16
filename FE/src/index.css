@@ -276,3 +276,58 @@ body {
   .venue-side-right { padding-top: 0; }
   .venue-list-card { min-height: 72px; }
 }
+
+/* 리치 텍스트 본문(공지 상세 · 에디터 입력 영역) 공통 타이포그래피.
+   Tailwind typography 플러그인을 쓰지 않으므로 프로젝트 색상 토큰에 맞춰 직접 정의한다.
+   RichTextViewer와 RichTextEditor가 같은 규칙을 공유해 작성 화면과 조회 화면의 모양을 맞춘다. */
+/* word-break: break-word는 폐기된 값이라 표준 속성을 쓴다.
+   anywhere 대신 break-word를 쓰는 이유: anywhere는 min-content 계산에도 줄바꿈을 반영해
+   본문 안의 표 열 너비가 과하게 좁아질 수 있다. */
+.rich-text { color: #1b1b1d; font-size: 15px; line-height: 1.8; overflow-wrap: break-word; }
+.rich-text > :first-child { margin-top: 0; }
+.rich-text > :last-child { margin-bottom: 0; }
+.rich-text p { margin: 0 0 1em; }
+.rich-text h1 { margin: 1.4em 0 .6em; font-size: 24px; font-weight: 700; line-height: 1.4; }
+.rich-text h2 { margin: 1.3em 0 .5em; font-size: 20px; font-weight: 700; line-height: 1.4; }
+.rich-text h3 { margin: 1.2em 0 .5em; font-size: 17px; font-weight: 700; line-height: 1.5; }
+.rich-text h4 { margin: 1.1em 0 .4em; font-size: 15px; font-weight: 700; line-height: 1.5; }
+.rich-text strong, .rich-text b { font-weight: 700; }
+.rich-text em, .rich-text i { font-style: italic; }
+.rich-text u { text-decoration: underline; }
+.rich-text s { text-decoration: line-through; }
+.rich-text ul, .rich-text ol { margin: 0 0 1em; padding-left: 1.4em; }
+.rich-text ul { list-style: disc; }
+.rich-text ol { list-style: decimal; }
+.rich-text li { margin: .25em 0; }
+.rich-text li > p { margin: 0; }
+.rich-text a { color: #0071e3; text-decoration: underline; }
+.rich-text blockquote { margin: 1em 0; padding: .2em 0 .2em 1em; border-left: 3px solid #e0e0e0; color: #7a7a7a; }
+.rich-text hr { margin: 1.5em 0; border: 0; border-top: 1px solid #e0e0e0; }
+.rich-text code { padding: .1em .35em; border-radius: 4px; background: #f0edef; font-size: .9em; }
+.rich-text pre { margin: 1em 0; padding: 1em; overflow-x: auto; border-radius: 8px; background: #f0edef; }
+.rich-text pre code { padding: 0; background: none; }
+/* Tailwind Preflight가 img를 display:block으로 바꾸는데, 블록 요소는 부모 문단의
+   text-align을 무시한다. 이미지 정렬이 먹으려면 인라인 계열로 되돌려야 한다. */
+.rich-text img { display: inline-block; vertical-align: top; max-width: 100%; height: auto; margin: .5em 0; border-radius: 8px; }
+/* 표는 모바일에서 넘칠 수 있어 가로 스크롤을 허용한다 */
+.rich-text table { display: block; width: 100%; max-width: 100%; margin: 1em 0; overflow-x: auto; border-collapse: collapse; }
+.rich-text th, .rich-text td { min-width: 80px; padding: .5em .75em; border: 1px solid #e0e0e0; text-align: left; vertical-align: top; }
+.rich-text th { background: #fafafc; font-weight: 700; }
+
+/* 리치 텍스트 에디터(Tiptap/ProseMirror) 입력 영역.
+   본문에는 위의 .rich-text 규칙이 그대로 적용되고, 여기서는 편집에만 필요한 것을 더한다. */
+.ProseMirror { outline: none; }
+.ProseMirror table { display: table; table-layout: fixed; }
+.ProseMirror table td, .ProseMirror table th { position: relative; }
+/* 선택된 셀 표시 */
+.ProseMirror .selectedCell::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; background: rgba(0, 113, 227, 0.12);
+}
+/* 열 너비 조절 손잡이 */
+.ProseMirror .column-resize-handle {
+  position: absolute; top: 0; right: -2px; bottom: -2px; width: 4px;
+  background: #0071e3; pointer-events: none;
+}
+.ProseMirror.resize-cursor { cursor: col-resize; }
+/* 이미지·표를 노드째 선택했을 때 */
+.ProseMirror .ProseMirror-selectednode { outline: 2px solid #0071e3; }

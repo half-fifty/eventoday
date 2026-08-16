@@ -31,6 +31,8 @@ dependencies {
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6'
     implementation 'com.google.zxing:core:3.5.3'
     implementation 'com.google.zxing:javase:3.5.3'
+    // 공지 본문 HTML 정제(XSS 방지)용. HtmlSanitizer에서 사용한다.
+    implementation 'org.jsoup:jsoup:1.23.1'
     implementation 'nl.martijndwars:web-push:5.1.1' //웹푸시
     implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
