@@ -38,14 +38,29 @@ public final class HtmlSanitizer {
     private static final Pattern SAFE_STYLE_VALUE = Pattern.compile("^[a-zA-Z0-9.%#\\- ]+$");
 
     /**
-     * href·src에 허용할 URL 형식.
+     * 링크(href)에 허용할 URL 형식.
      *
      * 첨부 이미지 URL이 /api/v1/files/{id}/download 같은 루트 상대 경로라서 상대 경로를 허용해야 하는데,
      * Jsoup의 프로토콜 제한(addProtocols)은 상대 경로를 무조건 제거한다. 그래서 직접 검사한다.
      * 시작 문자열을 고정해 javascript: · data: 와 //evil.com 형태의 프로토콜 상대 URL을 막는다.
      */
-    private static final Pattern SAFE_URL =
+    private static final Pattern SAFE_LINK_URL =
             Pattern.compile("^(?:https?://|mailto:|/(?!/))\\S*$", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * 이미지(src)에 허용할 URL 형식 — 이 서비스의 파일 다운로드 경로만.
+     *
+     * 링크와 달리 이미지는 페이지를 여는 순간 브라우저가 자동으로 요청을 보낸다.
+     * 외부 주소를 허용하면 공지를 읽는 방문자의 IP·User-Agent가 제3자 서버로 새어 나간다.
+     * 에디터도 업로드한 파일만 삽입하므로 실제 사용에는 제약이 없다.
+     *
+     * 앞부분을 느슨하게 둔 이유: 배포 환경에 따라 API 주소가 /api 같은 상대 경로일 수도,
+     * https://호스트/api 같은 절대 주소일 수도 있어 양쪽을 모두 받아야 한다.
+     * 외부 CDN 이미지가 필요해지면 여기에 도메인 허용 목록을 추가한다.
+     */
+    private static final Pattern SAFE_IMAGE_URL =
+            Pattern.compile("^(?:https?://[^/\\s]+)?(?:/\\S*)?/v1/files/\\d+/download$",
+                    Pattern.CASE_INSENSITIVE);
 
     private static final Safelist SAFELIST = buildSafelist();
 
@@ -99,17 +114,17 @@ public final class HtmlSanitizer {
     }
 
     /**
-     * href·src 값을 검사한다.
+     * href·src 값을 검사한다. 이미지는 링크보다 엄격한 기준을 쓴다 (SAFE_IMAGE_URL 주석 참고).
      * 링크는 주소만 지우고 글자는 남기지만, 주소가 없는 이미지는 의미가 없어 요소째로 제거한다.
      */
     private static void filterUrlAttributes(Document document) {
         for (Element anchor : document.select("a[href]")) {
-            if (!SAFE_URL.matcher(anchor.attr("href")).matches()) {
+            if (!SAFE_LINK_URL.matcher(anchor.attr("href")).matches()) {
                 anchor.removeAttr("href");
             }
         }
         for (Element image : document.select("img")) {
-            if (!SAFE_URL.matcher(image.attr("src")).matches()) {
+            if (!SAFE_IMAGE_URL.matcher(image.attr("src")).matches()) {
                 image.remove();
             }
         }

@@ -14,12 +14,26 @@ import { platformNoticeApi } from "../api/platformNoticeApi.js";
 
 const PAGE_SIZE = 15;
 
+// 서버가 허용하는 최대 페이지 번호 (PlatformNoticeService.MAX_PAGE_NUMBER와 맞춘다)
+const MAX_PAGE = 10000;
+
 const formatDate = (value) =>
   value ? new Date(value).toLocaleDateString("ko-KR", { dateStyle: "medium" }) : "";
 
+/**
+ * 주소창의 page 값을 0 이상 정수로 보정한다.
+ * 사용자가 주소를 직접 고칠 수 있어 음수·소수·문자열이 들어올 수 있고,
+ * 그대로 보내면 서버가 400을 돌려줘 오류 화면이 뜬다.
+ */
+const toPageNumber = (rawPage) => {
+  const parsed = Number(rawPage);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(Math.max(Math.trunc(parsed), 0), MAX_PAGE);
+};
+
 export default function Notices() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const page = Number(searchParams.get("page")) || 0;
+  const page = toPageNumber(searchParams.get("page"));
   const keyword = searchParams.get("keyword") || "";
 
   // 입력 중인 검색어는 확정(제출) 전까지 URL에 반영하지 않는다

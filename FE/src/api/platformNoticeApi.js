@@ -23,7 +23,8 @@ const toQuery = (params = {}) => {
 export const platformNoticeApi = {
   // params: { page, size, keyword } — 생략하면 서버 기본값(0페이지 20건)
   list: (params) => apiRequest(`/platform-notices${toQuery(params)}`),
-  detail: (noticeId) => apiRequest(`/platform-notices/${noticeId}`),
+  // noticeId는 주소창에서 온 값일 수 있어 경로에 넣기 전에 인코딩한다
+  detail: (noticeId) => apiRequest(`/platform-notices/${encodeURIComponent(noticeId)}`),
   create: (data) => apiRequest("/v1/admin/platform/notices", json("POST", data)),
   update: (noticeId, data) =>
     apiRequest(`/v1/admin/platform/notices/${noticeId}`, json("PATCH", data)),

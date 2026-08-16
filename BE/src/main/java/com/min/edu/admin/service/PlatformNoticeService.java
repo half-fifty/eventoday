@@ -12,7 +12,6 @@ import java.time.OffsetDateTime;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,9 +34,9 @@ public class PlatformNoticeService {
     // 공개 API이므로 페이지 크기를 제한한다 (EventContentService.listAllContents와 동일한 이유)
     private static final int MAX_PAGE_SIZE = 100;
 
-    /** 상단 고정 우선, 최신순 — V08121040 인덱스와 동일한 순서 */
-    private static final Sort NOTICE_SORT = Sort.by(
-            Sort.Order.desc("pinned"), Sort.Order.desc("publishedAt"), Sort.Order.desc("id"));
+    // 깊은 페이지는 DB가 앞의 행을 전부 건너뛰며 정렬해야 해서 비용이 크다.
+    // 공개 API라 큰 page 값을 반복 호출당할 수 있으므로 상한을 둔다.
+    private static final int MAX_PAGE_NUMBER = 10_000;
 
     private final PlatformNoticeRepository noticeRepository;
     private final PlatformAuditService auditService;
@@ -54,23 +53,21 @@ public class PlatformNoticeService {
      * 상단 고정 공지는 정렬 기준상 첫 페이지 위쪽에 모인다.
      * 검색어가 있으면 제목·본문에서 부분 일치로 찾는다.
      *
-     * @param page    페이지 번호 (0부터)
+     * @param page    페이지 번호 (0 이상 MAX_PAGE_NUMBER 이하)
      * @param size    페이지 크기 (최대 MAX_PAGE_SIZE)
      * @param keyword 검색어 (null·공백이면 전체)
      */
     public PlatformAdminDtos.NoticePageResponse notices(int page, int size, String keyword) {
         // 페이지 파라미터 검증 (EventContentService.listAllContents 패턴)
-        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+        if (page < 0 || page > MAX_PAGE_NUMBER || size < 1 || size > MAX_PAGE_SIZE) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
-        Pageable pageable = PageRequest.of(page, size, NOTICE_SORT);
+        // 정렬은 쿼리에 직접 적혀 있으므로 Pageable에 Sort를 담지 않는다 (PlatformNoticeRepository 참고)
+        Pageable pageable = PageRequest.of(page, size);
         String trimmedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
 
-        Page<PlatformNotice> result = (trimmedKeyword == null)
-            ? noticeRepository.findAllBy(pageable)
-            : noticeRepository.findByTitleContainingIgnoreCaseOrContentContainingIgnoreCase(
-                trimmedKeyword, trimmedKeyword, pageable);
+        Page<PlatformNotice> result = noticeRepository.searchNotices(trimmedKeyword, pageable);
 
         return new PlatformAdminDtos.NoticePageResponse(
             result.getContent().stream().map(this::toDto).toList(),

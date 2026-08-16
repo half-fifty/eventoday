@@ -13,6 +13,10 @@ import { platformNoticeApi } from "../api/platformNoticeApi.js";
 const formatDate = (value) =>
   value ? new Date(value).toLocaleDateString("ko-KR", { dateStyle: "long" }) : "";
 
+// 주소를 직접 고쳐 /notices/abc 로 들어올 수 있다.
+// 서버로 보내면 400 오류 화면이 뜨므로, 숫자가 아니면 요청하지 않고 없는 공지로 처리한다.
+const isValidNoticeId = (value) => /^\d+$/.test(value || "");
+
 export default function NoticeDetail() {
   const { noticeId } = useParams();
   const [searchParams] = useSearchParams();
@@ -27,6 +31,14 @@ export default function NoticeDetail() {
 
   useEffect(() => {
     let cancelled = false;
+
+    if (!isValidNoticeId(noticeId)) {
+      setNotice(null);
+      setError("존재하지 않거나 삭제된 공지사항입니다.");
+      setLoading(false);
+      return undefined;
+    }
+
     setLoading(true);
     platformNoticeApi.detail(noticeId)
       .then((response) => {

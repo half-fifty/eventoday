@@ -6,12 +6,14 @@ import { eventApi } from "../api/eventApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
 import { listContents } from "../api/contentApi.js";
 import { listPublicVenueMaps } from "../api/venueMapApi.js";
+import { getRecommendedBooths, listPublicBooths } from "../api/boothApi.js";
 import Footer from "../components/Footer.jsx";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
 import FileDownloadLink from "../components/FileDownloadLink.jsx";
 import VenueMapPins from "../components/VenueMapPins.jsx";
 import BoothPinPopup from "../components/BoothPinPopup.jsx";
+import BoothRecommendationMessage from "../components/BoothRecommendationMessage.jsx";
 import useAuth from "../hooks/useAuth.js";
 
 const formatDateTime = (value) => value
@@ -85,6 +87,12 @@ export default function EventDetail() {
   const [venueMapError, setVenueMapError] = useState("");
   const [selectedMapBooth, setSelectedMapBooth] = useState(null);
 
+  // 부스 AI 추천 데이터
+  const [recommendedBooths, setRecommendedBooths] = useState(null);
+  const [loadingRecommendation, setLoadingRecommendation] = useState(false);
+  const [recommendationError, setRecommendationError] = useState("");
+  const [boothsMap, setBoothsMap] = useState({});
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -131,6 +139,46 @@ export default function EventDetail() {
         }
       })
       .finally(() => { if (!cancelled) setLoadingVenueMaps(false); });
+    return () => { cancelled = true; };
+  }, [eventId, event?.venueMapEnabled]);
+
+  // 부스 AI 추천 데이터 로드
+  useEffect(() => {
+    if (!eventId || !event?.venueMapEnabled) return;
+    let cancelled = false;
+    setLoadingRecommendation(true);
+    setRecommendationError("");
+    setRecommendedBooths(null);
+    
+    Promise.allSettled([
+      getRecommendedBooths(eventId),
+      listPublicBooths(eventId, { page: 0, size: 1000 })
+    ])
+      .then(([recommendationResult, boothsResult]) => {
+        if (cancelled) return;
+
+        if (boothsResult.status === "fulfilled") {
+          // 부스 정보를 id 맵으로 변환
+          const boothsData = boothsResult.value;
+          const booths = boothsData?.content ?? boothsData ?? [];
+          const boothMap = {};
+          booths.forEach(booth => {
+            boothMap[booth.id] = booth;
+          });
+          setBoothsMap(boothMap);
+        }
+
+        if (recommendationResult.status === "fulfilled") {
+          // ApiResponse 래핑 확인 후 처리
+          const response = recommendationResult.value?.data ?? recommendationResult.value;
+          setRecommendedBooths(response);
+        } else {
+          const requestError = recommendationResult.reason;
+          setRecommendationError(requestError instanceof ApiError ? requestError.message : "추천 부스를 불러오지 못했습니다.");
+        }
+      })
+      .finally(() => { if (!cancelled) setLoadingRecommendation(false); });
+    
     return () => { cancelled = true; };
   }, [eventId, event?.venueMapEnabled]);
 
@@ -324,15 +372,59 @@ export default function EventDetail() {
                     <p className="text-caption text-ink-muted">등록된 평면도가 없습니다.</p>
                   )}
                   {!loadingVenueMaps && venueMaps.length > 0 && (
-                    <div className="space-y-lg">
-                      {venueMaps.map((venueMap) => (
-                        <div key={venueMap.id}>
-                          <h3 className="font-body-strong text-body mb-sm">{venueMap.floorName}</h3>
-                          <div className="bg-surface-pearl border border-hairline rounded-2xl p-lg">
-                            <VenueMapPins venueMap={venueMap} onPinClick={setSelectedMapBooth} />
-                          </div>
+                    <div className="space-y-xl">
+                      {/* AI 추천 메시지 - 상단에 한 번만 표시 */}
+                      {!loadingRecommendation && recommendedBooths && (
+                        <div>
+                          <BoothRecommendationMessage recommendation={recommendedBooths} boothsMap={boothsMap} />
                         </div>
-                      ))}
+                      )}
+                      {loadingRecommendation && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-lg text-center">
+                          <p className="text-caption text-amber-900">추천 부스를 분석하는 중입니다...</p>
+                        </div>
+                      )}
+                      {!loadingRecommendation && recommendationError && (
+                        <div className="bg-error/10 border border-error/20 rounded-2xl p-lg text-center">
+                          <p className="text-caption text-error">{recommendationError}</p>
+                        </div>
+                      )}
+                      
+                      {/* 평면도 레이아웃 */}
+                      <div className="space-y-lg">
+                        {venueMaps.map((venueMap) => {
+                          // 해당 층에 있는 추천 부스 필터링
+                          const floorRecommendedIds = recommendedBooths?.recommendedBooths
+                            ?.filter(rb => venueMap.positions?.some(p => p.boothId === rb.boothId))
+                            ?.map(b => b.boothId) ?? [];
+                          
+                          return (
+                            <div key={venueMap.id}>
+                              <div className="flex items-center justify-between mb-sm">
+                                <h3 className="font-body-strong text-body">{venueMap.floorName}</h3>
+                                {floorRecommendedIds.length > 0 && (
+                                  <span className="text-[11px] bg-amber-100 text-amber-800 px-2 py-1 rounded-full font-body-strong">
+                                    추천 부스 {floorRecommendedIds.length}개
+                                  </span>
+                                )}
+                              </div>
+                              <div className="bg-surface-pearl border border-hairline rounded-2xl p-lg relative overflow-hidden">
+                                <VenueMapPins 
+                                  venueMap={venueMap} 
+                                  onPinClick={setSelectedMapBooth}
+                                  pinClassName={(position) => {
+                                    const isRecommended = floorRecommendedIds.includes(position.boothId);
+                                    if (isRecommended) {
+                                      return "bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-300 hover:to-orange-300 ring-2 ring-orange-300 ring-offset-1";
+                                    }
+                                    return "bg-primary hover:bg-primary-focus";
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>

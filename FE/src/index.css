@@ -280,7 +280,10 @@ body {
 /* 리치 텍스트 본문(공지 상세 · 에디터 입력 영역) 공통 타이포그래피.
    Tailwind typography 플러그인을 쓰지 않으므로 프로젝트 색상 토큰에 맞춰 직접 정의한다.
    RichTextViewer와 RichTextEditor가 같은 규칙을 공유해 작성 화면과 조회 화면의 모양을 맞춘다. */
-.rich-text { color: #1b1b1d; font-size: 15px; line-height: 1.8; word-break: break-word; }
+/* word-break: break-word는 폐기된 값이라 표준 속성을 쓴다.
+   anywhere 대신 break-word를 쓰는 이유: anywhere는 min-content 계산에도 줄바꿈을 반영해
+   본문 안의 표 열 너비가 과하게 좁아질 수 있다. */
+.rich-text { color: #1b1b1d; font-size: 15px; line-height: 1.8; overflow-wrap: break-word; }
 .rich-text > :first-child { margin-top: 0; }
 .rich-text > :last-child { margin-bottom: 0; }
 .rich-text p { margin: 0 0 1em; }

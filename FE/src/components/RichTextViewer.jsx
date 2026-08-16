@@ -28,8 +28,11 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   }
 });
 
-// 태그가 하나라도 있으면 HTML로 취급한다
-const looksLikeHtml = (value) => /<\/?[a-z][\s\S]*>/i.test(value);
+// 허용 목록에 있는 태그가 하나라도 있으면 HTML로 취급한다.
+// "<"로 시작하는 것만 보면 평문 공지에 섞인 <admin@example.com> 같은 문자열을 HTML로 오판하고,
+// DOMPurify가 이를 허용되지 않은 태그로 보고 지워 화면에서 주소가 통째로 사라진다.
+const HTML_TAG_PATTERN = new RegExp(`</?(?:${ALLOWED_TAGS.join("|")})(?:\\s[^>]*)?/?>`, "i");
+const looksLikeHtml = (value) => HTML_TAG_PATTERN.test(value);
 
 export default function RichTextViewer({ html, className = "" }) {
   const isHtml = useMemo(() => looksLikeHtml(html || ""), [html]);
