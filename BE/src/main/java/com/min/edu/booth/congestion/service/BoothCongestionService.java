@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -30,8 +31,14 @@ public class BoothCongestionService {
      * 특정 부스의 최신 혼잡도 조회
      */
     public BoothCongestion getLatestCongestion(Long boothId) {
-        return boothCongestionRepository.findLatestByBoothId(boothId)
-                .orElseThrow(() -> new BusinessException(GlobalErrorCode.BOOTH_CONGESTION_NOT_FOUND));
+        Optional<BoothCongestion> latestCongestion = boothCongestionRepository.findLatestByBoothId(boothId);
+        if (latestCongestion.isPresent()) {
+            return latestCongestion.get();
+        }
+        if (!boothRepository.existsById(boothId)) {
+            throw new BusinessException(GlobalErrorCode.BOOTH_NOT_FOUND);
+        }
+        throw new BusinessException(GlobalErrorCode.BOOTH_CONGESTION_NOT_FOUND);
     }
 
     /**
@@ -64,6 +71,14 @@ public class BoothCongestionService {
             Integer waitTime,
             java.math.BigDecimal capacityRate
     ) {
+        if (level == null
+                || (waitTime != null && waitTime < 0)
+                || (capacityRate != null
+                    && (capacityRate.signum() < 0
+                        || capacityRate.compareTo(java.math.BigDecimal.valueOf(100)) > 0))) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+
         Booth booth = boothRepository.findById(boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.BOOTH_NOT_FOUND));
 

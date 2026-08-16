@@ -161,7 +161,7 @@ export default function EventDetail() {
         const booths = boothsData?.content ?? boothsData ?? [];
         const boothMap = {};
         booths.forEach(booth => {
-          boothMap[booth.boothId] = booth;
+          boothMap[booth.id] = booth;
         });
         setBoothsMap(boothMap);
         
@@ -379,6 +379,11 @@ export default function EventDetail() {
                       {loadingRecommendation && (
                         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-lg text-center">
                           <p className="text-caption text-amber-900">추천 부스를 분석하는 중입니다...</p>
+                        </div>
+                      )}
+                      {!loadingRecommendation && recommendationError && (
+                        <div className="bg-error/10 border border-error/20 rounded-2xl p-lg text-center">
+                          <p className="text-caption text-error">{recommendationError}</p>
                         </div>
                       )}
                       

@@ -29,6 +29,7 @@ public class BoothCongestionForecastService {
      * 부스의 시간대별 혼잡도 예측 조회
      */
     public List<BoothCongestionForecast> getForecastByDate(Long boothId, LocalDate forecastDate) {
+        requireBoothExists(boothId);
         return boothCongestionForecastRepository.findByBoothIdAndForecastDate(boothId, forecastDate);
     }
 
@@ -36,6 +37,7 @@ public class BoothCongestionForecastService {
      * 부스의 한산한 시간대 조회 (LOW 혼잡도)
      */
     public List<BoothCongestionForecast> getBestTimeSlots(Long boothId, LocalDate forecastDate) {
+        requireBoothExists(boothId);
         return boothCongestionForecastRepository.findBestTimeSlots(boothId, forecastDate);
     }
 
@@ -43,7 +45,14 @@ public class BoothCongestionForecastService {
      * 부스의 최적 시간대 1개 조회
      */
     public Optional<BoothCongestionForecast> getBestTimeSlot(Long boothId, LocalDate forecastDate) {
+        requireBoothExists(boothId);
         return boothCongestionForecastRepository.findBestTimeSlot(boothId, forecastDate);
+    }
+
+    private void requireBoothExists(Long boothId) {
+        if (!boothRepository.existsById(boothId)) {
+            throw new BusinessException(GlobalErrorCode.BOOTH_NOT_FOUND);
+        }
     }
 
     /**
@@ -79,6 +88,14 @@ public class BoothCongestionForecastService {
      */
     @Transactional
     public void saveForecastBatch(Long boothId, LocalDate forecastDate, List<BoothCongestionForecast> forecasts) {
+        requireBoothExists(boothId);
+
+        boolean mismatched = forecasts.stream().anyMatch(forecast ->
+                !boothId.equals(forecast.getBooth().getId()) || !forecastDate.equals(forecast.getForecastDate()));
+        if (mismatched) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+
         boothCongestionForecastRepository.saveAll(forecasts);
     }
 }

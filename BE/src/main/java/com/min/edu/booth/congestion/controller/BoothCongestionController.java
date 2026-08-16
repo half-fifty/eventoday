@@ -30,7 +30,7 @@ public class BoothCongestionController {
 
     /**
      * 이벤트의 인기 부스 조회 (혼잡도 높은 순서, TOP 10)
-     * GET /events/{eventId}/popular-booths
+     * GET /booths/events/{eventId}/popular-booths
      */
     @GetMapping("/events/{eventId}/popular-booths")
     public ResponseEntity<List<PopularBoothResponse>> getPopularBooths(@PathVariable Long eventId) {
@@ -48,7 +48,7 @@ public class BoothCongestionController {
 
     /**
      * 이벤트의 한산한 부스 조회 (혼잡도 낮은 순서, TOP 10)
-     * GET /events/{eventId}/uncrowded-booths
+     * GET /booths/events/{eventId}/uncrowded-booths
      */
     @GetMapping("/events/{eventId}/uncrowded-booths")
     public ResponseEntity<List<UncrowdedBoothResponse>> getUncrowdedBooths(@PathVariable Long eventId) {

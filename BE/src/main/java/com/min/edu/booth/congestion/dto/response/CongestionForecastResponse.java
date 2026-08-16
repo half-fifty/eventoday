@@ -37,7 +37,7 @@ public class CongestionForecastResponse {
         return switch(forecast.getPredictedCongestionLevel()) {
             case LOW -> String.format("%d시 방문 추천! 🎯", forecast.getForecastHour());
             case MEDIUM -> String.format("%d시 중간 혼잡", forecast.getForecastHour());
-            case HIGH -> String.format("%d시는 혼합니다", forecast.getForecastHour());
+            case HIGH -> String.format("%d시는 혼잡합니다", forecast.getForecastHour());
         };
     }
 }
