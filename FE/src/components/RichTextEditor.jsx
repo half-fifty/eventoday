@@ -39,7 +39,9 @@ const EXTENSIONS = [
   TextStyle,
   FontSize,
   TextAlign.configure({ types: ["heading", "paragraph"] }),
-  Image,
+  // 이미지를 문단 안에 두어 문단 정렬(가운데·오른쪽)이 이미지에도 적용되게 한다.
+  // 기본값(블록 노드)으로 두면 이미지가 문단 밖에 놓여 정렬 버튼의 영향을 받지 않는다.
+  Image.configure({ inline: true }),
   TableKit.configure({ table: { resizable: true } }),
 ];
 
