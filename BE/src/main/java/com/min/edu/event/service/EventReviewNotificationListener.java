@@ -6,7 +6,7 @@ import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventOrganizationRepository;
 import com.min.edu.notification.domain.NotificationType;
 import com.min.edu.notification.dto.NotificationEventDto;
-import com.min.edu.notification.producer.NotificationProducer;
+import com.min.edu.notification.outbox.service.OutboxEventWriter;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
 import java.util.List;
@@ -21,7 +21,7 @@ public class EventReviewNotificationListener {
     private static final List<OrganizationRole> RECIPIENT_ROLES = List.of(OrganizationRole.OWNER, OrganizationRole.MANAGER);
     private final EventOrganizationMemberRepository memberRepository;
     private final EventOrganizationRepository organizationRepository;
-    private final NotificationProducer notificationProducer;
+    private final OutboxEventWriter outboxEventWriter;
     private final EmailSender emailSender;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -43,9 +43,9 @@ public class EventReviewNotificationListener {
 
     private void sendSiteNotification(Long memberId, NotificationType type, Long eventId, Long organizationId,
             String title, String content) {
-        try { notificationProducer.send(NotificationEventDto.create(memberId, type,
+        try { outboxEventWriter.write(NotificationEventDto.create(memberId, type,
                 "EVR:" + organizationId, eventId, title, content)); }
-        catch (RuntimeException exception) { log.error("행사 심사 결과 사이트 알림 발송 실패 eventId={}, memberId={}", eventId, memberId, exception); }
+        catch (RuntimeException exception) { log.error("행사 심사 결과 사이트 알림 기록 실패 eventId={}, memberId={}", eventId, memberId, exception); }
     }
 
     private String escapeHtml(String value) {

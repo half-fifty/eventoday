@@ -395,6 +395,62 @@ class PaymentConfirmServiceTest {
     }
 
     @Test
+    void confirm_acceptsCardOrderWithTossKoreanCardMethod() {
+        ConfirmPaymentRequest request = request();
+        PaymentOrder paymentOrder = cardOrder();
+        TossConfirmResponse tossResponse = tossDoneResponse("\uCE74\uB4DC");
+
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+        given(tossPaymentClient.confirm(any())).willReturn(tossResponse);
+        given(paymentFinalizer.finalizePayment(request, tossResponse)).willReturn(response());
+
+        paymentConfirmService.confirm(10L, null, request);
+
+        verify(paymentFinalizer).finalizePayment(request, tossResponse);
+        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
+    }
+
+    @Test
+    void confirm_acceptsCardOrderWithTossEasyPayMethod() {
+        ConfirmPaymentRequest request = request();
+        PaymentOrder paymentOrder = cardOrder();
+        TossConfirmResponse tossResponse = tossDoneResponse("\uAC04\uD3B8\uACB0\uC81C");
+
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+        given(tossPaymentClient.confirm(any())).willReturn(tossResponse);
+        given(paymentFinalizer.finalizePayment(request, tossResponse)).willReturn(response());
+
+        paymentConfirmService.confirm(10L, null, request);
+
+        verify(paymentFinalizer).finalizePayment(request, tossResponse);
+        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
+    }
+
+    @Test
+    void confirm_rejectsCardOrderWithTossVirtualAccountMethod() {
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(cardOrder()));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+        given(tossPaymentClient.confirm(any()))
+            .willReturn(tossDoneResponse("\uAC00\uC0C1\uACC4\uC88C"));
+
+        assertBusinessException(
+            () -> paymentConfirmService.confirm(10L, null, request()),
+            GlobalErrorCode.PAYMENT_METHOD_MISMATCH
+        );
+
+        verify(paymentFinalizer, never()).finalizePayment(any(), any());
+        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
+    }
+
+    @Test
     void confirm_acceptsWaitingVirtualAccountTossResponseWithKoreanMethodAndNullApprovedAt() {
         ConfirmPaymentRequest request = request();
         PaymentOrder paymentOrder = virtualAccountOrder();
@@ -453,6 +509,31 @@ class PaymentConfirmServiceTest {
         );
 
         verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
+    }
+
+    @Test
+    void confirm_rejectsVirtualAccountTossResponseWithEasyPayMethod() {
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(virtualAccountOrder()));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+        given(tossPaymentClient.confirm(any())).willReturn(new TossConfirmResponse(
+            "payment-key",
+            "ORDER-1",
+            BigDecimal.valueOf(10000),
+            "DONE",
+            "\uAC04\uD3B8\uACB0\uC81C",
+            OffsetDateTime.now(),
+            OffsetDateTime.now()
+        ));
+
+        assertBusinessException(
+            () -> paymentConfirmService.confirm(10L, null, request()),
+            GlobalErrorCode.PAYMENT_METHOD_MISMATCH
+        );
+
+        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
+        verify(paymentFinalizer, never()).finalizePayment(any(), any());
     }
 
     @Test
@@ -528,6 +609,21 @@ class PaymentConfirmServiceTest {
         return order(PaymentOrderStatus.PENDING, BigDecimal.valueOf(10000), null);
     }
 
+    private PaymentOrder cardOrder() {
+        return PaymentOrder.builder()
+            .id(1L)
+            .orderNo("ORDER-1")
+            .buyerMemberId(10L)
+            .orderType(PaymentOrderType.EVENT_TICKET)
+            .totalAmount(BigDecimal.valueOf(10000))
+            .requestedPaymentMethod(PaymentMethod.CARD)
+            .status(PaymentOrderStatus.PENDING.name())
+            .expiresAt(OffsetDateTime.now().plusMinutes(10))
+            .createdAt(OffsetDateTime.now())
+            .updatedAt(OffsetDateTime.now())
+            .build();
+    }
+
     private PaymentOrder expiredOrder() {
         return PaymentOrder.builder()
             .id(1L)
@@ -572,6 +668,18 @@ class PaymentConfirmServiceTest {
             .createdAt(OffsetDateTime.now())
             .updatedAt(OffsetDateTime.now())
             .build();
+    }
+
+    private TossConfirmResponse tossDoneResponse(String method) {
+        return new TossConfirmResponse(
+            "payment-key",
+            "ORDER-1",
+            BigDecimal.valueOf(10000),
+            "DONE",
+            method,
+            OffsetDateTime.now(),
+            OffsetDateTime.now()
+        );
     }
 
     private TicketOrder pendingTicketOrder() {

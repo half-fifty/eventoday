@@ -25,7 +25,9 @@ public enum PaymentMethod {
         }
 
         return switch (this) {
-            case CARD -> "\uCE74\uB4DC".equals(normalized);
+            case CARD -> "\uCE74\uB4DC".equals(normalized)
+                || "EASY_PAY".equals(normalized)
+                || "\uAC04\uD3B8\uACB0\uC81C".equals(normalized);
             case VIRTUAL_ACCOUNT -> "\uAC00\uC0C1\uACC4\uC88C".equals(normalized);
         };
     }
