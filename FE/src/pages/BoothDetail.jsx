@@ -195,6 +195,7 @@ export default function BoothDetail() {
     if (!boothId) return;
     setReviews([]);
     setReviewsHasMore(false);
+    setReviewSummary(null);
     loadReviews(0);
     loadReviewSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
