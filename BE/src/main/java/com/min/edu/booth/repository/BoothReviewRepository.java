@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -70,4 +71,26 @@ public interface BoothReviewRepository extends JpaRepository<BoothReview, Long> 
      */
     @Query("SELECT br.boothId, COUNT(br.id) FROM BoothReview br WHERE br.boothId IN :boothIds GROUP BY br.boothId")
     List<Object[]> findReviewCountsByBoothIds(@Param("boothIds") Collection<Long> boothIds);
+
+    // ===== 리뷰 AI 요약용 =====
+
+    String COMMENTED_REVIEW_CONDITION = "br.boothId = :boothId AND br.comment IS NOT NULL AND TRIM(br.comment) <> ''";
+
+    /**
+     * 코멘트가 실제로 채워진(공백 제외) 리뷰 개수 — 요약 생성/재생성 여부 판단 기준
+     */
+    @Query("SELECT COUNT(br.id) FROM BoothReview br WHERE " + COMMENTED_REVIEW_CONDITION)
+    long countByBoothIdAndCommentIsNotBlank(@Param("boothId") Long boothId);
+
+    /**
+     * 코멘트가 채워진 최신 리뷰 목록 (요약 프롬프트 입력용, Pageable로 개수 제한)
+     */
+    @Query("SELECT br FROM BoothReview br WHERE " + COMMENTED_REVIEW_CONDITION + " ORDER BY br.createdAt DESC")
+    List<BoothReview> findRecentCommentedReviews(@Param("boothId") Long boothId, Pageable pageable);
+
+    /**
+     * 코멘트가 채워진 리뷰의 최신 수정 시각 — 리뷰 수정/삭제+추가처럼 개수가 유지되는 변경까지 요약 캐시 무효화 기준에 반영하기 위함
+     */
+    @Query("SELECT MAX(br.updatedAt) FROM BoothReview br WHERE " + COMMENTED_REVIEW_CONDITION)
+    Optional<OffsetDateTime> findMaxUpdatedAtByBoothIdAndCommentIsNotBlank(@Param("boothId") Long boothId);
 }
