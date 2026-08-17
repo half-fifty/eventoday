@@ -87,7 +87,7 @@ export default function EventDetail() {
   const [venueMapError, setVenueMapError] = useState("");
   const [selectedMapBooth, setSelectedMapBooth] = useState(null);
 
-  // 부스 AI 추천 데이터
+  // 부스 혼잡도 기반 추천 데이터
   const [recommendedBooths, setRecommendedBooths] = useState(null);
   const [loadingRecommendation, setLoadingRecommendation] = useState(false);
   const [recommendationError, setRecommendationError] = useState("");
@@ -142,7 +142,7 @@ export default function EventDetail() {
     return () => { cancelled = true; };
   }, [eventId, event?.venueMapEnabled]);
 
-  // 부스 AI 추천 데이터 로드
+  // 부스 혼잡도 기반 추천 데이터 로드
   useEffect(() => {
     if (!eventId || !event?.venueMapEnabled) return;
     let cancelled = false;
@@ -373,7 +373,7 @@ export default function EventDetail() {
                   )}
                   {!loadingVenueMaps && venueMaps.length > 0 && (
                     <div className="space-y-xl">
-                      {/* AI 추천 메시지 - 상단에 한 번만 표시 */}
+                      {/* 혼잡도 기반 추천 메시지 - 상단에 한 번만 표시 */}
                       {!loadingRecommendation && recommendedBooths && (
                         <div>
                           <BoothRecommendationMessage recommendation={recommendedBooths} boothsMap={boothsMap} />

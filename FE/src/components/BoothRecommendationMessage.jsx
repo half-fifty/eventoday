@@ -19,7 +19,7 @@ export default function BoothRecommendationMessage({ recommendation, boothsMap }
           <Icon name="auto_awesome" className="text-white text-[18px]" />
         </span>
         <div className="flex-1 min-w-0">
-          <p className="font-body-strong text-[15px] text-amber-900 mb-xs">AI 추천 부스</p>
+          <p className="font-body-strong text-[15px] text-amber-900 mb-xs">실시간 혼잡도 기반 추천 부스</p>
           {recommendation.recommendation && (
             <p className="text-caption text-amber-800 mb-sm">{recommendation.recommendation}</p>
           )}
