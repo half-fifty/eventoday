@@ -7,6 +7,7 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.List;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -20,6 +21,9 @@ import org.springframework.web.client.RestClientException;
 public class OpenAiChatClient {
 
     private static final int MAX_TOKENS = 300;
+    // o1/o3 등 OpenAI 추론 모델은 max_tokens 대신 max_completion_tokens를 요구한다.
+    private static final Pattern REASONING_MODEL_PATTERN =
+        Pattern.compile("^o[0-9]([-.].*)?$", Pattern.CASE_INSENSITIVE);
 
     private final RestClient restClient;
     private final String apiKey;
@@ -55,13 +59,15 @@ public class OpenAiChatClient {
             throw new BusinessException(GlobalErrorCode.BOOTH_REVIEW_SUMMARY_UNAVAILABLE);
         }
 
+        boolean isReasoningModel = REASONING_MODEL_PATTERN.matcher(model).matches();
         OpenAiChatRequest request = new OpenAiChatRequest(
             model,
             List.of(
                 new OpenAiChatRequest.Message("system", systemPrompt),
                 new OpenAiChatRequest.Message("user", userPrompt)
             ),
-            MAX_TOKENS,
+            isReasoningModel ? null : MAX_TOKENS,
+            isReasoningModel ? MAX_TOKENS : null,
             reasoningEffort.isBlank() ? null : reasoningEffort
         );
 
