@@ -2,9 +2,11 @@ package com.min.edu.booth.controller;
 
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.dto.BoothReviewResponse;
+import com.min.edu.booth.dto.BoothReviewSummaryResponse;
 import com.min.edu.booth.dto.CreateBoothReviewRequest;
 import com.min.edu.booth.dto.UpdateBoothReviewRequest;
 import com.min.edu.booth.service.BoothReviewService;
+import com.min.edu.booth.service.BoothReviewSummaryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 public class BoothReviewController {
 
     private final BoothReviewService reviewService;
+    private final BoothReviewSummaryService reviewSummaryService;
 
     /**
      * 부스 후기 작성
@@ -96,5 +99,16 @@ public class BoothReviewController {
 
         Double averageRating = reviewService.getAverageRating(boothId);
         return ResponseEntity.ok(averageRating);
+    }
+
+    /**
+     * 부스 리뷰 코멘트 AI 요약
+     */
+    @GetMapping("/summary")
+    public ResponseEntity<BoothReviewSummaryResponse> getSummary(
+            @PathVariable Long boothId) {
+
+        BoothReviewSummaryResponse response = reviewSummaryService.getSummary(boothId);
+        return ResponseEntity.ok(response);
     }
 }

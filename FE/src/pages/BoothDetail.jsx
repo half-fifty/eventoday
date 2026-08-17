@@ -6,8 +6,9 @@ import { ApiError } from "../api/apiClient.js";
 import { getGuideBoothDetail, addBoothInterest, removeBoothInterest, updateVacancyNotification, getMyInterests } from "../api/boothApi.js";
 import { listReservationSlots, getMyReservation, createReservation, cancelReservation } from "../api/boothReservationApi.js";
 import { getVenueMapMarkersWithCongestion } from "../api/venueMapApi.js";
-import { listReviews, createReview, updateReview, deleteReview, getMyReviews } from "../api/boothReviewApi.js";
+import { listReviews, createReview, updateReview, deleteReview, getMyReviews, getReviewSummary } from "../api/boothReviewApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
+import BoothReviewSummaryCard from "../components/BoothReviewSummaryCard.jsx";
 import useAuth from "../hooks/useAuth.js";
 import { congestionLevelMeta } from "../utils/congestion.js";
 
@@ -60,6 +61,7 @@ export default function BoothDetail() {
   const [reviewsHasMore, setReviewsHasMore] = useState(false);
   const [loadingReviews, setLoadingReviews] = useState(false);
   const [reviewsError, setReviewsError] = useState("");
+  const [reviewSummary, setReviewSummary] = useState(null);
 
   // 회원은 부스당 후기를 한 번만 작성할 수 있어, 전체 목록과 별개로 "내 후기"를 조회해
   // 작성 폼과 수정/삭제 UI를 전환하는 데 사용한다.
@@ -194,8 +196,26 @@ export default function BoothDetail() {
     setReviews([]);
     setReviewsHasMore(false);
     loadReviews(0);
+    loadReviewSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boothId]);
+
+  // 후기 코멘트 AI 요약. 리뷰 등록/수정/삭제 후에도 부스 요약(refreshBoothSummary)과 함께 다시 불러온다.
+  const reviewSummaryRequestIdRef = useRef(0);
+  const loadReviewSummary = () => {
+    if (!boothId) return;
+    const requestId = ++reviewSummaryRequestIdRef.current;
+    const requestedBoothId = boothId;
+    getReviewSummary(requestedBoothId)
+      .then((data) => {
+        if (reviewSummaryRequestIdRef.current !== requestId || currentBoothIdRef.current !== requestedBoothId) return;
+        setReviewSummary(data ?? null);
+      })
+      .catch(() => {
+        if (reviewSummaryRequestIdRef.current !== requestId || currentBoothIdRef.current !== requestedBoothId) return;
+        setReviewSummary(null);
+      });
+  };
 
   const myReviewRequestIdRef = useRef(0);
   const refreshMyReview = () => {
@@ -279,6 +299,7 @@ export default function BoothDetail() {
       refreshMyReview();
       refreshBoothSummary();
       loadReviews(0);
+      loadReviewSummary();
     } catch (requestError) {
       if (currentBoothIdRef.current !== requestedBoothId) return;
       setReviewFormError(requestError.message || "후기 등록에 실패했습니다.");
@@ -298,6 +319,7 @@ export default function BoothDetail() {
       setMyReviewForThisBooth(null);
       refreshBoothSummary();
       loadReviews(0);
+      loadReviewSummary();
     } catch (requestError) {
       if (currentBoothIdRef.current !== requestedBoothId) return;
       setReviewFormError(requestError.message || "후기 삭제에 실패했습니다.");
@@ -511,6 +533,8 @@ export default function BoothDetail() {
 
                 <div className="border-t border-hairline pt-lg">
                   <h3 className="font-body-strong text-body-strong mb-md">방문객 후기</h3>
+
+                  <BoothReviewSummaryCard summary={reviewSummary} />
 
                   {!isAuthenticated ? (
                     <p className="text-caption text-ink-muted mb-lg">로그인 후 후기를 남길 수 있어요.</p>

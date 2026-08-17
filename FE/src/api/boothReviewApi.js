@@ -36,10 +36,16 @@ const getMyReviews = async (params = {}) => {
   return apiRequest(`/members/me/booth-reviews${buildQuery(params)}`);
 };
 
+// 부스 후기 코멘트 AI 요약. ApiResponse 래핑 없이 결과를 그대로 반환한다.
+const getReviewSummary = async (boothId) => {
+  return apiRequest(`/booths/${boothId}/reviews/summary`);
+};
+
 export {
   listReviews,
   createReview,
   updateReview,
   deleteReview,
   getMyReviews,
+  getReviewSummary,
 };

@@ -140,7 +140,8 @@ public enum GlobalErrorCode implements ErrorCode {
     EMAIL_SEND_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "MAIL_503_001", "이메일 발송 서비스를 일시적으로 이용할 수 없습니다."),
     // booth congestion 관련 에러
     BOOTH_NOT_FOUND(HttpStatus.NOT_FOUND, "BOOTH_404_001", "부스를 찾을 수 없습니다"),
-    BOOTH_CONGESTION_NOT_FOUND(HttpStatus.NOT_FOUND, "BOOTH_404_002", "부스 혼잡도 정보를 찾을 수 없습니다");
+    BOOTH_CONGESTION_NOT_FOUND(HttpStatus.NOT_FOUND, "BOOTH_404_002", "부스 혼잡도 정보를 찾을 수 없습니다"),
+    BOOTH_REVIEW_SUMMARY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "BOOTH_503_001", "리뷰 요약 서비스를 이용할 수 없습니다.");
 
 
 

@@ -70,4 +70,18 @@ public interface BoothReviewRepository extends JpaRepository<BoothReview, Long> 
      */
     @Query("SELECT br.boothId, COUNT(br.id) FROM BoothReview br WHERE br.boothId IN :boothIds GROUP BY br.boothId")
     List<Object[]> findReviewCountsByBoothIds(@Param("boothIds") Collection<Long> boothIds);
+
+    // ===== 리뷰 AI 요약용 =====
+
+    /**
+     * 코멘트가 실제로 채워진(공백 제외) 리뷰 개수 — 요약 생성/재생성 여부 판단 기준
+     */
+    @Query("SELECT COUNT(br.id) FROM BoothReview br WHERE br.boothId = :boothId AND TRIM(br.comment) <> ''")
+    long countByBoothIdAndCommentIsNotBlank(@Param("boothId") Long boothId);
+
+    /**
+     * 코멘트가 채워진 최신 리뷰 목록 (요약 프롬프트 입력용, Pageable로 개수 제한)
+     */
+    @Query("SELECT br FROM BoothReview br WHERE br.boothId = :boothId AND TRIM(br.comment) <> '' ORDER BY br.createdAt DESC")
+    List<BoothReview> findRecentCommentedReviews(@Param("boothId") Long boothId, Pageable pageable);
 }
