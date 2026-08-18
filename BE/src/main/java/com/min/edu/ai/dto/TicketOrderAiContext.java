@@ -1,6 +1,6 @@
 package com.min.edu.ai.dto;
 
-import com.min.edu.payment.dto.response.TicketOrderDetailResponse;
+import com.min.edu.payment.service.TicketOrderOperationQueryService.TicketOrderOperationView;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
@@ -11,17 +11,19 @@ public record TicketOrderAiContext(
         BigDecimal totalAmount,
         String paymentOrderStatus,
         String ticketOrderStatus,
-        OffsetDateTime expiresAt) {
+        OffsetDateTime expiresAt,
+        OffsetDateTime confirmedAt) {
 
-    public static TicketOrderAiContext from(TicketOrderDetailResponse response) {
+    public static TicketOrderAiContext from(TicketOrderOperationView response) {
         return new TicketOrderAiContext(
-            response.getOrderNo(),
-            response.getEventName(),
-            response.getQuantity(),
-            response.getTotalAmount(),
-            response.getPaymentOrderStatus(),
-            response.getTicketOrderStatus(),
-            response.getExpiresAt()
+            response.orderNo(),
+            response.eventName(),
+            response.quantity(),
+            response.totalAmount(),
+            response.paymentOrderStatus(),
+            response.ticketOrderStatus(),
+            response.expiresAt(),
+            response.confirmedAt()
         );
     }
 }

@@ -7,7 +7,16 @@ public record AiToolContext(
         Long memberId,
         PlatformRole platformRole,
         String guestOrderAccessToken,
-        String requestId) {
+        String requestId,
+        Long eventId) {
+
+    public AiToolContext(
+            Long memberId,
+            PlatformRole platformRole,
+            String guestOrderAccessToken,
+            String requestId) {
+        this(memberId, platformRole, guestOrderAccessToken, requestId, null);
+    }
 
     public static AiToolContext of(
             AuthenticatedMemberDto actor,
@@ -17,7 +26,21 @@ public record AiToolContext(
             actor == null ? null : actor.getMemberId(),
             actor == null ? null : actor.getPlatformRole(),
             guestOrderAccessToken,
-            requestId
+            requestId,
+            null
+        );
+    }
+
+    public static AiToolContext forEventOperation(
+            AuthenticatedMemberDto actor,
+            String requestId,
+            Long eventId) {
+        return new AiToolContext(
+            actor == null ? null : actor.getMemberId(),
+            actor == null ? null : actor.getPlatformRole(),
+            null,
+            requestId,
+            eventId
         );
     }
 }

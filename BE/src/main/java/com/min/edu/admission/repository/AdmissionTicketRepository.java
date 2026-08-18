@@ -19,6 +19,8 @@ public interface AdmissionTicketRepository extends JpaRepository<AdmissionTicket
 
     boolean existsByExchangeCodeId(Long exchangeCodeId);
 
+    Optional<AdmissionTicket> findByQrToken(String qrToken);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select t from AdmissionTicket t where t.qrToken = :qrToken")
     Optional<AdmissionTicket> findByQrTokenForUpdate(@Param("qrToken") String qrToken);

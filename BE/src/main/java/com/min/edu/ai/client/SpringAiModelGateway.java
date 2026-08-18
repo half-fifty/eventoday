@@ -10,12 +10,15 @@ import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import java.net.SocketTimeoutException;
 import java.time.Duration;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -26,13 +29,16 @@ public class SpringAiModelGateway implements AiModelGateway {
 
     private final ChatModel chatModel;
     private final AiProperties properties;
+    private final AiToolCallbackFactory toolCallbackFactory;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     public SpringAiModelGateway(
             @Qualifier("copilotChatModel") ChatModel chatModel,
-            AiProperties properties) {
+            AiProperties properties,
+            AiToolCallbackFactory toolCallbackFactory) {
         this.chatModel = chatModel;
         this.properties = properties;
+        this.toolCallbackFactory = toolCallbackFactory;
     }
 
     @Override
@@ -45,10 +51,7 @@ public class SpringAiModelGateway implements AiModelGateway {
 
         long startedAt = System.nanoTime();
         try {
-            ChatResponse response = chatModel.call(new Prompt(
-                new SystemMessage(request.systemPrompt()),
-                new UserMessage(request.userPrompt())
-            ));
+            ChatResponse response = chatModel.call(prompt(request));
             String content = extractContent(response);
             AiCopilotResponse parsed = parseResponse(content);
             log.info("AI copilot call succeeded. provider={}, model={}, latencyMs={}",
@@ -68,6 +71,24 @@ public class SpringAiModelGateway implements AiModelGateway {
             );
             throw new BusinessException(errorCode, exception);
         }
+    }
+
+    private Prompt prompt(AiChatRequest request) {
+        List<ToolCallback> toolCallbacks = toolCallbackFactory.create(request.tools());
+        GoogleGenAiChatOptions options = GoogleGenAiChatOptions.builder()
+            .model(properties.model())
+            .maxOutputTokens(properties.maxOutputTokens())
+            .responseMimeType("application/json")
+            .toolCallbacks(toolCallbacks)
+            .toolContext(toolCallbackFactory.toolContext(request.toolContext()))
+            .build();
+        return new Prompt(
+            List.of(
+                new SystemMessage(request.systemPrompt()),
+                new UserMessage(request.userPrompt())
+            ),
+            options
+        );
     }
 
     private String extractContent(ChatResponse response) {

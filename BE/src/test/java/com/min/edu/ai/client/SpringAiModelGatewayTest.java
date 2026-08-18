@@ -146,7 +146,8 @@ class SpringAiModelGatewayTest {
                 Duration.ofSeconds(3),
                 Duration.ofSeconds(10),
                 700
-            )
+            ),
+            new AiToolCallbackFactory()
         );
     }
 

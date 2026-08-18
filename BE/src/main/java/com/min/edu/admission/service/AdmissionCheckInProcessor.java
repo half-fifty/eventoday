@@ -6,13 +6,15 @@ import com.min.edu.admission.domain.AdmissionResult;
 import com.min.edu.admission.domain.AdmissionTicket;
 import com.min.edu.admission.domain.AdmissionTicketStatus;
 import com.min.edu.admission.domain.ExchangeCode;
+import com.min.edu.admission.policy.AdmissionEligibilityPolicy;
+import com.min.edu.admission.policy.AdmissionEligibilityReasonCode;
+import com.min.edu.admission.policy.AdmissionEligibilityResult;
 import com.min.edu.admission.repository.AdmissionLogRepository;
 import com.min.edu.admission.repository.AdmissionTicketRepository;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.Event;
-import com.min.edu.event.domain.EventStatus;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import jakarta.persistence.EntityManager;
 import java.time.OffsetDateTime;
@@ -28,18 +30,21 @@ public class AdmissionCheckInProcessor {
     private final AdmissionLogRepository admissionLogRepository;
     private final EntityManager entityManager;
     private final PaymentFinalizationProperties paymentFinalizationProperties;
+    private final AdmissionEligibilityPolicy admissionEligibilityPolicy;
 
     public AdmissionCheckInProcessor(
             AdmissionTicketRepository admissionTicketRepository,
             ExchangeCodeRepository exchangeCodeRepository,
             AdmissionLogRepository admissionLogRepository,
             EntityManager entityManager,
-            PaymentFinalizationProperties paymentFinalizationProperties) {
+            PaymentFinalizationProperties paymentFinalizationProperties,
+            AdmissionEligibilityPolicy admissionEligibilityPolicy) {
         this.admissionTicketRepository = admissionTicketRepository;
         this.exchangeCodeRepository = exchangeCodeRepository;
         this.admissionLogRepository = admissionLogRepository;
         this.entityManager = entityManager;
         this.paymentFinalizationProperties = paymentFinalizationProperties;
+        this.admissionEligibilityPolicy = admissionEligibilityPolicy;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -54,41 +59,28 @@ public class AdmissionCheckInProcessor {
         AdmissionTicket ticket = admissionTicketRepository.findByQrTokenForUpdate(qrToken)
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND));
         ExchangeCode exchangeCode = findExchangeCode(ticket.getExchangeCodeId());
-        validateEventMatch(eventId, exchangeCode);
-
-        if (event.getStatus() != EventStatus.PUBLISHED
-                || !event.getEndAt().isAfter(now)) {
-            AdmissionLog log = saveLog(
-                ticket.getId(),
-                staffMemberId,
-                AdmissionAction.CHECK_IN,
-                AdmissionResult.INVALID,
-                gateName,
-                now
-            );
-            return ProcessResult.invalid(ticket, exchangeCode, event, log);
+        AdmissionEligibilityResult eligibility = admissionEligibilityPolicy.evaluate(
+            eventId,
+            event,
+            ticket,
+            exchangeCode,
+            now
+        );
+        if (eligibility.reasonCode() == AdmissionEligibilityReasonCode.EVENT_MISMATCH) {
+            throw new BusinessException(GlobalErrorCode.ADMISSION_CHECK_IN_EVENT_MISMATCH);
         }
-        if (ticket.getStatus() == AdmissionTicketStatus.USED) {
+        if (!eligibility.eligible()) {
             AdmissionLog log = saveLog(
                 ticket.getId(),
                 staffMemberId,
                 AdmissionAction.CHECK_IN,
-                AdmissionResult.DUPLICATE,
+                admissionResult(eligibility),
                 gateName,
                 now
             );
-            return ProcessResult.duplicate(ticket, exchangeCode, event, log);
-        }
-        if (ticket.getStatus() != AdmissionTicketStatus.ISSUED) {
-            AdmissionLog log = saveLog(
-                ticket.getId(),
-                staffMemberId,
-                AdmissionAction.CHECK_IN,
-                AdmissionResult.INVALID,
-                gateName,
-                now
-            );
-            return ProcessResult.invalid(ticket, exchangeCode, event, log);
+            return eligibility.reasonCode() == AdmissionEligibilityReasonCode.ALREADY_USED
+                ? ProcessResult.duplicate(ticket, exchangeCode, event, log)
+                : ProcessResult.invalid(ticket, exchangeCode, event, log);
         }
 
         transition(ticket::checkIn, now);
@@ -149,6 +141,13 @@ public class AdmissionCheckInProcessor {
         if (!eventId.equals(exchangeCode.getEventId())) {
             throw new BusinessException(GlobalErrorCode.ADMISSION_CHECK_IN_EVENT_MISMATCH);
         }
+    }
+
+    private AdmissionResult admissionResult(AdmissionEligibilityResult eligibility) {
+        if (eligibility.reasonCode() == AdmissionEligibilityReasonCode.ALREADY_USED) {
+            return AdmissionResult.DUPLICATE;
+        }
+        return AdmissionResult.INVALID;
     }
 
     private AdmissionLog saveLog(

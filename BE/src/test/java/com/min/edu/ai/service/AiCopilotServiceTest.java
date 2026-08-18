@@ -7,21 +7,27 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.min.edu.admission.domain.AdmissionTicket;
+import com.min.edu.admission.domain.AdmissionTicketStatus;
+import com.min.edu.admission.service.AdmissionEligibilityQueryService;
 import com.min.edu.ai.client.AiModelGateway;
 import com.min.edu.ai.dto.AiCategory;
 import com.min.edu.ai.dto.AiChatRequest;
 import com.min.edu.ai.dto.AiChatResult;
 import com.min.edu.ai.dto.AiCopilotRequest;
 import com.min.edu.ai.dto.AiCopilotResponse;
-import com.min.edu.ai.dto.TicketOrderAiContext;
-import com.min.edu.ai.prompt.PromptProvider;
-import com.min.edu.ai.prompt.PromptType;
-import com.min.edu.ai.tool.AiToolContext;
+import com.min.edu.ai.tool.AdmissionEligibilityAiTool;
+import com.min.edu.ai.tool.AdmissionTicketAiTool;
+import com.min.edu.ai.tool.EventOperationInfoAiTool;
+import com.min.edu.ai.tool.ExchangeCodeAiTool;
 import com.min.edu.ai.tool.TicketOrderAiTool;
+import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.event.domain.Event;
+import com.min.edu.event.domain.EventRole;
+import com.min.edu.event.service.EventOperationAccessService;
 import com.min.edu.member.domain.PlatformRole;
-import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -29,98 +35,105 @@ import org.mockito.Mockito;
 
 class AiCopilotServiceTest {
 
-    private final PromptProvider promptProvider = Mockito.mock(PromptProvider.class);
-    private final TicketOrderAiTool ticketOrderAiTool = Mockito.mock(TicketOrderAiTool.class);
+    private final com.min.edu.ai.prompt.PromptProvider promptProvider =
+        Mockito.mock(com.min.edu.ai.prompt.PromptProvider.class);
     private final AiModelGateway aiModelGateway = Mockito.mock(AiModelGateway.class);
+    private final EventOperationAccessService eventOperationAccessService =
+        Mockito.mock(EventOperationAccessService.class);
+    private final AdmissionEligibilityQueryService admissionEligibilityQueryService =
+        Mockito.mock(AdmissionEligibilityQueryService.class);
+    private final TicketOrderAiTool ticketOrderAiTool = Mockito.mock(TicketOrderAiTool.class);
+    private final AdmissionTicketAiTool admissionTicketAiTool = Mockito.mock(AdmissionTicketAiTool.class);
+    private final AdmissionEligibilityAiTool admissionEligibilityAiTool =
+        Mockito.mock(AdmissionEligibilityAiTool.class);
+    private final ExchangeCodeAiTool exchangeCodeAiTool = Mockito.mock(ExchangeCodeAiTool.class);
+    private final EventOperationInfoAiTool eventOperationInfoAiTool =
+        Mockito.mock(EventOperationInfoAiTool.class);
+
     private final AiCopilotService service = new AiCopilotService(
         promptProvider,
+        aiModelGateway,
+        eventOperationAccessService,
+        admissionEligibilityQueryService,
         ticketOrderAiTool,
-        aiModelGateway
+        admissionTicketAiTool,
+        admissionEligibilityAiTool,
+        exchangeCodeAiTool,
+        eventOperationInfoAiTool
     );
 
     @Test
-    void buildsPromptWithToolContextAndReturnsGatewayResult() {
-        AiToolContext context = new AiToolContext(10L, PlatformRole.USER, "guest-token", "req-1");
-        given(promptProvider.get(PromptType.AI_COPILOT)).willReturn("system prompt");
-        given(ticketOrderAiTool.execute("ORDER-1", context)).willReturn(ticketContext());
+    void verifiesEventAccessBuildsToolContextAndReturnsGatewayResponse() {
+        AuthenticatedMemberDto actor = new AuthenticatedMemberDto(10L, PlatformRole.USER);
+        given(promptProvider.get(com.min.edu.ai.prompt.PromptType.AI_COPILOT))
+            .willReturn("system prompt");
         AiCopilotResponse expected = new AiCopilotResponse(
-            "The order is still waiting for payment, so tickets are not confirmed.",
-            AiCategory.TICKET_ORDER,
+            "The ticket is already used.",
+            AiCategory.ADMISSION,
             false
         );
-        given(aiModelGateway.chat(any(AiChatRequest.class)))
-            .willReturn(new AiChatResult(expected));
+        given(aiModelGateway.chat(any(AiChatRequest.class))).willReturn(new AiChatResult(expected));
 
         AiCopilotResponse response = service.ask(
-            new AiCopilotRequest("Why have tickets not been issued for this order?", "ORDER-1"),
-            context
+            100L,
+            new AiCopilotRequest(
+                "Why can this ticket not enter?",
+                null,
+                new AiCopilotRequest.Context(null, 1L, null, null)
+            ),
+            actor
         );
 
         assertThat(response).isEqualTo(expected);
+        verify(eventOperationAccessService).requireOperationalAccess(100L, actor);
         ArgumentCaptor<AiChatRequest> requestCaptor = ArgumentCaptor.forClass(AiChatRequest.class);
         verify(aiModelGateway).chat(requestCaptor.capture());
-        AiChatRequest gatewayRequest = requestCaptor.getValue();
-        assertThat(gatewayRequest.systemPrompt()).isEqualTo("system prompt");
-        assertThat(gatewayRequest.userPrompt()).contains("ORDER-1");
-        assertThat(gatewayRequest.userPrompt()).contains("PENDING_PAYMENT");
-        assertThat(gatewayRequest.userPrompt()).doesNotContain("guest-token");
+        AiChatRequest request = requestCaptor.getValue();
+        assertThat(request.systemPrompt()).isEqualTo("system prompt");
+        assertThat(request.toolContext().memberId()).isEqualTo(10L);
+        assertThat(request.toolContext().eventId()).isEqualTo(100L);
+        assertThat(request.tools()).hasSize(5);
+        assertThat(request.userPrompt()).contains("admissionTicketId: 1");
     }
 
     @Test
-    void skipsToolWhenOrderNoIsMissing() {
-        given(promptProvider.get(PromptType.AI_COPILOT)).willReturn("system prompt");
-        AiCopilotResponse expected = new AiCopilotResponse(
-            "An order number is required to check that status.",
-            AiCategory.GENERAL,
-            true
-        );
-        given(aiModelGateway.chat(any(AiChatRequest.class)))
-            .willReturn(new AiChatResult(expected));
+    void resolvesQrTokenBeforePromptAndDoesNotExposeRawToken() {
+        AuthenticatedMemberDto actor = new AuthenticatedMemberDto(10L, PlatformRole.USER);
+        given(promptProvider.get(com.min.edu.ai.prompt.PromptType.AI_COPILOT))
+            .willReturn("system prompt");
+        given(admissionEligibilityQueryService.resolveTicketIdByQrToken(100L, "secret-qr-token"))
+            .willReturn(55L);
+        given(aiModelGateway.chat(any(AiChatRequest.class))).willReturn(new AiChatResult(
+            new AiCopilotResponse("Check the ticket.", AiCategory.ADMISSION, false)
+        ));
 
-        AiCopilotResponse response = service.ask(
-            new AiCopilotRequest("Tell me the order status.", null),
-            new AiToolContext(10L, PlatformRole.USER, null, "req-1")
+        service.ask(
+            100L,
+            new AiCopilotRequest(
+                "Why does this QR fail?",
+                null,
+                new AiCopilotRequest.Context(null, null, null, "secret-qr-token")
+            ),
+            actor
         );
 
-        assertThat(response.needsHumanSupport()).isTrue();
-        verifyNoInteractions(ticketOrderAiTool);
+        ArgumentCaptor<AiChatRequest> requestCaptor = ArgumentCaptor.forClass(AiChatRequest.class);
+        verify(aiModelGateway).chat(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().userPrompt()).contains("admissionTicketId: 55");
+        assertThat(requestCaptor.getValue().userPrompt()).contains("qrProvided: true");
+        assertThat(requestCaptor.getValue().userPrompt()).doesNotContain("secret-qr-token");
     }
 
     @Test
     void rejectsBlankQuestionBeforeCallingGateway() {
         assertThatThrownBy(() -> service.ask(
-                new AiCopilotRequest(" ", "ORDER-1"),
-                new AiToolContext(10L, PlatformRole.USER, null, "req-1")))
+                100L,
+                new AiCopilotRequest(" ", null),
+                new AuthenticatedMemberDto(10L, PlatformRole.USER)))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.INVALID_INPUT_VALUE);
 
-        verifyNoInteractions(promptProvider, ticketOrderAiTool, aiModelGateway);
-    }
-
-    @Test
-    void rejectsTooLongQuestionBeforeCallingGateway() {
-        String question = "a".repeat(2001);
-
-        assertThatThrownBy(() -> service.ask(
-                new AiCopilotRequest(question, "ORDER-1"),
-                new AiToolContext(10L, PlatformRole.USER, null, "req-1")))
-            .isInstanceOf(BusinessException.class)
-            .extracting("errorCode")
-            .isEqualTo(GlobalErrorCode.INVALID_INPUT_VALUE);
-
-        verifyNoInteractions(promptProvider, ticketOrderAiTool, aiModelGateway);
-    }
-
-    private TicketOrderAiContext ticketContext() {
-        return new TicketOrderAiContext(
-            "ORDER-1",
-            "Eventoday Conference",
-            2,
-            BigDecimal.valueOf(20000),
-            "PENDING",
-            "PENDING_PAYMENT",
-            OffsetDateTime.parse("2026-08-03T10:10:00+09:00")
-        );
+        verifyNoInteractions(promptProvider, aiModelGateway, eventOperationAccessService);
     }
 }

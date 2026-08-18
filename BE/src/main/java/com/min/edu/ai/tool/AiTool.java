@@ -4,5 +4,7 @@ public interface AiTool<I, O> {
 
     String name();
 
+    Class<I> inputType();
+
     O execute(I input, AiToolContext context);
 }
