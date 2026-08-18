@@ -39,6 +39,9 @@ public enum GlobalErrorCode implements ErrorCode {
     KAKAO_MAP_API_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "EVENT_503_001", "카카오 장소 검색 서비스를 이용할 수 없습니다."),
 
     INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "COMMON_400", "요청 값이 올바르지 않습니다."),
+    AI_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI_503_001", "AI 서비스를 이용할 수 없습니다."),
+    AI_REQUEST_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "AI_504_001", "AI 요청 시간이 초과되었습니다."),
+    AI_RESPONSE_INVALID(HttpStatus.BAD_GATEWAY, "AI_502_001", "AI 응답이 올바르지 않습니다."),
     UNSUPPORTED_OAUTH_PROVIDER(HttpStatus.BAD_REQUEST, "AUTH_400_001", "지원하지 않는 OAuth 제공자입니다."),
     OAUTH_REQUIRED_ATTRIBUTE_MISSING(HttpStatus.BAD_REQUEST, "AUTH_400_002", "소셜 로그인 사용자 정보가 부족합니다."),
     BUSINESS_VERIFICATION_FAILED(HttpStatus.BAD_REQUEST, "ORGANIZATION_400_001", "사업자 정보가 일치하지 않습니다."),
