@@ -3,6 +3,7 @@ package com.min.edu.ai.client;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.min.edu.ai.config.AiProperties;
+import com.min.edu.ai.dto.AiFailureExplanationOutput;
 import com.min.edu.ai.dto.AiChatRequest;
 import com.min.edu.ai.dto.AiChatResult;
 import com.min.edu.ai.dto.AiCopilotResponse;
@@ -43,6 +44,11 @@ public class SpringAiModelGateway implements AiModelGateway {
 
     @Override
     public AiChatResult chat(AiChatRequest request) {
+        return new AiChatResult(chat(request, AiCopilotResponse.class));
+    }
+
+    @Override
+    public <T> T chat(AiChatRequest request, Class<T> responseType) {
         if (properties.apiKey() == null || properties.apiKey().isBlank()) {
             log.warn("AI copilot API key is not configured. provider={}, model={}",
                 properties.provider(), properties.model());
@@ -53,10 +59,10 @@ public class SpringAiModelGateway implements AiModelGateway {
         try {
             ChatResponse response = chatModel.call(prompt(request));
             String content = extractContent(response);
-            AiCopilotResponse parsed = parseResponse(content);
+            T parsed = parseResponse(content, responseType);
             log.info("AI copilot call succeeded. provider={}, model={}, latencyMs={}",
                 properties.provider(), properties.model(), elapsedMillis(startedAt));
-            return new AiChatResult(parsed);
+            return parsed;
         } catch (BusinessException exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -102,10 +108,9 @@ public class SpringAiModelGateway implements AiModelGateway {
         return response.getResult().getOutput().getText().trim();
     }
 
-    private AiCopilotResponse parseResponse(String content) {
+    private <T> T parseResponse(String content, Class<T> responseType) {
         try {
-            AiCopilotResponse response =
-                objectMapper.readValue(stripMarkdownFence(content), AiCopilotResponse.class);
+            T response = objectMapper.readValue(stripMarkdownFence(content), responseType);
             validateStructuredResponse(response);
             return response;
         } catch (JsonProcessingException exception) {
@@ -113,10 +118,22 @@ public class SpringAiModelGateway implements AiModelGateway {
         }
     }
 
-    private void validateStructuredResponse(AiCopilotResponse response) {
-        if (response == null
-                || !StringUtils.hasText(response.answer())
-                || response.category() == null) {
+    private void validateStructuredResponse(Object response) {
+        if (response instanceof AiCopilotResponse copilotResponse) {
+            if (!StringUtils.hasText(copilotResponse.answer())
+                    || copilotResponse.category() == null) {
+                throw new BusinessException(GlobalErrorCode.AI_RESPONSE_INVALID);
+            }
+            return;
+        }
+        if (response instanceof AiFailureExplanationOutput explanationOutput) {
+            if (!StringUtils.hasText(explanationOutput.explanation())
+                    || !StringUtils.hasText(explanationOutput.recommendedAction())) {
+                throw new BusinessException(GlobalErrorCode.AI_RESPONSE_INVALID);
+            }
+            return;
+        }
+        if (response == null) {
             throw new BusinessException(GlobalErrorCode.AI_RESPONSE_INVALID);
         }
     }

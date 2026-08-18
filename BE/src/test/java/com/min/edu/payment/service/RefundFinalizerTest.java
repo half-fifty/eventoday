@@ -38,6 +38,7 @@ import com.min.edu.payment.domain.TicketOrderStatus;
 import com.min.edu.payment.dto.request.CreateRefundRequest;
 import com.min.edu.payment.dto.response.CreateRefundResponse;
 import com.min.edu.payment.event.TicketInventoryGateway;
+import com.min.edu.payment.policy.RefundEligibilityPolicy;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRefundRepository;
 import com.min.edu.payment.repository.PaymentRepository;
@@ -76,12 +77,16 @@ class RefundFinalizerTest {
     private TicketInventoryGateway ticketInventoryGateway;
 
     private RefundFinalizer refundFinalizer;
+    private RefundEligibilityPolicy refundEligibilityPolicy;
 
     @BeforeEach
     void setUp() {
         PaymentFinalizationProperties properties = new PaymentFinalizationProperties();
         properties.setFinalizationLockTimeoutMs(300L);
         properties.setWebhookFinalizationLockTimeoutMs(150L);
+        refundEligibilityPolicy = org.mockito.Mockito.spy(
+            new RefundEligibilityPolicy(new EventOperationDeadlinePolicy())
+        );
         refundFinalizer = new RefundFinalizer(
             entityManager,
             properties,
@@ -91,7 +96,7 @@ class RefundFinalizerTest {
             paymentRefundRepository,
             exchangeCodeRepository,
             ticketInventoryGateway,
-            new EventOperationDeadlinePolicy()
+            refundEligibilityPolicy
         );
 
         given(entityManager.createNativeQuery(any(String.class))).willReturn(query);
@@ -144,6 +149,7 @@ class RefundFinalizerTest {
         assertThat(ticketOrder.isRefunded()).isTrue();
         assertThat(refund.isCompleted()).isTrue();
         assertThat(exchangeCodes).allMatch(ExchangeCode::isCancelled);
+        verify(refundEligibilityPolicy).evaluate(any());
     }
 
     @Test
@@ -179,7 +185,6 @@ class RefundFinalizerTest {
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.REFUND_NOT_ALLOWED);
 
-        verify(exchangeCodeRepository, never()).existsByTicketOrderIdAndStatus(any(), any());
         verifyNoInteractions(ticketInventoryGateway);
         verify(paymentRefundRepository, never()).saveAndFlush(any());
     }
@@ -217,7 +222,6 @@ class RefundFinalizerTest {
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.REFUND_NOT_ALLOWED);
 
-        verify(exchangeCodeRepository, never()).existsByTicketOrderIdAndStatus(any(), any());
         verifyNoInteractions(ticketInventoryGateway);
         verify(paymentRefundRepository, never()).saveAndFlush(any());
     }

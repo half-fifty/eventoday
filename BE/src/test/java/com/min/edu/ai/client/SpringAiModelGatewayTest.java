@@ -11,6 +11,7 @@ import com.min.edu.ai.config.AiProperties;
 import com.min.edu.ai.dto.AiCategory;
 import com.min.edu.ai.dto.AiChatRequest;
 import com.min.edu.ai.dto.AiChatResult;
+import com.min.edu.ai.dto.AiFailureExplanationOutput;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import java.net.SocketTimeoutException;
@@ -131,6 +132,41 @@ class SpringAiModelGatewayTest {
         SpringAiModelGateway gateway = gateway(chatModel, "copilot-key");
 
         assertThatThrownBy(() -> gateway.chat(new AiChatRequest("system", "user")))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.AI_RESPONSE_INVALID);
+    }
+
+    @Test
+    void parsesFailureExplanationStructuredJsonResponse() {
+        ChatModel chatModel = mock(ChatModel.class);
+        given(chatModel.call(any(Prompt.class))).willReturn(response("""
+            {
+              "explanation": "The ticket was already used.",
+              "recommendedAction": "Ask staff.",
+              "needsHumanSupport": false
+            }
+            """));
+        SpringAiModelGateway gateway = gateway(chatModel, "copilot-key");
+
+        AiFailureExplanationOutput result =
+            gateway.chat(new AiChatRequest("system", "user"), AiFailureExplanationOutput.class);
+
+        assertThat(result.explanation()).isEqualTo("The ticket was already used.");
+        assertThat(result.recommendedAction()).isEqualTo("Ask staff.");
+        assertThat(result.needsHumanSupport()).isFalse();
+    }
+
+    @Test
+    void mapsBlankFailureExplanationToAiResponseInvalid() {
+        ChatModel chatModel = mock(ChatModel.class);
+        given(chatModel.call(any(Prompt.class))).willReturn(response("""
+            {"explanation":" ","recommendedAction":"Ask staff.","needsHumanSupport":true}
+            """));
+        SpringAiModelGateway gateway = gateway(chatModel, "copilot-key");
+
+        assertThatThrownBy(() ->
+            gateway.chat(new AiChatRequest("system", "user"), AiFailureExplanationOutput.class))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.AI_RESPONSE_INVALID);

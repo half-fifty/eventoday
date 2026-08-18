@@ -21,6 +21,22 @@ class PromptProviderTest {
     }
 
     @Test
+    void loadsFailureExplanationPromptsFromResources() {
+        String refundPrompt = promptProvider.get(PromptType.REFUND_FAILURE_EXPLANATION);
+        String admissionPrompt = promptProvider.get(PromptType.ADMISSION_FAILURE_EXPLANATION);
+
+        assertThat(refundPrompt)
+            .contains("refund failure")
+            .contains("Never decide refund eligibility yourself")
+            .doesNotContain("AI_COPILOT_API_KEY");
+        assertThat(admissionPrompt)
+            .contains("admission failure")
+            .contains("Never decide admission eligibility yourself")
+            .contains("EVENT_NOT_STARTED")
+            .doesNotContain("AI_COPILOT_API_KEY");
+    }
+
+    @Test
     void failsWhenPromptTypeIsNull() {
         assertThatThrownBy(() -> promptProvider.get(null))
             .isInstanceOf(BusinessException.class)
