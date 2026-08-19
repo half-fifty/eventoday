@@ -35,6 +35,48 @@ class PolicyDocumentLoaderTest {
     }
 
     @Test
+    void loadsGeneralOperationPolicySectionsWithoutReasonCodeMetadata() {
+        List<Document> documents = loader.load(
+            "classpath:ai/policies/",
+            new PolicyDocumentDefinition(
+                PolicyType.EXCHANGE_CODE,
+                "exchange-code-policy.md",
+                1,
+                false
+            )
+        );
+
+        Document statusGuide = documents.stream()
+            .filter(document -> "EXCHANGE_CODE_STATUS_GUIDE"
+                .equals(document.getMetadata().get("section")))
+            .findFirst()
+            .orElseThrow();
+
+        assertThat(statusGuide.getMetadata())
+            .containsEntry("policyType", "EXCHANGE_CODE")
+            .containsEntry("section", "EXCHANGE_CODE_STATUS_GUIDE")
+            .containsEntry("documentName", "exchange-code-policy.md")
+            .containsEntry("version", 1);
+        assertThat(statusGuide.getMetadata()).doesNotContainKey("reasonCode");
+        assertThat(statusGuide.getText())
+            .contains("Exchange Code Policy")
+            .contains("section: EXCHANGE_CODE_STATUS_GUIDE")
+            .doesNotContain("reasonCode:");
+    }
+
+    @Test
+    void defaultDefinitionsIncludeCopilotOperationPolicies() {
+        List<Document> documents = loader.loadAll("classpath:ai/policies/");
+
+        assertThat(documents)
+            .extracting(document -> document.getMetadata().get("policyType"))
+            .contains("REFUND", "ADMISSION", "EXCHANGE_CODE", "TICKET_OPERATION");
+        assertThat(documents)
+            .extracting(document -> document.getMetadata().get("section"))
+            .contains("EXCHANGE_CODE_REDEMPTION_REQUIREMENTS", "CHECK_IN_ELIGIBILITY_SOURCE_OF_TRUTH");
+    }
+
+    @Test
     void rejectsInvalidSectionHeading() {
         String markdown = """
             # Policy

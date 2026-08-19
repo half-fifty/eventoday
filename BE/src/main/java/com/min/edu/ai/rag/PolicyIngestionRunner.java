@@ -51,7 +51,10 @@ public class PolicyIngestionRunner implements ApplicationRunner {
 
     private void deleteExistingPolicyDocuments() {
         FilterExpressionBuilder builder = new FilterExpressionBuilder();
-        vectorStore.delete(builder.in("policyType", PolicyType.REFUND.name(), PolicyType.ADMISSION.name()).build());
+        vectorStore.delete(builder.in(
+            "policyType",
+            java.util.Arrays.stream(PolicyType.values()).map(Enum::name).toArray(Object[]::new)
+        ).build());
     }
 
     private long elapsedMillis(long startedAt) {

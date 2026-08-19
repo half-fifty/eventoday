@@ -73,6 +73,42 @@ public class PolicyRetrievalService {
         }
     }
 
+    public PolicyRetrievalResult retrieveForCopilot(String safeQuery) {
+        if (!properties.enabled()) {
+            return PolicyRetrievalResult.empty();
+        }
+        if (!StringUtils.hasText(safeQuery)) {
+            return PolicyRetrievalResult.empty();
+        }
+        VectorStore vectorStore = vectorStoreProvider.getIfAvailable();
+        if (vectorStore == null) {
+            log.warn("RAG copilot policy retrieval skipped. failureCategory=VECTOR_STORE_MISSING");
+            return PolicyRetrievalResult.empty();
+        }
+
+        long startedAt = System.nanoTime();
+        try {
+            SearchRequest searchRequest = SearchRequest.builder()
+                .query(safeQuery)
+                .topK(properties.copilotTopK())
+                .similarityThresholdAll()
+                .build();
+
+            List<Document> documents = vectorStore.similaritySearch(searchRequest);
+            String context = toCopilotPolicyContext(documents);
+            log.info("RAG copilot policy retrieval completed. retrievedDocumentCount={}, ragUsed={}, latencyMs={}",
+                documents.size(),
+                !documents.isEmpty(),
+                elapsedMillis(startedAt));
+            return PolicyRetrievalResult.from(context, documents.size());
+        } catch (RuntimeException exception) {
+            log.warn("RAG copilot policy retrieval failed. failureCategory={}, latencyMs={}",
+                exception.getClass().getSimpleName(),
+                elapsedMillis(startedAt));
+            return PolicyRetrievalResult.empty();
+        }
+    }
+
     private String toPolicyContext(List<Document> documents) {
         if (documents == null || documents.isEmpty()) {
             return "NONE";
@@ -86,6 +122,34 @@ public class PolicyRetrievalService {
                 .append("]\n")
                 .append(document.getText())
                 .append("\n\n");
+        }
+        return builder.toString().trim();
+    }
+
+    private String toCopilotPolicyContext(List<Document> documents) {
+        if (documents == null || documents.isEmpty()) {
+            return "NONE";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (Document document : documents) {
+            builder.append("Policy Type: ")
+                .append(document.getMetadata().get("policyType"))
+                .append('\n')
+                .append("Section: ")
+                .append(document.getMetadata().get("section"))
+                .append('\n');
+            Object reasonCode = document.getMetadata().get("reasonCode");
+            if (reasonCode != null) {
+                builder.append("Reason Code: ")
+                    .append(reasonCode)
+                    .append('\n');
+            }
+            builder.append("Document: ")
+                .append(document.getMetadata().get("documentName"))
+                .append('\n')
+                .append("Content:\n")
+                .append(document.getText())
+                .append("\n\n---\n\n");
         }
         return builder.toString().trim();
     }

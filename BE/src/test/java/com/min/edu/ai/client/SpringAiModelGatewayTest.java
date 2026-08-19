@@ -65,7 +65,16 @@ class SpringAiModelGatewayTest {
 
         AiChatResult result = gateway.chat(new AiChatRequest(
             "system",
-            "user",
+            """
+                [TRUSTED_POLICY_CONTEXT]
+                Policy Type: ADMISSION
+                Section: ALREADY_USED
+                Content:
+                Already used tickets cannot enter again.
+                [/TRUSTED_POLICY_CONTEXT]
+
+                user
+                """,
             List.of(tool),
             toolContext
         ));
@@ -78,6 +87,9 @@ class SpringAiModelGatewayTest {
         assertThat(tool.receivedContext).isSameAs(toolContext);
 
         Prompt secondPrompt = chatModel.prompts.get(1);
+        assertThat(secondPrompt.getContents())
+            .contains("[TRUSTED_POLICY_CONTEXT]", "ALREADY_USED")
+            .doesNotContain("memberId", "platformRole", "request-1");
         assertThat(secondPrompt.getInstructions())
             .anySatisfy(message -> {
                 assertThat(message).isInstanceOf(ToolResponseMessage.class);
@@ -88,8 +100,6 @@ class SpringAiModelGatewayTest {
                 assertThat(toolResponseMessage.getResponses().get(0).responseData())
                     .contains("ORDER-1", "100");
             });
-        assertThat(secondPrompt.getContents())
-            .doesNotContain("memberId", "platformRole", "request-1");
     }
 
     @Test

@@ -23,6 +23,7 @@ class RagConfigTest {
                 "ai.rag.embedding-model=gemini-embedding-2",
                 "ai.rag.embedding-dimensions=768",
                 "ai.rag.top-k=1",
+                "ai.rag.copilot-top-k=3",
                 "ai.rag.policy-location=classpath:ai/policies/",
                 "ai.rag.vector-table=eventoday_policy_vector",
                 "ai.rag.ingestion-enabled=false"
@@ -42,6 +43,7 @@ class RagConfigTest {
                 "ai.rag.embedding-model=gemini-embedding-2",
                 "ai.rag.embedding-dimensions=768",
                 "ai.rag.top-k=1",
+                "ai.rag.copilot-top-k=3",
                 "ai.rag.policy-location=classpath:ai/policies/",
                 "ai.rag.vector-table=eventoday_policy_vector",
                 "ai.rag.ingestion-enabled=false"

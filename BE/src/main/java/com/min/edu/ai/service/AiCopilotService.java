@@ -7,6 +7,8 @@ import com.min.edu.ai.dto.AiCopilotRequest;
 import com.min.edu.ai.dto.AiCopilotResponse;
 import com.min.edu.ai.prompt.PromptProvider;
 import com.min.edu.ai.prompt.PromptType;
+import com.min.edu.ai.rag.PolicyRetrievalResult;
+import com.min.edu.ai.rag.PolicyRetrievalService;
 import com.min.edu.ai.tool.AdmissionEligibilityAiTool;
 import com.min.edu.ai.tool.AdmissionTicketAiTool;
 import com.min.edu.ai.tool.AiTool;
@@ -21,9 +23,11 @@ import com.min.edu.event.service.EventOperationAccessService;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiCopilotService {
@@ -32,6 +36,8 @@ public class AiCopilotService {
 
     private final PromptProvider promptProvider;
     private final AiModelGateway aiModelGateway;
+    private final PolicyRetrievalService policyRetrievalService;
+    private final CopilotRetrievalQuerySanitizer retrievalQuerySanitizer;
     private final EventOperationAccessService eventOperationAccessService;
     private final AdmissionEligibilityQueryService admissionEligibilityQueryService;
     private final TicketOrderAiTool ticketOrderAiTool;
@@ -45,14 +51,29 @@ public class AiCopilotService {
         eventOperationAccessService.requireOperationalAccess(eventId, actor);
 
         AiCopilotRequest.Context requestContext = normalizeContext(eventId, request);
+        String requestId = UUID.randomUUID().toString();
         AiToolContext toolContext = AiToolContext.forEventOperation(
             actor,
-            UUID.randomUUID().toString(),
+            requestId,
+            eventId
+        );
+
+        String safeRetrievalQuery = retrievalQuerySanitizer.buildRetrievalQuery(
+            request.question(),
+            requestContext
+        );
+        PolicyRetrievalResult policyContext = retrievePolicyContext(
+            safeRetrievalQuery,
+            requestId,
             eventId
         );
 
         String systemPrompt = promptProvider.get(PromptType.AI_COPILOT);
-        String userPrompt = buildUserPrompt(request.question(), requestContext);
+        String userPrompt = buildUserPrompt(
+            retrievalQuerySanitizer.safeQuestionForPrompt(request.question()),
+            requestContext,
+            policyContext
+        );
         return aiModelGateway.chat(new AiChatRequest(
             systemPrompt,
             userPrompt,
@@ -95,8 +116,39 @@ public class AiCopilotService {
         );
     }
 
-    private String buildUserPrompt(String question, AiCopilotRequest.Context context) {
+    private PolicyRetrievalResult retrievePolicyContext(
+            String safeRetrievalQuery,
+            String requestId,
+            Long eventId) {
+        try {
+            PolicyRetrievalResult result =
+                policyRetrievalService.retrieveForCopilot(safeRetrievalQuery);
+            log.info("AI copilot policy retrieval prepared. requestId={}, eventId={}, ragUsed={}, retrievedDocumentCount={}",
+                requestId, eventId, result.used(), result.retrievedCount());
+            return result;
+        } catch (RuntimeException exception) {
+            log.warn("AI copilot policy retrieval degraded. requestId={}, eventId={}, failureCategory={}",
+                requestId, eventId, exception.getClass().getSimpleName());
+            return PolicyRetrievalResult.empty();
+        }
+    }
+
+    private String buildUserPrompt(
+            String question,
+            AiCopilotRequest.Context context,
+            PolicyRetrievalResult policyContext) {
         return """
+            [INFORMATION_PRIORITY]
+            1. JAVA_BACKEND_DECISION
+            2. TOOL_LIVE_RESULT
+            3. TRUSTED_POLICY_CONTEXT
+            4. USER_QUESTION
+            [/INFORMATION_PRIORITY]
+
+            [TRUSTED_POLICY_CONTEXT]
+            %s
+            [/TRUSTED_POLICY_CONTEXT]
+
             User question:
             %s
 
@@ -111,6 +163,7 @@ public class AiCopilotService {
             Respond only with valid JSON matching:
             {"answer":"Korean answer shown to the user","category":"PAYMENT|TICKET_ORDER|REFUND|ADMISSION|EVENT|GENERAL","needsHumanSupport":false}
             """.formatted(
+            policyContext == null ? "NONE" : policyContext.context(),
             question.trim(),
             context == null ? null : context.orderNo(),
             context == null ? null : context.admissionTicketId(),

@@ -3,6 +3,7 @@ package com.min.edu.ai.rag;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -34,48 +35,70 @@ public class PolicyDocumentLoader {
         List<PolicySection> sections = parseSections(markdown, definition.documentName());
         List<Document> documents = new ArrayList<>();
         for (PolicySection section : sections) {
-            String content = """
-                %s
-                reasonCode: %s
-
-                %s
-                """.formatted(title, section.reasonCode(), section.body()).trim();
-            Map<String, Object> metadata = Map.of(
-                "policyType", definition.policyType().name(),
-                "reasonCode", section.reasonCode(),
-                "section", section.reasonCode(),
-                "documentName", definition.documentName(),
-                "version", definition.version()
-            );
-            documents.add(new Document(id(definition, section.reasonCode()), content, metadata));
+            String content = content(title, section, definition.reasonCodeMapped());
+            Map<String, Object> metadata = metadata(definition, section);
+            documents.add(new Document(id(definition, section.section()), content, metadata));
         }
         return documents;
     }
 
     public List<PolicySection> parseSections(String markdown, String documentName) {
         List<PolicySection> sections = new ArrayList<>();
-        String currentReasonCode = null;
+        String currentSection = null;
         StringBuilder currentBody = new StringBuilder();
         for (String line : markdown.split("\\R", -1)) {
             if (line.startsWith("## ")) {
-                appendSection(sections, currentReasonCode, currentBody, documentName);
-                currentReasonCode = line.substring(3).trim();
+                appendSection(sections, currentSection, currentBody, documentName);
+                currentSection = line.substring(3).trim();
                 currentBody = new StringBuilder();
                 continue;
             }
-            if (currentReasonCode != null) {
+            if (currentSection != null) {
                 currentBody.append(line).append('\n');
             }
         }
-        appendSection(sections, currentReasonCode, currentBody, documentName);
+        appendSection(sections, currentSection, currentBody, documentName);
         return sections;
     }
 
     public List<PolicyDocumentDefinition> defaultDefinitions() {
         return List.of(
             new PolicyDocumentDefinition(PolicyType.REFUND, "refund-policy.md", 1),
-            new PolicyDocumentDefinition(PolicyType.ADMISSION, "admission-policy.md", 1)
+            new PolicyDocumentDefinition(PolicyType.ADMISSION, "admission-policy.md", 1),
+            new PolicyDocumentDefinition(PolicyType.EXCHANGE_CODE, "exchange-code-policy.md", 1, false),
+            new PolicyDocumentDefinition(PolicyType.TICKET_OPERATION, "ticket-operation-policy.md", 1, false)
         );
+    }
+
+    private String content(String title, PolicySection section, boolean reasonCodeMapped) {
+        if (reasonCodeMapped) {
+            return """
+                %s
+                reasonCode: %s
+
+                %s
+                """.formatted(title, section.section(), section.body()).trim();
+        }
+        return """
+            %s
+            section: %s
+
+            %s
+            """.formatted(title, section.section(), section.body()).trim();
+    }
+
+    private Map<String, Object> metadata(
+            PolicyDocumentDefinition definition,
+            PolicySection section) {
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("policyType", definition.policyType().name());
+        metadata.put("section", section.section());
+        metadata.put("documentName", definition.documentName());
+        metadata.put("version", definition.version());
+        if (definition.reasonCodeMapped()) {
+            metadata.put("reasonCode", section.section());
+        }
+        return Map.copyOf(metadata);
     }
 
     private String read(String policyLocation, String documentName) {
@@ -120,7 +143,7 @@ public class PolicyDocumentLoader {
             );
         }
         boolean duplicate = sections.stream()
-            .anyMatch(section -> section.reasonCode().equals(reasonCode));
+            .anyMatch(section -> section.section().equals(reasonCode));
         if (duplicate) {
             throw new IllegalStateException(
                 "Duplicate policy section in " + documentName + ": " + reasonCode
@@ -129,17 +152,17 @@ public class PolicyDocumentLoader {
         sections.add(new PolicySection(reasonCode, text));
     }
 
-    private String id(PolicyDocumentDefinition definition, String reasonCode) {
+    private String id(PolicyDocumentDefinition definition, String section) {
         String source = definition.policyType().name()
             + ":"
             + definition.documentName()
             + ":"
             + definition.version()
             + ":"
-            + reasonCode;
+            + section;
         return UUID.nameUUIDFromBytes(source.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
-    public record PolicySection(String reasonCode, String body) {
+    public record PolicySection(String section, String body) {
     }
 }
