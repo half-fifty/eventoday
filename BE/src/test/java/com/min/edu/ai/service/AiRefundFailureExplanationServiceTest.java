@@ -132,6 +132,7 @@ class AiRefundFailureExplanationServiceTest {
         assertThat(response.aiGenerated()).isFalse();
         assertThat(response.needsHumanSupport()).isTrue();
         assertThat(response.explanation()).contains("행사 운영 마감 시각");
+        assertThat(response.recommendedAction()).contains("행사 운영자");
         assertThat(response.reasonCode()).isEqualTo("OPERATION_CUTOFF_PASSED");
     }
 

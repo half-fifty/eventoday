@@ -144,7 +144,7 @@ public class AiAdmissionFailureExplanationService {
     private String fallbackExplanation(AdmissionFailureEligibilityView view) {
         AdmissionEligibilityReasonCode reasonCode = view.eligibility().reasonCode();
         return switch (reasonCode) {
-            case ELIGIBLE -> "현재 조회 기준으로는 입장 제한 사유가 확인되지 않습니다.";
+            case ELIGIBLE -> "현재 조회 기준으로는 입장 제한 사유가 확인되지 않았습니다.";
             case EVENT_MISMATCH -> "해당 입장권은 요청한 행사와 일치하지 않아 입장이 제한됩니다.";
             case EVENT_NOT_PUBLISHED -> "행사가 현재 공개 상태가 아니어서 입장이 제한됩니다.";
             case EVENT_ENDED -> "행사가 종료되어 현재 입장이 제한됩니다.";
@@ -155,9 +155,9 @@ public class AiAdmissionFailureExplanationService {
 
     private String fallbackRecommendedAction(AdmissionFailureExplanationContext context) {
         if ("ELIGIBLE".equals(context.reasonCode())) {
-            return "방금 실패한 입장 시도가 있다면 현장 staff에게 현재 상태를 확인해 주세요.";
+            return "방금 입장 시도가 실패했다면 현장 스태프에게 현재 상태를 확인해 주세요.";
         }
-        return "상태가 잘못 표시된 것으로 보이면 현장 staff 또는 행사 운영자에게 문의해 주세요.";
+        return "상태가 잘못 표시된 것으로 보이면 현장 스태프 또는 행사 운영자에게 문의해 주세요.";
     }
 
     private boolean isAiProviderFailure(BusinessException exception) {

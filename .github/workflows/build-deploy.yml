@@ -102,7 +102,6 @@ jobs:
             GEMINI_API_KEY
 
             AI_COPILOT_API_KEY
-            AI_RAG_API_KEY
             AI_RAG_ENABLED
             AI_RAG_INGESTION_ENABLED
 
@@ -119,6 +118,11 @@ jobs:
               exit 1
             fi
           done
+
+          if [[ "${AI_RAG_ENABLED}" == "true" && -z "${AI_RAG_API_KEY}" ]]; then
+            echo "::error::Required deployment setting is missing when AI_RAG_ENABLED=true: AI_RAG_API_KEY"
+            exit 1
+          fi
 
       # ----------------------------------------------------------------
       # 백엔드 이미지 빌드 및 GHCR 업로드

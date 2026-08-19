@@ -127,7 +127,7 @@ public class AiRefundFailureExplanationService {
     private String fallbackExplanation(RefundEligibilityView view) {
         RefundEligibilityReasonCode reasonCode = view.eligibility().reasonCode();
         return switch (reasonCode) {
-            case ELIGIBLE -> "현재 조회 기준으로는 환불 제한 사유가 확인되지 않습니다.";
+            case ELIGIBLE -> "현재 조회 기준으로는 환불 제한 사유가 확인되지 않았습니다.";
             case PAYMENT_NOT_PAID -> "결제가 완료된 상태가 아니어서 현재 환불을 진행할 수 없습니다.";
             case PAYMENT_ORDER_NOT_PAID -> "주문 결제 상태가 완료 상태가 아니어서 현재 환불을 진행할 수 없습니다.";
             case TICKET_ORDER_NOT_CONFIRMED -> "티켓 주문이 확정된 상태가 아니어서 현재 환불을 진행할 수 없습니다.";
@@ -139,7 +139,7 @@ public class AiRefundFailureExplanationService {
 
     private String fallbackRecommendedAction(RefundFailureExplanationContext context) {
         if ("ELIGIBLE".equals(context.reasonCode())) {
-            return "방금 실패한 요청이 있다면 잠시 후 다시 시도하거나 행사 운영자에게 문의해 주세요.";
+            return "방금 요청이 실패했다면 잠시 후 다시 시도하거나 행사 운영자에게 문의해 주세요.";
         }
         return "상태가 잘못 표시된 것으로 보이면 행사 운영자에게 문의해 주세요.";
     }

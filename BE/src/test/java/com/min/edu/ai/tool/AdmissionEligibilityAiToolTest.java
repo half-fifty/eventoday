@@ -1,6 +1,7 @@
 package com.min.edu.ai.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -11,6 +12,8 @@ import com.min.edu.admission.policy.AdmissionEligibilityReasonCode;
 import com.min.edu.admission.policy.AdmissionEligibilityResult;
 import com.min.edu.admission.service.AdmissionEligibilityQueryService;
 import com.min.edu.ai.dto.AdmissionEligibilityAiContext;
+import com.min.edu.common.exception.BusinessException;
+import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.EventStatus;
 import com.min.edu.event.service.EventOperationAccessService;
 import com.min.edu.member.domain.PlatformRole;
@@ -49,6 +52,23 @@ class AdmissionEligibilityAiToolTest {
         verify(admissionEligibilityQueryService).evaluateByTicketId(100L, 11L);
         assertThat(result.eligible()).isFalse();
         assertThat(result.reasonCode()).isEqualTo(AdmissionEligibilityReasonCode.ALREADY_USED);
+    }
+
+    @Test
+    void propagatesScopedQueryFailureWithoutReturningCrossEventTicketState() {
+        given(admissionEligibilityQueryService.evaluateByTicketId(100L, 22L))
+            .willThrow(new BusinessException(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND));
+
+        assertThatThrownBy(() -> tool.execute(
+            new AdmissionEligibilityAiTool.Input(22L),
+            new AiToolContext(10L, PlatformRole.USER, null, "req-1", 100L)
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND);
+
+        verify(eventOperationAccessService).requireOperationalAccess(100L, 10L);
+        verify(admissionEligibilityQueryService).evaluateByTicketId(100L, 22L);
     }
 
     @Test

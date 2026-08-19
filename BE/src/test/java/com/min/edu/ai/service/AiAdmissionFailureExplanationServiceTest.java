@@ -123,7 +123,9 @@ class AiAdmissionFailureExplanationServiceTest {
         );
 
         assertThat(response.aiGenerated()).isFalse();
+        assertThat(response.needsHumanSupport()).isTrue();
         assertThat(response.explanation()).contains("입장권이 발급 완료 상태");
+        assertThat(response.recommendedAction()).contains("현장 스태프");
         assertThat(response.reasonCode()).isEqualTo("TICKET_NOT_ISSUED");
     }
 

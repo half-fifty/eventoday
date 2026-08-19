@@ -35,7 +35,10 @@ public class AdmissionEligibilityQueryService {
     }
 
     public AdmissionEligibilityResult evaluateByTicketId(Long eventId, Long admissionTicketId) {
-        AdmissionTicket ticket = admissionTicketRepository.findById(admissionTicketId)
+        AdmissionTicket ticket = admissionTicketRepository.findByIdAndEventId(
+                admissionTicketId,
+                eventId
+            )
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND));
         ExchangeCode exchangeCode = exchangeCodeRepository.findById(ticket.getExchangeCodeId())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.EXCHANGE_CODE_NOT_FOUND));
