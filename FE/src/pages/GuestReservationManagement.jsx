@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { aiApi } from "../api/aiApi.js";
 import { admissionApi } from "../api/admissionApi.js";
 import { exchangeCodeApi } from "../api/exchangeCodeApi.js";
 import { paymentApi } from "../api/paymentApi.js";
+import AiFailureExplanationBox from "../components/AiFailureExplanationBox.jsx";
 import TopNav from "../components/TopNav.jsx";
 import { REFUND_BANK_GROUPS, REFUND_BANKS } from "../constants/refundBanks.js";
 import { shareOrDownloadAdmissionTicketImage } from "../utils/admissionTicketImage.js";
@@ -326,7 +328,14 @@ export default function GuestReservationManagement() {
                       </button>
                     </form>
                   ) : (
-                    <p className="text-caption text-ink-muted">현재 상태에서는 환불 신청 버튼이 표시되지 않습니다.</p>
+                    <div className="space-y-md">
+                      <p className="text-caption text-ink-muted">현재 상태에서는 환불 신청 버튼이 표시되지 않습니다.</p>
+                      <AiFailureExplanationBox
+                        buttonLabel="AI로 환불 불가 이유 확인"
+                        question="왜 환불이 안 되나요?"
+                        onRequest={(request) => aiApi.explainRefundFailure(payment.paymentId, request, orderAccessToken)}
+                      />
+                    </div>
                   )}
                 </div>
               ) : (
@@ -410,6 +419,19 @@ export default function GuestReservationManagement() {
                       )}
                       {qrErrors[ticket.admissionTicketId] && (
                         <p className="text-caption text-error">{qrErrors[ticket.admissionTicketId]}</p>
+                      )}
+                      {ticket.status !== "ISSUED" && (
+                        <AiFailureExplanationBox
+                          buttonLabel="AI로 입장 불가 이유 확인"
+                          question="왜 입장이 안 되나요?"
+                          onRequest={(request) => aiApi.explainGuestAdmissionFailure(
+                            orderNo,
+                            ticket.admissionTicketId,
+                            orderAccessToken,
+                            request
+                          )}
+                          className="mt-md"
+                        />
                       )}
                     </div>
                   ))}
