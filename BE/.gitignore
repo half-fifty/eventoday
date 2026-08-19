@@ -36,6 +36,7 @@ bin/
 ### 환경변수 / 민감정보 ###
 .env
 .env.*
+!.env.example
 application-local.yml
 application-local.yaml
 application-secret.yml

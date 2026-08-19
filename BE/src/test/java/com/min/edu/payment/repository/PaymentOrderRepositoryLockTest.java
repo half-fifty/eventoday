@@ -20,6 +20,7 @@ import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.min.edu.TestcontainersConfiguration;
+import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderStatus;
 import com.min.edu.payment.domain.PaymentOrderType;
@@ -95,6 +96,7 @@ class PaymentOrderRepositoryLockTest {
             .orderNo(orderNo)
             .orderType(PaymentOrderType.EVENT_TICKET)
             .totalAmount(BigDecimal.valueOf(10000))
+            .requestedPaymentMethod(PaymentMethod.CARD)
             .status(PaymentOrderStatus.PENDING.name())
             .expiresAt(now.plusMinutes(10))
             .createdAt(now)

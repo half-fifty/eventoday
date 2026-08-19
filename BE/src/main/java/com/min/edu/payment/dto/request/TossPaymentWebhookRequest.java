@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -52,12 +54,16 @@ public class TossPaymentWebhookRequest {
     @NoArgsConstructor
     public static class PaymentData {
 
+        @NotBlank
         private String paymentKey;
 
+        @NotBlank
         private String orderId;
 
+        @NotNull
         private BigDecimal totalAmount;
 
+        @NotBlank
         private String status;
 
         private String method;
