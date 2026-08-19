@@ -14,6 +14,9 @@ import com.min.edu.ai.dto.AiFailureExplanationRequest;
 import com.min.edu.ai.dto.AiFailureExplanationResponse;
 import com.min.edu.ai.prompt.PromptProvider;
 import com.min.edu.ai.prompt.PromptType;
+import com.min.edu.ai.rag.PolicyRetrievalRequest;
+import com.min.edu.ai.rag.PolicyRetrievalResult;
+import com.min.edu.ai.rag.PolicyRetrievalService;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.policy.RefundEligibilityReasonCode;
@@ -31,8 +34,15 @@ class AiRefundFailureExplanationServiceTest {
         org.mockito.Mockito.mock(RefundEligibilityQueryService.class);
     private final PromptProvider promptProvider = org.mockito.Mockito.mock(PromptProvider.class);
     private final AiModelGateway aiModelGateway = org.mockito.Mockito.mock(AiModelGateway.class);
+    private final PolicyRetrievalService policyRetrievalService =
+        org.mockito.Mockito.mock(PolicyRetrievalService.class);
     private final AiRefundFailureExplanationService service =
-        new AiRefundFailureExplanationService(queryService, promptProvider, aiModelGateway);
+        new AiRefundFailureExplanationService(
+            queryService,
+            promptProvider,
+            aiModelGateway,
+            policyRetrievalService
+        );
 
     @Test
     void sendsDeterministicSafeContextToGatewayAndReturnsAiResponse() {
@@ -40,6 +50,8 @@ class AiRefundFailureExplanationServiceTest {
             RefundEligibilityReasonCode.EXCHANGE_CODE_ALREADY_REDEEMED
         ));
         given(promptProvider.get(PromptType.REFUND_FAILURE_EXPLANATION)).willReturn("system");
+        given(policyRetrievalService.retrieve(any(PolicyRetrievalRequest.class)))
+            .willReturn(PolicyRetrievalResult.empty());
         given(aiModelGateway.chat(any(AiChatRequest.class), eq(AiFailureExplanationOutput.class)))
             .willReturn(new AiFailureExplanationOutput("AI explanation", "Ask staff", false));
 
@@ -57,6 +69,10 @@ class AiRefundFailureExplanationServiceTest {
         verify(aiModelGateway).chat(captor.capture(), eq(AiFailureExplanationOutput.class));
         assertThat(captor.getValue().tools()).isEmpty();
         assertThat(captor.getValue().userPrompt())
+            .contains("[BACKEND_DECISION]")
+            .contains("[CURRENT_STATE]")
+            .contains("[POLICY_CONTEXT]")
+            .contains("[USER_QUESTION]")
             .contains("EXCHANGE_CODE_ALREADY_REDEEMED")
             .contains("exchangeCodeRedeemed")
             .doesNotContain("payment-key")
@@ -68,11 +84,41 @@ class AiRefundFailureExplanationServiceTest {
     }
 
     @Test
+    void includesRetrievedRefundPolicyContextInGatewayPrompt() {
+        given(queryService.evaluate(10L, null, 1L)).willReturn(view(
+            RefundEligibilityReasonCode.EXCHANGE_CODE_ALREADY_REDEEMED
+        ));
+        given(promptProvider.get(PromptType.REFUND_FAILURE_EXPLANATION)).willReturn("system");
+        given(policyRetrievalService.retrieve(any(PolicyRetrievalRequest.class)))
+            .willReturn(PolicyRetrievalResult.from("교환 코드가 이미 사용된 주문은 환불할 수 없습니다.", 1));
+        given(aiModelGateway.chat(any(AiChatRequest.class), eq(AiFailureExplanationOutput.class)))
+            .willReturn(new AiFailureExplanationOutput("AI explanation", "Ask staff", false));
+
+        service.explain(10L, null, 1L, new AiFailureExplanationRequest("왜 안 되나요?"));
+
+        ArgumentCaptor<PolicyRetrievalRequest> retrievalCaptor =
+            ArgumentCaptor.forClass(PolicyRetrievalRequest.class);
+        verify(policyRetrievalService).retrieve(retrievalCaptor.capture());
+        assertThat(retrievalCaptor.getValue().policyType().name()).isEqualTo("REFUND");
+        assertThat(retrievalCaptor.getValue().reasonCode())
+            .isEqualTo("EXCHANGE_CODE_ALREADY_REDEEMED");
+
+        ArgumentCaptor<AiChatRequest> chatCaptor = ArgumentCaptor.forClass(AiChatRequest.class);
+        verify(aiModelGateway).chat(chatCaptor.capture(), eq(AiFailureExplanationOutput.class));
+        assertThat(chatCaptor.getValue().userPrompt())
+            .contains("교환 코드가 이미 사용된 주문은 환불할 수 없습니다.")
+            .contains("refundable: false")
+            .contains("reasonCode: EXCHANGE_CODE_ALREADY_REDEEMED");
+    }
+
+    @Test
     void returnsDeterministicFallbackForAiProviderFailures() {
         given(queryService.evaluate(10L, null, 1L)).willReturn(view(
             RefundEligibilityReasonCode.OPERATION_CUTOFF_PASSED
         ));
         given(promptProvider.get(PromptType.REFUND_FAILURE_EXPLANATION)).willReturn("system");
+        given(policyRetrievalService.retrieve(any(PolicyRetrievalRequest.class)))
+            .willReturn(PolicyRetrievalResult.from("policy", 1));
         given(aiModelGateway.chat(any(AiChatRequest.class), eq(AiFailureExplanationOutput.class)))
             .willThrow(new BusinessException(GlobalErrorCode.AI_REQUEST_TIMEOUT));
 

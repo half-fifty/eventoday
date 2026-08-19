@@ -10,6 +10,10 @@ import com.min.edu.ai.dto.AiFailureExplanationResponse;
 import com.min.edu.ai.dto.RefundFailureExplanationContext;
 import com.min.edu.ai.prompt.PromptProvider;
 import com.min.edu.ai.prompt.PromptType;
+import com.min.edu.ai.rag.PolicyRetrievalRequest;
+import com.min.edu.ai.rag.PolicyRetrievalResult;
+import com.min.edu.ai.rag.PolicyRetrievalService;
+import com.min.edu.ai.rag.PolicyType;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.policy.RefundEligibilityReasonCode;
@@ -28,6 +32,7 @@ public class AiRefundFailureExplanationService {
     private final RefundEligibilityQueryService refundEligibilityQueryService;
     private final PromptProvider promptProvider;
     private final AiModelGateway aiModelGateway;
+    private final PolicyRetrievalService policyRetrievalService;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     public AiFailureExplanationResponse explain(
@@ -43,10 +48,13 @@ public class AiRefundFailureExplanationService {
         );
         RefundFailureExplanationContext context =
             RefundFailureExplanationContext.from(view, fallbackExplanation(view));
+        PolicyRetrievalResult policyContext = policyRetrievalService.retrieve(
+            new PolicyRetrievalRequest(PolicyType.REFUND, context.reasonCode())
+        );
         try {
             AiFailureExplanationOutput output = aiModelGateway.chat(new AiChatRequest(
                 promptProvider.get(PromptType.REFUND_FAILURE_EXPLANATION),
-                buildUserPrompt(request.question(), context)
+                buildUserPrompt(request.question(), context, policyContext)
             ), AiFailureExplanationOutput.class);
             return new AiFailureExplanationResponse(
                 output.explanation(),
@@ -74,14 +82,28 @@ public class AiRefundFailureExplanationService {
 
     private String buildUserPrompt(
             String question,
-            RefundFailureExplanationContext context) {
+            RefundFailureExplanationContext context,
+            PolicyRetrievalResult policyContext) {
         return """
-            User question:
+            [BACKEND_DECISION]
+            refundable: %s
+            reasonCode: %s
+
+            [CURRENT_STATE]
             %s
 
-            Server-confirmed refund context. Explain this context only.
+            [POLICY_CONTEXT]
             %s
-            """.formatted(question.trim(), toJson(context));
+
+            [USER_QUESTION]
+            %s
+            """.formatted(
+            context.refundable(),
+            context.reasonCode(),
+            toJson(context),
+            policyContext == null ? "NONE" : policyContext.context(),
+            question.trim()
+        );
     }
 
     private String toJson(Object value) {

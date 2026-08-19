@@ -13,6 +13,10 @@ import com.min.edu.ai.dto.AiFailureExplanationRequest;
 import com.min.edu.ai.dto.AiFailureExplanationResponse;
 import com.min.edu.ai.prompt.PromptProvider;
 import com.min.edu.ai.prompt.PromptType;
+import com.min.edu.ai.rag.PolicyRetrievalRequest;
+import com.min.edu.ai.rag.PolicyRetrievalResult;
+import com.min.edu.ai.rag.PolicyRetrievalService;
+import com.min.edu.ai.rag.PolicyType;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +32,7 @@ public class AiAdmissionFailureExplanationService {
     private final AdmissionFailureEligibilityQueryService admissionFailureEligibilityQueryService;
     private final PromptProvider promptProvider;
     private final AiModelGateway aiModelGateway;
+    private final PolicyRetrievalService policyRetrievalService;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     public AiFailureExplanationResponse explainForMember(
@@ -60,10 +65,13 @@ public class AiAdmissionFailureExplanationService {
             AdmissionFailureEligibilityView view) {
         AdmissionFailureExplanationContext context =
             AdmissionFailureExplanationContext.from(view, fallbackExplanation(view));
+        PolicyRetrievalResult policyContext = policyRetrievalService.retrieve(
+            new PolicyRetrievalRequest(PolicyType.ADMISSION, context.reasonCode())
+        );
         try {
             AiFailureExplanationOutput output = aiModelGateway.chat(new AiChatRequest(
                 promptProvider.get(PromptType.ADMISSION_FAILURE_EXPLANATION),
-                buildUserPrompt(request.question(), context)
+                buildUserPrompt(request.question(), context, policyContext)
             ), AiFailureExplanationOutput.class);
             return new AiFailureExplanationResponse(
                 output.explanation(),
@@ -91,14 +99,28 @@ public class AiAdmissionFailureExplanationService {
 
     private String buildUserPrompt(
             String question,
-            AdmissionFailureExplanationContext context) {
+            AdmissionFailureExplanationContext context,
+            PolicyRetrievalResult policyContext) {
         return """
-            User question:
+            [BACKEND_DECISION]
+            eligible: %s
+            reasonCode: %s
+
+            [CURRENT_STATE]
             %s
 
-            Server-confirmed admission eligibility context. Explain this context only.
+            [POLICY_CONTEXT]
             %s
-            """.formatted(question.trim(), toJson(context));
+
+            [USER_QUESTION]
+            %s
+            """.formatted(
+            context.eligible(),
+            context.reasonCode(),
+            toJson(context),
+            policyContext == null ? "NONE" : policyContext.context(),
+            question.trim()
+        );
     }
 
     private String toJson(Object value) {
