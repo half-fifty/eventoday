@@ -31,6 +31,15 @@ const deleteVenueMap = async (eventId, mapId) => {
   await apiRequest(`/events/${eventId}/venue-maps/${mapId}`, { method: "DELETE" });
 };
 
+// 좌표를 저장하지 않는 "제안" 목록만 반환한다 - 관리자가 확인 후 upsertPositions로 확정해야 한다.
+const suggestAutoLayout = async (eventId, mapId) => {
+  const response = await apiRequest(
+    `/events/${eventId}/venue-maps/${mapId}/auto-layout-suggestions`,
+    json("POST")
+  );
+  return response.data;
+};
+
 const upsertPositions = async (eventId, mapId, positions) => {
   const response = await apiRequest(
     `/events/${eventId}/venue-maps/${mapId}/positions`,
@@ -51,6 +60,7 @@ export {
   createVenueMap,
   publishVenueMap,
   deleteVenueMap,
+  suggestAutoLayout,
   upsertPositions,
   getVenueMapMarkersWithCongestion,
 };

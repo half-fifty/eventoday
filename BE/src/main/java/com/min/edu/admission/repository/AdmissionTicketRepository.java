@@ -31,6 +31,19 @@ public interface AdmissionTicketRepository extends JpaRepository<AdmissionTicket
         """)
     boolean existsByMemberIdAndEventId(@Param("memberId") Long memberId, @Param("eventId") Long eventId);
 
+    Optional<AdmissionTicket> findByQrToken(String qrToken);
+
+    @Query("""
+        select t
+        from AdmissionTicket t
+        join ExchangeCode c on c.id = t.exchangeCodeId
+        where t.id = :admissionTicketId
+            and c.eventId = :eventId
+        """)
+    Optional<AdmissionTicket> findByIdAndEventId(
+            @Param("admissionTicketId") Long admissionTicketId,
+            @Param("eventId") Long eventId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select t from AdmissionTicket t where t.qrToken = :qrToken")
     Optional<AdmissionTicket> findByQrTokenForUpdate(@Param("qrToken") String qrToken);

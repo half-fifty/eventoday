@@ -33,6 +33,7 @@ import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.payment.domain.PaymentRefund;
 import com.min.edu.payment.dto.request.CreateRefundRequest;
 import com.min.edu.payment.dto.response.CreateRefundResponse;
+import com.min.edu.payment.policy.RefundEligibilityPolicy;
 import com.min.edu.payment.repository.PaymentRefundRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.RefundPaymentProjection;
@@ -53,6 +54,7 @@ class RefundRequestServiceTest {
     private RefundAttemptRecorder refundAttemptRecorder;
     private RefundFinalizer refundFinalizer;
     private RefundFinalizationExceptionTranslator exceptionTranslator;
+    private RefundEligibilityPolicy refundEligibilityPolicy;
     private RefundRequestService service;
 
     @BeforeEach
@@ -65,6 +67,9 @@ class RefundRequestServiceTest {
         refundAttemptRecorder = org.mockito.Mockito.mock(RefundAttemptRecorder.class);
         refundFinalizer = org.mockito.Mockito.mock(RefundFinalizer.class);
         exceptionTranslator = new RefundFinalizationExceptionTranslator();
+        refundEligibilityPolicy = org.mockito.Mockito.spy(
+            new RefundEligibilityPolicy(new EventOperationDeadlinePolicy())
+        );
         given(paymentRefundRepository.findByPaymentId(any())).willReturn(Optional.empty());
         service = new RefundRequestService(
             paymentRepository,
@@ -75,7 +80,7 @@ class RefundRequestServiceTest {
             refundAttemptRecorder,
             refundFinalizer,
             exceptionTranslator,
-            new EventOperationDeadlinePolicy()
+            refundEligibilityPolicy
         );
     }
 
@@ -104,6 +109,7 @@ class RefundRequestServiceTest {
         );
 
         assertThat(response.getRefundStatus()).isEqualTo("COMPLETED");
+        verify(refundEligibilityPolicy).evaluate(any());
         InOrder inOrder = inOrder(refundAttemptRecorder, tossPaymentClient, refundFinalizer);
         inOrder.verify(refundAttemptRecorder).prepare(eq(payment), eq(10L), eq(request), any());
         inOrder.verify(tossPaymentClient).cancel(any());

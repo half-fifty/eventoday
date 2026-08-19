@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.VenueMapType;
 import com.min.edu.booth.dto.BoothMapPositionUpsertRequestDto;
+import com.min.edu.booth.dto.VenueMapAutoLayoutSuggestionDto;
 import com.min.edu.booth.dto.VenueMapCreateRequestDto;
 import com.min.edu.booth.dto.VenueMapResponseDto;
 import com.min.edu.booth.service.VenueMapService;
@@ -69,6 +70,16 @@ public class VenueMapController {
             @AuthenticationPrincipal AuthenticatedMemberDto member) {
         venueMapService.delete(eventId, mapId, member);
         return ApiResponse.success();
+    }
+
+    // 좌표를 저장하지 않는 "제안" 조회이지만, 요청마다 외부 Vision API를 호출하는 비용이 있어
+    // GET이 아닌 POST로 둔다.
+    @PostMapping("/events/{eventId}/venue-maps/{mapId}/auto-layout-suggestions")
+    public ApiResponse<List<VenueMapAutoLayoutSuggestionDto>> suggestAutoLayout(
+            @PathVariable Long eventId,
+            @PathVariable Long mapId,
+            @AuthenticationPrincipal AuthenticatedMemberDto member) {
+        return ApiResponse.success(venueMapService.suggestAutoLayout(eventId, mapId, member));
     }
 
     @PutMapping("/events/{eventId}/venue-maps/{mapId}/positions")

@@ -72,6 +72,7 @@ class PaymentFinalizationRollbackIntegrationTest {
                 .buyerMemberId(memberId)
                 .orderType(PaymentOrderType.EVENT_TICKET)
                 .totalAmount(BigDecimal.valueOf(10000))
+                .requestedPaymentMethod(com.min.edu.payment.domain.PaymentMethod.CARD)
                 .status(PaymentOrderStatus.PENDING.name())
                 .expiresAt(now.plusMinutes(10))
                 .createdAt(now)
