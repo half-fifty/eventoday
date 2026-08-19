@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 @Getter
 @NoArgsConstructor
@@ -36,4 +37,10 @@ public class BoothReviewResponse {
     private OffsetDateTime createdAt;
 
     private OffsetDateTime updatedAt;  // ✅ 추가!
+
+    private boolean hidden;  // 신고 누적/운영자 조치로 숨김 처리됐는지 (본인 리뷰 목록에서만 의미 있음)
+
+    private BoothReviewReplyResponse reply;  // 부스 담당자가 남긴 답글 (없으면 null)
+
+    private List<BoothReviewPhotoResponse> photos;  // 첨부 사진 (없으면 빈 리스트)
 }

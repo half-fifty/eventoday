@@ -20,31 +20,51 @@ public interface BoothReviewRepository extends JpaRepository<BoothReview, Long> 
     Optional<BoothReview> findByMemberIdAndBoothId(Long memberId, Long boothId);
 
     /**
-     * 부스의 평균 평점 조회
+     * 부스의 평균 평점 조회 (숨김 처리된 리뷰는 제외)
      * ✅ 반환타입: Optional<Double> (리뷰가 없을 수 있음)
      */
-    @Query("SELECT AVG(br.rating) FROM BoothReview br WHERE br.boothId = :boothId")
+    @Query("SELECT AVG(br.rating) FROM BoothReview br WHERE br.boothId = :boothId AND br.hidden = false")
     Optional<Double> findAverageRatingByBoothId(@Param("boothId") Long boothId);
 
     /**
-     * 부스의 리뷰 개수 조회
+     * 부스의 리뷰 개수 조회 (숨김 처리된 리뷰는 제외) — 메서드 시그니처는 유지하고
+     * 파생 쿼리 대신 명시적 @Query로 바꿔 hidden 조건만 추가한다 (호출부 변경 불필요).
      */
-    long countByBoothId(Long boothId);
+    @Query("SELECT COUNT(br) FROM BoothReview br WHERE br.boothId = :boothId AND br.hidden = false")
+    long countByBoothId(@Param("boothId") Long boothId);
 
     /**
-     * 부스별 리뷰 목록 (최신순)
+     * 부스별 리뷰 목록 (최신순, 숨김 처리된 리뷰는 공개 목록에서 제외)
      */
-    Page<BoothReview> findByBoothIdOrderByCreatedAtDesc(Long boothId, Pageable pageable);
+    @Query("SELECT br FROM BoothReview br WHERE br.boothId = :boothId AND br.hidden = false ORDER BY br.createdAt DESC")
+    Page<BoothReview> findByBoothIdOrderByCreatedAtDesc(@Param("boothId") Long boothId, Pageable pageable);
 
     /**
-     * 사용자의 모든 리뷰 목록 (최신순)
+     * 부스별 리뷰 목록 (평점 높은 순 → 같은 평점이면 최신순)
+     */
+    @Query("SELECT br FROM BoothReview br WHERE br.boothId = :boothId AND br.hidden = false "
+            + "ORDER BY br.rating DESC, br.createdAt DESC")
+    Page<BoothReview> findByBoothIdOrderByRatingDesc(@Param("boothId") Long boothId, Pageable pageable);
+
+    /**
+     * 부스별 리뷰 목록 (평점 낮은 순 → 같은 평점이면 최신순)
+     */
+    @Query("SELECT br FROM BoothReview br WHERE br.boothId = :boothId AND br.hidden = false "
+            + "ORDER BY br.rating ASC, br.createdAt DESC")
+    Page<BoothReview> findByBoothIdOrderByRatingAsc(@Param("boothId") Long boothId, Pageable pageable);
+
+    /**
+     * 사용자의 모든 리뷰 목록 (최신순) — 본인 것이므로 숨김 여부와 무관하게 전부 보여준다.
      */
     Page<BoothReview> findByMemberIdOrderByCreatedAtDesc(Long memberId, Pageable pageable);
 
     /**
-     * 부스별 리뷰 검색 (키워드)
+     * 부스별 리뷰 검색 (키워드, 숨김 처리된 리뷰는 제외)
      */
-    Page<BoothReview> findByBoothIdAndCommentContainingIgnoreCase(Long boothId, String keyword, Pageable pageable);
+    @Query("SELECT br FROM BoothReview br WHERE br.boothId = :boothId AND br.hidden = false "
+            + "AND LOWER(br.comment) LIKE LOWER(CONCAT('%', :keyword, '%'))")
+    Page<BoothReview> findByBoothIdAndCommentContainingIgnoreCase(
+            @Param("boothId") Long boothId, @Param("keyword") String keyword, Pageable pageable);
 
     /**
      * 특정 부스의 특정 리뷰 조회
@@ -60,21 +80,23 @@ public interface BoothReviewRepository extends JpaRepository<BoothReview, Long> 
      * @param boothIds 부스 ID 목록
      * @return [[boothId, averageRating], ...] 형태
      */
-    @Query("SELECT br.boothId, AVG(br.rating) FROM BoothReview br WHERE br.boothId IN :boothIds GROUP BY br.boothId")
+    @Query("SELECT br.boothId, AVG(br.rating) FROM BoothReview br WHERE br.boothId IN :boothIds AND br.hidden = false GROUP BY br.boothId")
     List<Object[]> findAverageRatingsByBoothIds(@Param("boothIds") Collection<Long> boothIds);
 
     /**
-     * 여러 부스의 후기 개수를 한 번에 조회
+     * 여러 부스의 후기 개수를 한 번에 조회 (숨김 처리된 리뷰는 제외)
      *
      * @param boothIds 부스 ID 목록
      * @return [[boothId, count], ...] 형태
      */
-    @Query("SELECT br.boothId, COUNT(br.id) FROM BoothReview br WHERE br.boothId IN :boothIds GROUP BY br.boothId")
+    @Query("SELECT br.boothId, COUNT(br.id) FROM BoothReview br WHERE br.boothId IN :boothIds AND br.hidden = false GROUP BY br.boothId")
     List<Object[]> findReviewCountsByBoothIds(@Param("boothIds") Collection<Long> boothIds);
 
     // ===== 리뷰 AI 요약용 =====
-
-    String COMMENTED_REVIEW_CONDITION = "br.boothId = :boothId AND br.comment IS NOT NULL AND TRIM(br.comment) <> ''";
+    // hidden = false 조건이 여기 한 곳에만 있어도, 이 상수를 쓰는 세 쿼리(개수/목록/최신수정시각) 전부에
+    // 자동으로 적용된다 — 숨김 처리된 리뷰는 AI 요약 재료에서도 함께 제외되는 게 핵심.
+    String COMMENTED_REVIEW_CONDITION =
+            "br.boothId = :boothId AND br.hidden = false AND br.comment IS NOT NULL AND TRIM(br.comment) <> ''";
 
     /**
      * 코멘트가 실제로 채워진(공백 제외) 리뷰 개수 — 요약 생성/재생성 여부 판단 기준
