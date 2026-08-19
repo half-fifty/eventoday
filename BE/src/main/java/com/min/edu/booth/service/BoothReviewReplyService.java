@@ -30,7 +30,10 @@ public class BoothReviewReplyService {
             Long boothId, Long reviewId, String content, AuthenticatedMemberDto manager) {
         boothManagerPermissionChecker.requireBoothManager(boothId, manager);
 
-        boothReviewRepository.findByIdAndBoothId(reviewId, boothId)
+        // 비관적 락으로 같은 리뷰에 대한 동시 답글 등록을 직렬화한다. 락 없이 "답글 있나?" 조회만 하면
+        // 두 요청이 동시에 "없음"을 보고 둘 다 새로 만들려다 두 번째 saveAndFlush가 유니크 제약
+        // 위반(500)으로 실패할 수 있다.
+        boothReviewRepository.findByIdAndBoothIdForUpdate(reviewId, boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
         OffsetDateTime now = OffsetDateTime.now();
@@ -54,7 +57,7 @@ public class BoothReviewReplyService {
     public void deleteReply(Long boothId, Long reviewId, AuthenticatedMemberDto manager) {
         boothManagerPermissionChecker.requireBoothManager(boothId, manager);
 
-        boothReviewRepository.findByIdAndBoothId(reviewId, boothId)
+        boothReviewRepository.findByIdAndBoothIdForUpdate(reviewId, boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
         boothReviewReplyRepository.deleteByBoothReviewId(reviewId);

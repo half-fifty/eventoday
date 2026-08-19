@@ -1,9 +1,11 @@
 package com.min.edu.booth.repository;
 
 import com.min.edu.booth.domain.BoothReview;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -70,6 +72,16 @@ public interface BoothReviewRepository extends JpaRepository<BoothReview, Long> 
      * 특정 부스의 특정 리뷰 조회
      */
     Optional<BoothReview> findByIdAndBoothId(Long id, Long boothId);
+
+    /**
+     * 신고 접수/숨김·해제/답글 작성 등, 같은 리뷰에 대한 동시 요청을 직렬화하기 위한 잠금 조회.
+     * 예: 신고 3건이 동시에 들어오면 각자 count()가 자기 신고만 보고 3건 문턱을 못 넘길 수 있는데,
+     * 이 리뷰 행에 비관적 락을 걸어두면 두 번째 요청부터는 첫 번째가 커밋될 때까지 대기하다가
+     * 최신 상태를 다시 읽게 되어 그런 경쟁 상태가 생기지 않는다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT br FROM BoothReview br WHERE br.id = :reviewId AND br.boothId = :boothId")
+    Optional<BoothReview> findByIdAndBoothIdForUpdate(@Param("reviewId") Long reviewId, @Param("boothId") Long boothId);
 
 
     // ===== Batch 쿼리 메서드 (N+1 최적화) =====

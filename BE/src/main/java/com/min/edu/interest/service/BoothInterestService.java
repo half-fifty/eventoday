@@ -69,9 +69,13 @@ public class BoothInterestService {
         Map<Long, Long> reviewCountMap = boothReviewRepository.findReviewCountsByBoothIds(boothIds).stream()
                 .collect(Collectors.toMap(r -> ((Number) r[0]).longValue(), r -> ((Number) r[1]).longValue()));
 
-        // 예약 가능 여부·혼잡도는 부스별로 개별 조회한다. 관심 부스 목록은 한 사용자당 많아야 수십 개
-        // 규모라 배치로 묶을 만큼의 이점이 없고, 혼잡도는 애초에 "최근 10분" 실시간 집계라 배치화하기도 까다롭다.
+        // 예약 가능 여부·혼잡도도 부스마다 개별 쿼리를 날리지 않고 배치로 한 번에 조회한다.
+        // (관심 부스가 30개면 부스별 개별 조회는 회당 60번의 추가 쿼리로 이어진다.)
         OffsetDateTime since = OffsetDateTime.now().minusMinutes(CONGESTION_WINDOW_MINUTES);
+
+        Set<Long> availableBoothIds = boothReservationSlotRepository.findBoothIdsWithAvailableSlots(boothIds);
+        Map<Long, Long> recentScanMap = boothQrScanRepository.countByBoothIdInAndScannedAtAfter(boothIds, since).stream()
+                .collect(Collectors.toMap(r -> ((Number) r[0]).longValue(), r -> ((Number) r[1]).longValue()));
 
         return rows.stream()
                 .map(row -> {
@@ -81,8 +85,8 @@ public class BoothInterestService {
                     String shortIntro = (String) row[3];
                     Boolean vacancyNotificationEnabled = (Boolean) row[4];
 
-                    boolean hasAvailableSlots = boothReservationSlotRepository.existsByBoothIdAndAvailableSlots(boothId);
-                    long recentScans = boothQrScanRepository.countByBoothIdAndScannedAtAfter(boothId, since);
+                    boolean hasAvailableSlots = availableBoothIds.contains(boothId);
+                    long recentScans = recentScanMap.getOrDefault(boothId, 0L);
 
                     return InterestBoothResponse.builder()
                             .boothId(boothId)

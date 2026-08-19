@@ -20,12 +20,16 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.Event;
 import com.min.edu.event.domain.EventStatus;
 import com.min.edu.event.repository.EventRepository;
+import com.min.edu.file.repository.FileAssetRepository;
 import com.min.edu.member.domain.Member;
 import com.min.edu.member.repository.MemberRepository;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +55,7 @@ public class BoothReviewService {
     private final BoothReviewAiModerationService aiModerationService;
     private final BoothReviewReplyRepository boothReviewReplyRepository;
     private final BoothReviewPhotoRepository boothReviewPhotoRepository;
+    private final FileAssetRepository fileAssetRepository;
 
     /**
      * 1. 리뷰 작성
@@ -116,7 +121,7 @@ public class BoothReviewService {
 
         try {
             BoothReview saved = boothReviewRepository.saveAndFlush(review);
-            savePhotos(saved.getId(), request.getFileIds());
+            savePhotos(saved.getId(), memberId, request.getFileIds());
             return toResponse(saved);
 
         } catch (DataIntegrityViolationException e) {
@@ -124,12 +129,29 @@ public class BoothReviewService {
         }
     }
 
-    // 리뷰-파일 연결을 저장한다. fileId 자체가 실제로 존재/접근 가능한 파일인지는 다운로드 시점에
-    // FileService가 검증하므로 여기서는 연결만 만든다.
-    private void savePhotos(Long reviewId, List<Long> fileIds) {
+    // 리뷰-파일 연결을 저장한다.
+    private void savePhotos(Long reviewId, Long memberId, List<Long> fileIds) {
         if (fileIds == null || fileIds.isEmpty()) {
             return;
         }
+
+        // null 항목/중복 ID는 booth_review_photos의 NOT NULL·유니크 제약을 그대로 위반해 raw한
+        // 영속성 예외로 이어지므로, 여기서 먼저 걸러 명확한 검증 오류로 바꾼다.
+        if (fileIds.stream().anyMatch(Objects::isNull)) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+        Set<Long> distinctIds = new LinkedHashSet<>(fileIds);
+        if (distinctIds.size() != fileIds.size()) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        // fileId가 실제 존재하는지는 FK가 보장하지만, "내가 업로드한 파일인지"는 별도로 확인해야 한다.
+        // 안 그러면 다른 회원의 PRIVATE 파일 ID를 그대로 붙여서 내 리뷰에 연결할 수 있다.
+        long ownedCount = fileAssetRepository.countByIdInAndUploadedBy(fileIds, memberId);
+        if (ownedCount != fileIds.size()) {
+            throw new BusinessException(GlobalErrorCode.FILE_ACCESS_DENIED);
+        }
+
         OffsetDateTime now = OffsetDateTime.now();
         List<BoothReviewPhoto> photos = new ArrayList<>();
         for (int i = 0; i < fileIds.size(); i++) {
@@ -288,7 +310,7 @@ public class BoothReviewService {
         // 7) 사진 교체 — fileIds가 null이면 기존 사진을 그대로 두고, 값이 오면(빈 배열 포함) 통째로 교체한다.
         if (request.getFileIds() != null) {
             boothReviewPhotoRepository.deleteByBoothReviewId(review.getId());
-            savePhotos(review.getId(), request.getFileIds());
+            savePhotos(review.getId(), memberId, request.getFileIds());
         }
 
         return toResponse(review);

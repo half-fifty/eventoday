@@ -34,7 +34,10 @@ public class BoothReviewModerationService {
      * 넘는 순간 자동으로 숨김 처리된다.
      */
     public void reportReview(Long boothId, Long reviewId, String reason, Long reporterMemberId) {
-        BoothReview review = boothReviewRepository.findByIdAndBoothId(reviewId, boothId)
+        // 비관적 락으로 이 리뷰에 대한 신고 접수를 직렬화한다. 락 없이 COUNT만 하면, 동시에 들어온
+        // 신고 3건이 각자 자기 신고만 반영된 개수를 보고(예: 1, 1, 1) 아무도 임계치(3)를 못 넘겨
+        // 자동 숨김이 누락될 수 있다 — READ COMMITTED에서 실제로 재현되는 경쟁 상태.
+        BoothReview review = boothReviewRepository.findByIdAndBoothIdForUpdate(reviewId, boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
         // 본인 리뷰 자기 신고 방지
@@ -67,7 +70,7 @@ public class BoothReviewModerationService {
     public void hideReview(Long boothId, Long reviewId, AuthenticatedMemberDto manager) {
         boothManagerPermissionChecker.requireBoothManager(boothId, manager);
 
-        BoothReview review = boothReviewRepository.findByIdAndBoothId(reviewId, boothId)
+        BoothReview review = boothReviewRepository.findByIdAndBoothIdForUpdate(reviewId, boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
         review.hide(REASON_MANAGER_HIDDEN, OffsetDateTime.now());
         boothReviewRepository.saveAndFlush(review);
@@ -79,7 +82,7 @@ public class BoothReviewModerationService {
     public void unhideReview(Long boothId, Long reviewId, AuthenticatedMemberDto manager) {
         boothManagerPermissionChecker.requireBoothManager(boothId, manager);
 
-        BoothReview review = boothReviewRepository.findByIdAndBoothId(reviewId, boothId)
+        BoothReview review = boothReviewRepository.findByIdAndBoothIdForUpdate(reviewId, boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
         review.unhide();
         boothReviewRepository.saveAndFlush(review);
