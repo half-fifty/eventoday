@@ -16,6 +16,7 @@ export default function AiFailureExplanationBox({
     if (loading || typeof onRequest !== "function") return;
     setLoading(true);
     setError("");
+    setResult(null);
     try {
       const response = await onRequest({ question });
       setResult(response?.data || null);
