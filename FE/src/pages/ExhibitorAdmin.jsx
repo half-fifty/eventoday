@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import QRCode from "qrcode";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
 import useAuth from "../hooks/useAuth.js";
@@ -8,7 +9,7 @@ import {
   getOrganizationApplications,
 } from "../api/boothApplicationApi.js";
 import { getPublicRecruitment } from "../api/recruitmentApi.js";
-import { listAllPublicBooths, updateBoothIntro } from "../api/boothApi.js";
+import { listAllPublicBooths, updateBoothIntro, getBoothQr } from "../api/boothApi.js";
 import { listReservationSlots, createReservationSlot, updateReservationSlot, closeReservationSlot, reopenReservationSlot, deleteReservationSlot, listReservationsForManager, markReservationAttendance } from "../api/boothReservationApi.js";
 import { uploadFile, fileDownloadUrl } from "../api/fileApi.js";
 
@@ -128,6 +129,16 @@ export default function ExhibitorAdmin() {
   const [savingIntro, setSavingIntro] = useState(false);
   const [introError, setIntroError] = useState("");
 
+  // 부스 운영자는 QR을 새로 발급할 수 없고(그건 개최자 권한) 조회만 가능하므로,
+  // 개최자가 아직 발급 전이면 안내 문구만 보여준다. 다섯 필드를 하나의 객체로 묶어서
+  // "QR 패널 상태"를 한 번에 리셋/교체할 수 있게 한다 - closeQr이나 다른 패널을 열 때
+  // 일부 필드만 지우고 나머지를 남겨두는 실수를 구조적으로 막기 위함.
+  const EMPTY_QR = { applicationId: null, info: null, imageUrl: "", error: "", loading: false };
+  const [qr, setQr] = useState(EMPTY_QR);
+  // 부스를 빠르게 전환할 때 이전 요청의 응답이 늦게 도착해 지금 열려있는 다른 부스의
+  // QR 패널을 덮어쓰는 것을 막기 위한 요청 세대 카운터.
+  const qrRequestIdRef = useRef(0);
+
   useEffect(() => {
     if (approvedApplications.length === 0) {
       setBoothInfoByApplicationId({});
@@ -179,6 +190,7 @@ export default function ExhibitorAdmin() {
     setEditingApplicationId(application.id);
     setSlotManagerApplicationId(null);
     setReservationManagerApplicationId(null);
+    setQr(EMPTY_QR);
     setIntroError("");
     setEditImageFile(null);
     setEditForm({
@@ -248,6 +260,7 @@ export default function ExhibitorAdmin() {
   const openSlotManager = (application) => {
     setEditingApplicationId(null);
     setReservationManagerApplicationId(null);
+    setQr(EMPTY_QR);
     setSlotManagerApplicationId(application.id);
     setSlotForm(EMPTY_SLOT_FORM);
     setSlotError("");
@@ -410,8 +423,59 @@ export default function ExhibitorAdmin() {
   const openReservationManager = (application) => {
     setEditingApplicationId(null);
     setSlotManagerApplicationId(null);
+    setQr(EMPTY_QR);
     setReservationManagerApplicationId(application.id);
     loadReservations(application);
+  };
+
+  const closeQr = () => {
+    qrRequestIdRef.current += 1;
+    setQr(EMPTY_QR);
+  };
+
+  // 발급은 개최자 권한이라(BoothService.issueQr) 여기서는 조회만 한다 - 아직 개최자가
+  // QR을 발급하지 않았으면 qrToken이 null로 온다.
+  const handleToggleQr = async (application, eventId, boothId) => {
+    if (qr.applicationId === application.id) {
+      closeQr();
+      return;
+    }
+    // 이 토글이 시작된 시점의 세대를 기억해뒀다가, 응답이 도착했을 때 그 사이 다른 부스로
+    // 전환되지 않았는지 확인한다 - 그렇지 않으면 느리게 도착한 이전 부스의 응답이 지금
+    // 열려있는 다른 부스의 QR 패널을 덮어쓸 수 있다.
+    const requestId = ++qrRequestIdRef.current;
+    setEditingApplicationId(null);
+    setSlotManagerApplicationId(null);
+    setReservationManagerApplicationId(null);
+    setQr({ ...EMPTY_QR, applicationId: application.id, loading: true });
+    try {
+      const info = await getBoothQr(eventId, boothId);
+      if (qrRequestIdRef.current !== requestId) return;
+      if (!info.qrToken) {
+        setQr({
+          applicationId: application.id,
+          info,
+          imageUrl: "",
+          error: "아직 개최자가 QR을 발급하지 않았어요. 개최자에게 문의해 주세요.",
+          loading: false,
+        });
+        return;
+      }
+      // 스캔하면 부스 상세 페이지로 이동하도록, 토큰 원문 대신 페이지 URL을 인코딩한다.
+      const scanUrl = `${window.location.origin}/booth-detail?eventId=${eventId}&boothId=${boothId}&qr=${info.qrToken}`;
+      const dataUrl = await QRCode.toDataURL(scanUrl, { width: 160, margin: 1 });
+      if (qrRequestIdRef.current !== requestId) return;
+      setQr({ applicationId: application.id, info, imageUrl: dataUrl, error: "", loading: false });
+    } catch (err) {
+      if (qrRequestIdRef.current !== requestId) return;
+      setQr({
+        applicationId: application.id,
+        info: null,
+        imageUrl: "",
+        error: err instanceof Error && err.message ? err.message : "QR 정보를 불러오지 못했습니다.",
+        loading: false,
+      });
+    }
   };
 
   const movePage = (nextPage) => {
@@ -514,6 +578,7 @@ export default function ExhibitorAdmin() {
                     const slots = slotsByApplicationId[application.id] ?? [];
                     const isReservationManaging = reservationManagerApplicationId === application.id;
                     const reservations = reservationsByApplicationId[application.id] ?? [];
+                    const isQrOpen = qr.applicationId === application.id;
 
                     return (
                       <div key={application.id} className="overflow-hidden rounded-xl border border-hairline bg-white">
@@ -558,7 +623,40 @@ export default function ExhibitorAdmin() {
                               예약 관리
                             </button>
                           )}
+                          {booth?.id && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleQr(application, info.eventId, booth.id)}
+                              className="flex-shrink-0 rounded-full border border-hairline px-md py-1 text-caption font-body-strong"
+                            >
+                              {isQrOpen ? "QR 닫기" : "QR 보기"}
+                            </button>
+                          )}
                         </div>
+
+                        {isQrOpen && (
+                          <div className="flex items-center gap-md border-t border-hairline bg-surface-container-lowest p-lg">
+                            {qr.loading ? (
+                              <div className="flex h-32 w-32 flex-shrink-0 items-center justify-center text-caption text-ink-muted">
+                                불러오는 중...
+                              </div>
+                            ) : qr.imageUrl ? (
+                              <img
+                                src={qr.imageUrl}
+                                alt={`${booth.boothCode} 부스 QR`}
+                                className="h-32 w-32 flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="flex h-32 w-32 flex-shrink-0 items-center justify-center px-sm text-center text-caption text-ink-muted">
+                                {qr.error || "QR 정보를 불러오지 못했습니다."}
+                              </div>
+                            )}
+                            <div className="min-w-0 space-y-1 text-[11px] text-ink-muted">
+                              <p>이 QR은 방문객이 부스 상세 페이지로 바로 이동할 때 스캔해요.</p>
+                              {qr.info?.qrIssuedAt && <p>발급: {new Date(qr.info.qrIssuedAt).toLocaleString()}</p>}
+                            </div>
+                          </div>
+                        )}
 
                         {isEditing && (
                           <div className="space-y-sm border-t border-hairline bg-surface-container-lowest p-lg">
