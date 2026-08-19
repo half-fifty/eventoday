@@ -1,7 +1,6 @@
 package com.min.edu.interest.repository;
 
 import com.min.edu.booth.domain.BoothInterest;
-import com.min.edu.interest.dto.InterestBoothResponse;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -27,17 +26,20 @@ public interface BoothInterestRepository extends JpaRepository<BoothInterest, Lo
     // ===== 새로운 메서드 =====
 
     /**
-     * 1. 사용자의 모든 관심 부스를 DTO로 조회 (Booth 정보 포함)
+     * 1. 사용자의 모든 관심 부스 기본 정보 조회 (Booth 정보 포함)
+     *
+     * 평점/후기수/예약가능여부/혼잡도는 부스마다 별도 소스(배치 쿼리 + 실시간 집계)에서
+     * 가져와야 해서 여기서는 기본 필드만 조회하고, 나머지는 서비스 레이어에서 조립한다.
+     * (row = [boothId, eventId, displayName, shortIntro, vacancyNotificationEnabled])
      *
      * @param memberId 회원 ID
-     * @return 사용자가 관심 표시한 부스 정보 목록
+     * @return 사용자가 관심 표시한 부스 기본 정보 목록
      */
-    @Query("SELECT new com.min.edu.interest.dto.InterestBoothResponse(" +
-            "bi.boothId, b.eventId, b.displayName, b.shortIntro, bi.vacancyNotificationEnabled) " +
+    @Query("SELECT bi.boothId, b.eventId, b.displayName, b.shortIntro, bi.vacancyNotificationEnabled " +
             "FROM BoothInterest bi " +
             "JOIN Booth b ON bi.boothId = b.id " +
             "WHERE bi.memberId = :memberId")
-    List<InterestBoothResponse> findInterestBoothsByMemberId(@Param("memberId") Long memberId);
+    List<Object[]> findInterestBoothsByMemberId(@Param("memberId") Long memberId);
 
     /**
      * 2. 사용자가 관심 표시한 모든 부스 ID를 Batch로 조회
