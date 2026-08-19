@@ -7,6 +7,7 @@ import {
   createVenueMap,
   publishVenueMap,
   deleteVenueMap,
+  suggestAutoLayout,
   upsertPositions,
 } from "../api/venueMapApi.js";
 import { listBooths } from "../api/boothApi.js";
@@ -211,6 +212,62 @@ export default function FloorplanManagementPanel({ eventId }) {
         ),
       "좌표를 저장했습니다."
     );
+
+  // 좌표를 서버에 저장하지 않는 "제안"이라 loadAll을 다시 부르지 않는다 - 이미 배치된
+  // 부스는 관리자가 수동으로 잡은 위치를 덮어쓰지 않도록 건너뛰고, "+ 부스" 버튼과 동일하게
+  // 같은 용도의 다른 층에 이미 배치된 부스도 여기서 중복 배치되지 않도록 건너뛴다.
+  const handleAutoLayout = async () => {
+    if (!selectedMapId || submitting) return;
+    const actionGeneration = eventGenerationRef.current;
+    setSubmitting(true);
+    setError("");
+    setMessage("");
+    try {
+      const suggestions = await suggestAutoLayout(eventId, selectedMapId);
+      if (eventGenerationRef.current !== actionGeneration) return;
+
+      // setPositions에 넘기는 업데이터 함수는 React가 나중에(비동기로) 실행하므로, 그 안에서
+      // 부수효과로 카운터를 세면 아래 메시지 계산 시점엔 아직 반영되지 않은 값을 읽게 된다.
+      // 그래서 분류/카운트는 여기서 미리 순수하게 끝내고, setPositions엔 결과만 넘긴다.
+      const placedIds = new Set(positions.map((p) => p.boothId));
+      const additions = [];
+      let skippedElsewhereCount = 0;
+      for (const s of suggestions) {
+        if (!s.matched || placedIds.has(s.boothId)) continue;
+        if (elsewherePlacementByBoothId.has(s.boothId)) {
+          skippedElsewhereCount += 1;
+          continue;
+        }
+        additions.push({
+          boothId: s.boothId,
+          boothCode: s.boothCode,
+          xRatio: Number(s.xRatio),
+          yRatio: Number(s.yRatio),
+        });
+      }
+      setPositions((prev) => [...prev, ...additions]);
+
+      const addedCount = additions.length;
+      const unmatchedLabels = suggestions.filter((s) => !s.matched).map((s) => s.label);
+      const notes = [];
+      if (unmatchedLabels.length > 0) {
+        notes.push(`부스 코드와 매칭되지 않은 라벨 ${unmatchedLabels.length}개: ${unmatchedLabels.join(", ")}`);
+      }
+      if (skippedElsewhereCount > 0) {
+        notes.push(`다른 층에 이미 배치되어 제외한 부스 ${skippedElsewhereCount}개`);
+      }
+      setMessage(
+        notes.length > 0
+          ? `${addedCount}개 제안을 적용했습니다. ${notes.join(" / ")}`
+          : `${addedCount}개 제안을 적용했습니다. 저장 전에 위치를 확인해 주세요.`
+      );
+    } catch (err) {
+      if (eventGenerationRef.current !== actionGeneration) return;
+      setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "자동 배치 제안을 가져오지 못했습니다.");
+    } finally {
+      if (eventGenerationRef.current === actionGeneration) setSubmitting(false);
+    }
+  };
 
   const placeBooth = (booth) => {
     setPositions((prev) => [...prev, { boothId: booth.id, boothCode: booth.boothCode, xRatio: 0.5, yRatio: 0.5 }]);
@@ -423,6 +480,17 @@ export default function FloorplanManagementPanel({ eventId }) {
                           </div>
                           <p className="text-[11px] text-ink-muted mt-xs">
                             핀을 드래그해서 위치를 옮긴 뒤 "좌표 저장"을 눌러주세요.
+                          </p>
+                          <button
+                            onClick={handleAutoLayout}
+                            disabled={submitting}
+                            className="mt-sm text-caption border border-primary text-primary rounded-full px-md py-1 disabled:opacity-40"
+                          >
+                            <Icon name="auto_awesome" className="text-[13px] mr-1" />
+                            AI로 부스 위치 제안받기
+                          </button>
+                          <p className="text-[11px] text-ink-muted mt-xs">
+                            AI가 도면을 읽어 위치를 제안합니다. 라벨을 잘못 읽을 수 있으니 반드시 확인 후 저장하세요.
                           </p>
                         </div>
 
