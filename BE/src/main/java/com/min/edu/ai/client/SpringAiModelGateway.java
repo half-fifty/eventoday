@@ -74,13 +74,17 @@ public class SpringAiModelGateway implements AiModelGateway {
             throw exception;
         } catch (RuntimeException exception) {
             GlobalErrorCode errorCode = mapError(exception);
+            Throwable rootCause = rootCause(exception);
             log.warn(
-                "AI copilot call failed. provider={}, model={}, errorCode={}, latencyMs={}, exceptionType={}",
+                "AI copilot call failed. provider={}, model={}, errorCode={}, latencyMs={}, exceptionClass={}, exceptionMessage={}, rootCauseClass={}, rootCauseMessage={}",
                 properties.provider(),
                 properties.model(),
                 errorCode.name(),
                 elapsedMillis(startedAt),
-                exception.getClass().getSimpleName()
+                exception.getClass().getName(),
+                sanitizeMessage(exception.getMessage()),
+                rootCause.getClass().getName(),
+                sanitizeMessage(rootCause.getMessage())
             );
             throw new BusinessException(errorCode, exception);
         }
@@ -219,6 +223,23 @@ public class SpringAiModelGateway implements AiModelGateway {
             current = current.getCause();
         }
         return false;
+    }
+
+    private Throwable rootCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private String sanitizeMessage(String message) {
+        if (!StringUtils.hasText(message)) {
+            return null;
+        }
+        return message
+            .replaceAll("(?i)(api[_-]?key|key|token|authorization|paymentKey)=([^\\s,&]+)", "$1=[REDACTED]")
+            .replaceAll("(?i)(Bearer\\s+)[^\\s,&]+", "$1[REDACTED]");
     }
 
     private long elapsedMillis(long startedAt) {
