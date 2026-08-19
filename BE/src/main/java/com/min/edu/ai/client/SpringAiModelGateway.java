@@ -13,12 +13,15 @@ import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -28,9 +31,12 @@ import org.springframework.util.StringUtils;
 @Component
 public class SpringAiModelGateway implements AiModelGateway {
 
+    private static final int MAX_TOOL_CALL_ROUNDS = 5;
+
     private final ChatModel chatModel;
     private final AiProperties properties;
     private final AiToolCallbackFactory toolCallbackFactory;
+    private final ToolCallingManager toolCallingManager;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     public SpringAiModelGateway(
@@ -40,6 +46,7 @@ public class SpringAiModelGateway implements AiModelGateway {
         this.chatModel = chatModel;
         this.properties = properties;
         this.toolCallbackFactory = toolCallbackFactory;
+        this.toolCallingManager = ToolCallingManager.builder().build();
     }
 
     @Override
@@ -57,7 +64,7 @@ public class SpringAiModelGateway implements AiModelGateway {
 
         long startedAt = System.nanoTime();
         try {
-            ChatResponse response = chatModel.call(prompt(request));
+            ChatResponse response = callWithToolLoop(prompt(request));
             String content = extractContent(response);
             T parsed = parseResponse(content, responseType);
             log.info("AI copilot call succeeded. provider={}, model={}, latencyMs={}",
@@ -77,6 +84,36 @@ public class SpringAiModelGateway implements AiModelGateway {
             );
             throw new BusinessException(errorCode, exception);
         }
+    }
+
+    private ChatResponse callWithToolLoop(Prompt initialPrompt) {
+        Prompt currentPrompt = initialPrompt;
+        ChatResponse response = chatModel.call(currentPrompt);
+        int toolCallRounds = 0;
+
+        while (response != null && response.hasToolCalls()) {
+            if (++toolCallRounds > MAX_TOOL_CALL_ROUNDS) {
+                throw new BusinessException(GlobalErrorCode.AI_RESPONSE_INVALID);
+            }
+
+            ToolExecutionResult toolExecutionResult =
+                toolCallingManager.executeToolCalls(currentPrompt, response);
+            if (toolExecutionResult.returnDirect()) {
+                return new ChatResponse(ToolExecutionResult.buildGenerations(toolExecutionResult));
+            }
+
+            currentPrompt = promptWithConversationHistory(
+                toolExecutionResult.conversationHistory(),
+                initialPrompt
+            );
+            response = chatModel.call(currentPrompt);
+        }
+
+        return response;
+    }
+
+    private Prompt promptWithConversationHistory(List<Message> conversationHistory, Prompt initialPrompt) {
+        return new Prompt(conversationHistory, initialPrompt.getOptions());
     }
 
     private Prompt prompt(AiChatRequest request) {
