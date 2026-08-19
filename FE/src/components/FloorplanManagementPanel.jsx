@@ -73,6 +73,10 @@ export default function FloorplanManagementPanel({ eventId }) {
   // 비교하면 항상 "안 바뀜"으로 나온다. eventId가 실제로 바뀔 때만 증가하는 이 ref로 비교해야
   // 진짜 세대 변화를 감지할 수 있다.
   const eventGenerationRef = useRef(0);
+  // handleAutoLayout이 응답을 받았을 때 "그 사이에 다른 평면도를 선택하지 않았는가"를
+  // 판단하기 위한 세대 카운터. selectedMapId를 직접 비교하면 안 되는 이유는 eventId와
+  // 동일하다 - 클로저가 캡처한 렌더 시점의 값이라 나중에 다시 읽어도 항상 같다.
+  const mapSelectionGenerationRef = useRef(0);
 
   // 호출할 때마다 새 버전을 발급해, 나중에 시작됐지만 먼저 끝난 요청만 반영되도록 한다.
   // eventId가 바뀌는 effect도 결국 이 함수를 호출하므로 행사 전환도 자연히 최신 버전으로 갱신된다.
@@ -100,6 +104,7 @@ export default function FloorplanManagementPanel({ eventId }) {
 
   useEffect(() => {
     eventGenerationRef.current += 1;
+    mapSelectionGenerationRef.current += 1;
     setUploadForm(EMPTY_UPLOAD_FORM);
     setFileInputKey((prev) => prev + 1);
     setSelectedMapId(null);
@@ -126,6 +131,10 @@ export default function FloorplanManagementPanel({ eventId }) {
   const selectedMap = maps.find((m) => m.id === selectedMapId) || null;
 
   const selectMap = (map) => {
+    mapSelectionGenerationRef.current += 1;
+    // handleAutoLayout의 finally는 이 세대가 바뀌면 더 이상 실행되지 않으므로, 그 사이에
+    // 진행 중이던 요청이 있었다면 여기서 직접 꺼야 submitting이 계속 true로 남지 않는다.
+    setSubmitting(false);
     setSelectedMapId(map.id);
     setPositions(
       (map.positions ?? []).map((p) => ({
@@ -219,12 +228,17 @@ export default function FloorplanManagementPanel({ eventId }) {
   const handleAutoLayout = async () => {
     if (!selectedMapId || submitting) return;
     const actionGeneration = eventGenerationRef.current;
+    const actionMapId = selectedMapId;
+    const actionMapGeneration = mapSelectionGenerationRef.current;
     setSubmitting(true);
     setError("");
     setMessage("");
     try {
-      const suggestions = await suggestAutoLayout(eventId, selectedMapId);
-      if (eventGenerationRef.current !== actionGeneration) return;
+      const suggestions = await suggestAutoLayout(eventId, actionMapId);
+      if (eventGenerationRef.current !== actionGeneration
+          || mapSelectionGenerationRef.current !== actionMapGeneration) {
+        return;
+      }
 
       // setPositions에 넘기는 업데이터 함수는 React가 나중에(비동기로) 실행하므로, 그 안에서
       // 부수효과로 카운터를 세면 아래 메시지 계산 시점엔 아직 반영되지 않은 값을 읽게 된다.
@@ -262,10 +276,16 @@ export default function FloorplanManagementPanel({ eventId }) {
           : `${addedCount}개 제안을 적용했습니다. 저장 전에 위치를 확인해 주세요.`
       );
     } catch (err) {
-      if (eventGenerationRef.current !== actionGeneration) return;
+      if (eventGenerationRef.current !== actionGeneration
+          || mapSelectionGenerationRef.current !== actionMapGeneration) {
+        return;
+      }
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "자동 배치 제안을 가져오지 못했습니다.");
     } finally {
-      if (eventGenerationRef.current === actionGeneration) setSubmitting(false);
+      if (eventGenerationRef.current === actionGeneration
+          && mapSelectionGenerationRef.current === actionMapGeneration) {
+        setSubmitting(false);
+      }
     }
   };
 
