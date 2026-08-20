@@ -1,5 +1,6 @@
 package com.min.edu.booth.service;
 
+import com.min.edu.admission.repository.AdmissionTicketRepository;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.Booth;
 import com.min.edu.booth.domain.BoothReservation;
@@ -17,6 +18,7 @@ import com.min.edu.booth.repository.BoothReservationSlotRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.Event;
+import com.min.edu.event.domain.EventStatus;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.Member;
 import com.min.edu.member.repository.MemberRepository;
@@ -47,6 +49,7 @@ public class BoothReservationWithRedisService {
     private final BoothManagerPermissionChecker boothManagerPermissionChecker;
     private final MemberRepository memberRepository;
     private final EventRepository eventRepository;
+    private final AdmissionTicketRepository admissionTicketRepository;
     private final RedisReservationService redisReservationService;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -232,6 +235,21 @@ public class BoothReservationWithRedisService {
         // 부스 존재 확인
         Booth booth = boothRepository.findById(boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // 행사가 취소되었거나 이미 종료됐으면 예약 불가 (Redis 선점을 시도하기 전에 먼저 걸러낸다)
+        Event event = eventRepository.findById(booth.getEventId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+        boolean eventAvailable = event.getStatus() != EventStatus.CANCELLED
+                && event.getStatus() != EventStatus.ENDED
+                && event.getEndAt().isAfter(now);
+        if (!eventAvailable) {
+            throw new BusinessException(GlobalErrorCode.BOOTH_RESERVATION_EVENT_NOT_AVAILABLE);
+        }
+
+        // 티켓 구매자만 예약 가능 (해당 행사의 AdmissionTicket 보유 여부로 확인)
+        if (!admissionTicketRepository.existsByMemberIdAndEventId(memberId, event.getId())) {
+            throw new BusinessException(GlobalErrorCode.BOOTH_RESERVATION_TICKET_REQUIRED);
+        }
 
         // 슬롯 확인 (비관적 잠금으로 동시성 제어)
         BoothReservationSlot slot = slotRepository.findByIdWithLock(request.getSlotId())

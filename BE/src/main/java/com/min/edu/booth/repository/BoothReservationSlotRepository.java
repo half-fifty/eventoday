@@ -9,8 +9,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.LockModeType;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface BoothReservationSlotRepository extends JpaRepository<BoothReservationSlot, Long> {
 
@@ -66,6 +68,17 @@ public interface BoothReservationSlotRepository extends JpaRepository<BoothReser
             "AND brs.status = 'OPEN' " +
             "AND brs.reservedCount < brs.capacity")
     boolean existsByBoothIdAndAvailableSlots(@Param("boothId") Long boothId);
+
+    /**
+     * 4-1. 여러 부스의 예약 가능 여부를 한 번에 조회 (관심 부스 목록 등에서 부스별 개별 조회를 피하기 위함)
+     *
+     * @return 예약 가능한 슬롯이 하나라도 있는 부스 ID 집합
+     */
+    @Query("SELECT DISTINCT brs.boothId FROM BoothReservationSlot brs " +
+            "WHERE brs.boothId IN :boothIds " +
+            "AND brs.status = 'OPEN' " +
+            "AND brs.reservedCount < brs.capacity")
+    Set<Long> findBoothIdsWithAvailableSlots(@Param("boothIds") Collection<Long> boothIds);
 
     /**
      * 5. 부스의 모든 OPEN 슬롯 조회 (Service에서 Redis 선점 제외용)
