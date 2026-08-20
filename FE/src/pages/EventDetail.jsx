@@ -75,6 +75,7 @@ export default function EventDetail() {
   const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS.CARD);
   const [purchasing, setPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState("");
+  const [ticketOrderIdempotencyKey, setTicketOrderIdempotencyKey] = useState("");
   const [issuedCodes, setIssuedCodes] = useState([]);
   // 공지·자료 (WBS-199): 권한에 따라 BE가 필터링해 내려준다
   const [contents, setContents] = useState([]);
@@ -218,7 +219,11 @@ export default function EventDetail() {
           },
         }),
       };
-      const result = await eventApi.createTicketOrder(eventId, payload);
+      const idempotencyKey = ticketOrderIdempotencyKey || crypto.randomUUID();
+      if (!ticketOrderIdempotencyKey) {
+        setTicketOrderIdempotencyKey(idempotencyKey);
+      }
+      const result = await eventApi.createTicketOrder(eventId, payload, idempotencyKey);
       const order = result?.data;
       if (!order) throw new Error("티켓 주문 정보를 받지 못했습니다.");
 
@@ -229,6 +234,7 @@ export default function EventDetail() {
 
       if (!order.paymentRequired) {
         setIssuedCodes(order.exchangeCodes || []);
+        setTicketOrderIdempotencyKey("");
         return;
       }
 
@@ -267,6 +273,7 @@ export default function EventDetail() {
     setIssuedCodes([]);
     setCompletedOrderNo("");
     setOrderNoCopyMessage("");
+    setTicketOrderIdempotencyKey("");
   };
 
   const copyCompletedOrderNo = async () => {
@@ -286,6 +293,7 @@ export default function EventDetail() {
       return;
     }
     setPurchaseError("");
+    setTicketOrderIdempotencyKey(crypto.randomUUID());
     setPurchaseOpen(true);
   };
 

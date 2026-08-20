@@ -1,36 +1,26 @@
 package com.min.edu.payment.service;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import com.min.edu.admission.domain.ExchangeCode;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
-import com.min.edu.admission.support.ExchangeCodeGenerator;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.payment.config.TicketOrderReliabilityProperties;
 import com.min.edu.payment.domain.PaymentOrder;
-import com.min.edu.payment.domain.PaymentOrderStatus;
-import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.TicketOrder;
-import com.min.edu.payment.domain.TicketOrderStatus;
+import com.min.edu.payment.domain.TicketOrderIdempotencyRequest;
 import com.min.edu.payment.dto.request.CreateTicketOrderRequest;
-import com.min.edu.payment.dto.request.GuestBuyerRequest;
+import com.min.edu.payment.dto.request.GuestOrderAccessTokenRequest;
 import com.min.edu.payment.dto.response.CreateTicketOrderResponse;
-import com.min.edu.payment.event.EventTicketReader;
-import com.min.edu.payment.event.EventTicketSnapshot;
-import com.min.edu.payment.event.TicketInventoryGateway;
-import com.min.edu.payment.event.TicketReservationCompletedEvent;
-import com.min.edu.payment.policy.TicketOrderPolicy;
+import com.min.edu.payment.exception.TicketOrderBusyException;
 import com.min.edu.payment.repository.PaymentOrderRepository;
+import com.min.edu.payment.repository.TicketOrderIdempotencyRequestRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
-import com.min.edu.payment.support.OrderAccessTokenProvider;
-import com.min.edu.payment.support.OrderNoGenerator;
 
 import lombok.RequiredArgsConstructor;
 
@@ -38,248 +28,185 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class TicketOrderService {
 
-    private static final long PAYMENT_EXPIRATION_MINUTES = 10L;
-    private static final long VIRTUAL_ACCOUNT_EXPIRATION_MINUTES = 30L;
-
-    private final EventTicketReader eventTicketReader;
-    private final TicketInventoryGateway ticketInventoryGateway;
+    private final TicketOrderRequestHasher requestHasher;
+    private final TicketOrderInflightDuplicateGate inflightDuplicateGate;
+    private final TicketOrderIdempotencyClaimService idempotencyClaimService;
+    private final TicketOrderAdmissionGate admissionGate;
+    private final TicketOrderCreationProcessor creationProcessor;
+    private final TicketOrderIdempotencyRequestRepository idempotencyRequestRepository;
     private final PaymentOrderRepository paymentOrderRepository;
     private final TicketOrderRepository ticketOrderRepository;
     private final ExchangeCodeRepository exchangeCodeRepository;
-    private final OrderNoGenerator orderNoGenerator;
-    private final ExchangeCodeGenerator exchangeCodeGenerator;
-    private final TicketOrderPolicy ticketOrderPolicy;
-    private final OrderAccessTokenProvider orderAccessTokenProvider;
-    private final ApplicationEventPublisher applicationEventPublisher;
+    private final GuestOrderAccessService guestOrderAccessService;
+    private final TicketOrderReliabilityProperties reliabilityProperties;
 
-    @Transactional
     public CreateTicketOrderResponse create(
+            String idempotencyKey,
             Long eventId,
             Long buyerMemberId,
             CreateTicketOrderRequest request) {
-        OffsetDateTime now = OffsetDateTime.now();
-        EventTicketSnapshot event = eventTicketReader.getTicketSnapshot(eventId);
+        validateIdempotencyKey(idempotencyKey);
 
-        ticketOrderPolicy.validate(buyerMemberId, request, event, now);
-
-        BigDecimal unitPrice = event.ticketPrice();
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(request.getQuantity()));
-        String orderNo = orderNoGenerator.generate();
-
-        if (!ticketInventoryGateway.reserve(eventId, request.getQuantity())) {
-            throw new BusinessException(GlobalErrorCode.TICKET_SOLD_OUT);
+        String requestHash = requestHasher.hash(eventId, buyerMemberId, request);
+        InflightClaimResult inflightClaim = inflightDuplicateGate.tryClaim(idempotencyKey);
+        if (inflightClaim == InflightClaimResult.ALREADY_IN_FLIGHT) {
+            return handleAlreadyInFlight(idempotencyKey, requestHash, request);
         }
 
-        if (isFree(unitPrice)) {
-            return createFreeOrder(
-                eventId,
-                buyerMemberId,
-                request,
-                orderNo,
-                unitPrice,
-                totalAmount,
-                event,
-                now
+        boolean admissionAcquired = false;
+        boolean idempotencyClaimed = false;
+        try {
+            AdmissionResult admissionResult = admissionGate.tryAcquire(eventId, idempotencyKey);
+            if (admissionResult == AdmissionResult.REJECTED) {
+                return handleAdmissionRejected(idempotencyKey, requestHash, request);
+            }
+            admissionAcquired = admissionResult == AdmissionResult.ACQUIRED;
+
+            TicketOrderIdempotencyClaimResult claim = idempotencyClaimService.claim(
+                idempotencyKey,
+                requestHash,
+                eventId
             );
+
+            if (claim.status() == TicketOrderIdempotencyClaimStatus.COMPLETED) {
+                return completedResponse(claim.request(), request);
+            }
+
+            if (claim.status() == TicketOrderIdempotencyClaimStatus.PROCESSING) {
+                throw new BusinessException(GlobalErrorCode.IDEMPOTENCY_REQUEST_IN_PROGRESS);
+            }
+
+            idempotencyClaimed = true;
+            return creationProcessor.create(idempotencyKey, eventId, buyerMemberId, request);
+        } catch (RuntimeException exception) {
+            markFailedIfBusinessAttemptStarted(idempotencyKey, idempotencyClaimed, exception);
+            throw exception;
+        } finally {
+            if (admissionAcquired) {
+                admissionGate.release(eventId, idempotencyKey);
+            }
+            if (inflightClaim == InflightClaimResult.ACQUIRED) {
+                inflightDuplicateGate.release(idempotencyKey);
+            }
+        }
+    }
+
+    private void validateIdempotencyKey(String idempotencyKey) {
+        if (!StringUtils.hasText(idempotencyKey)) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+
+    private CreateTicketOrderResponse handleAlreadyInFlight(
+            String idempotencyKey,
+            String requestHash,
+            CreateTicketOrderRequest request) {
+        TicketOrderIdempotencyRequest existing = idempotencyRequestRepository
+            .findByIdempotencyKey(idempotencyKey)
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.IDEMPOTENCY_REQUEST_IN_PROGRESS));
+
+        if (existing.hasDifferentRequestHash(requestHash)) {
+            throw new BusinessException(GlobalErrorCode.IDEMPOTENCY_KEY_CONFLICT);
         }
 
-        return createPaymentPendingOrder(
-            eventId,
-            buyerMemberId,
-            request,
-            orderNo,
-            unitPrice,
-            totalAmount,
-            event,
-            now
+        if (existing.isCompleted()) {
+            return completedResponse(existing, request);
+        }
+
+        throw new BusinessException(GlobalErrorCode.IDEMPOTENCY_REQUEST_IN_PROGRESS);
+    }
+
+    private CreateTicketOrderResponse handleAdmissionRejected(
+            String idempotencyKey,
+            String requestHash,
+            CreateTicketOrderRequest request) {
+        TicketOrderIdempotencyRequest existing = idempotencyRequestRepository
+            .findByIdempotencyKey(idempotencyKey)
+            .orElse(null);
+
+        if (existing == null) {
+            throw ticketOrderBusy();
+        }
+
+        if (existing.hasDifferentRequestHash(requestHash)) {
+            throw new BusinessException(GlobalErrorCode.IDEMPOTENCY_KEY_CONFLICT);
+        }
+
+        if (existing.isCompleted()) {
+            return completedResponse(existing, request);
+        }
+
+        throw ticketOrderBusy();
+    }
+
+    private void markFailedIfBusinessAttemptStarted(
+            String idempotencyKey,
+            boolean idempotencyClaimed,
+            RuntimeException exception) {
+        if (!idempotencyClaimed) {
+            return;
+        }
+
+        if (exception instanceof BusinessException businessException
+                && (businessException.getErrorCode() == GlobalErrorCode.IDEMPOTENCY_KEY_CONFLICT
+                || businessException.getErrorCode() == GlobalErrorCode.IDEMPOTENCY_REQUEST_IN_PROGRESS
+                || businessException.getErrorCode() == GlobalErrorCode.INVALID_INPUT_VALUE
+                || businessException.getErrorCode() == GlobalErrorCode.TICKET_ORDER_BUSY)) {
+            return;
+        }
+
+        idempotencyClaimService.markFailed(idempotencyKey);
+    }
+
+    private TicketOrderBusyException ticketOrderBusy() {
+        return new TicketOrderBusyException(
+            reliabilityProperties.getAdmission().getRetryAfterSeconds()
         );
     }
 
-    private CreateTicketOrderResponse createPaymentPendingOrder(
-            Long eventId,
-            Long buyerMemberId,
-            CreateTicketOrderRequest request,
-            String orderNo,
-            BigDecimal unitPrice,
-            BigDecimal totalAmount,
-            EventTicketSnapshot event,
-            OffsetDateTime now) {
-        PaymentOrder paymentOrder = paymentOrderRepository.save(
-            PaymentOrder.createTicketOrder(
-                orderNo,
-                buyerMemberId,
-                getGuestBuyerName(buyerMemberId, request.getBuyer()),
-                getGuestBuyerEmail(buyerMemberId, request.getBuyer()),
-                getGuestBuyerPhone(buyerMemberId, request.getBuyer()),
-                totalAmount,
-                selectedPaymentMethod(request),
-                PaymentOrderStatus.PENDING,
-                paymentExpiresAt(selectedPaymentMethod(request), now),
-                now
-            )
-        );
+    private CreateTicketOrderResponse completedResponse(
+            TicketOrderIdempotencyRequest idempotencyRequest,
+            CreateTicketOrderRequest retryRequest) {
+        PaymentOrder paymentOrder = paymentOrderRepository.findById(idempotencyRequest.getPaymentOrderId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+        TicketOrder ticketOrder = ticketOrderRepository.findById(idempotencyRequest.getTicketOrderId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
 
-        TicketOrder ticketOrder = ticketOrderRepository.save(
-            TicketOrder.create(
-                paymentOrder.getId(),
-                eventId,
-                unitPrice,
-                request.getQuantity(),
-                TicketOrderStatus.PENDING_PAYMENT,
-                null,
-                now
-            )
-        );
+        if (ticketOrder.getUnitPrice().compareTo(BigDecimal.ZERO) == 0) {
+            List<ExchangeCode> exchangeCodes =
+                exchangeCodeRepository.findAllByTicketOrderIdOrderByIdAsc(ticketOrder.getId());
+            return CreateTicketOrderResponse.free(
+                paymentOrder,
+                ticketOrder,
+                exchangeCodes,
+                issueGuestAccessTokenIfNeeded(paymentOrder, retryRequest)
+            );
+        }
 
         return CreateTicketOrderResponse.paymentPending(
             paymentOrder,
             ticketOrder,
-            createOrderAccessTokenIfGuest(buyerMemberId, orderNo, event, now)
+            issueGuestAccessTokenIfNeeded(paymentOrder, retryRequest)
         );
     }
 
-    private CreateTicketOrderResponse createFreeOrder(
-            Long eventId,
-            Long buyerMemberId,
-            CreateTicketOrderRequest request,
-            String orderNo,
-            BigDecimal unitPrice,
-            BigDecimal totalAmount,
-            EventTicketSnapshot event,
-            OffsetDateTime now) {
-        PaymentOrder paymentOrder = paymentOrderRepository.save(
-            PaymentOrder.createTicketOrder(
-                orderNo,
-                buyerMemberId,
-                getGuestBuyerName(buyerMemberId, request.getBuyer()),
-                getGuestBuyerEmail(buyerMemberId, request.getBuyer()),
-                getGuestBuyerPhone(buyerMemberId, request.getBuyer()),
-                totalAmount,
-                PaymentMethod.CARD,
-                PaymentOrderStatus.PAID,
-                null,
-                now
-            )
-        );
-
-        TicketOrder ticketOrder = ticketOrderRepository.save(
-            TicketOrder.create(
-                paymentOrder.getId(),
-                eventId,
-                unitPrice,
-                request.getQuantity(),
-                TicketOrderStatus.CONFIRMED,
-                now,
-                now
-            )
-        );
-
-        List<ExchangeCode> exchangeCodes = createExchangeCodes(
-            eventId,
-            buyerMemberId,
-            ticketOrder.getId(),
-            request.getQuantity(),
-            now
-        );
-        publishGuestReservationCompleted(paymentOrder, event);
-
-        return CreateTicketOrderResponse.free(
-            paymentOrder,
-            ticketOrder,
-            exchangeCodes,
-            createOrderAccessTokenIfGuest(buyerMemberId, orderNo, event, now)
-        );
-    }
-
-    private String createOrderAccessTokenIfGuest(
-            Long buyerMemberId,
-            String orderNo,
-            EventTicketSnapshot event,
-            OffsetDateTime now) {
-        if (buyerMemberId != null) {
+    private String issueGuestAccessTokenIfNeeded(
+            PaymentOrder paymentOrder,
+            CreateTicketOrderRequest retryRequest) {
+        if (paymentOrder.getBuyerMemberId() != null) {
             return null;
         }
 
-        if (!event.endAt().isAfter(now)) {
-            throw new BusinessException(GlobalErrorCode.TICKET_SALES_NOT_OPEN);
+        if (retryRequest.getBuyer() == null) {
+            throw new BusinessException(GlobalErrorCode.INVALID_GUEST_BUYER_INFO);
         }
 
-        return orderAccessTokenProvider.create(orderNo, event.endAt());
-    }
-
-    private void publishGuestReservationCompleted(
-            PaymentOrder paymentOrder,
-            EventTicketSnapshot event) {
-        if (paymentOrder.getBuyerMemberId() != null
-                || paymentOrder.getBuyerEmail() == null
-                || paymentOrder.getBuyerEmail().isBlank()) {
-            return;
-        }
-
-        applicationEventPublisher.publishEvent(new TicketReservationCompletedEvent(
+        return guestOrderAccessService.issueGuestAccessToken(
             paymentOrder.getOrderNo(),
-            paymentOrder.getBuyerEmail(),
-            event.eventName()
-        ));
-    }
-
-    private List<ExchangeCode> createExchangeCodes(
-            Long eventId,
-            Long buyerMemberId,
-            Long ticketOrderId,
-            int quantity,
-            OffsetDateTime now) {
-        List<ExchangeCode> exchangeCodes = new ArrayList<>();
-
-        for (int i = 0; i < quantity; i++) {
-            ExchangeCode exchangeCode = ExchangeCode.createForTicketOrder(
-                eventId,
-                ticketOrderId,
-                buyerMemberId,
-                exchangeCodeGenerator.generate(),
-                null,
-                now
-            );
-
-            exchangeCodes.add(exchangeCodeRepository.save(exchangeCode));
-        }
-
-        return exchangeCodes;
-    }
-
-    private boolean isFree(BigDecimal unitPrice) {
-        return unitPrice.compareTo(BigDecimal.ZERO) == 0;
-    }
-
-    private PaymentMethod selectedPaymentMethod(CreateTicketOrderRequest request) {
-        return request.getPaymentMethod() == null
-            ? PaymentMethod.CARD
-            : request.getPaymentMethod();
-    }
-
-    private OffsetDateTime paymentExpiresAt(PaymentMethod paymentMethod, OffsetDateTime now) {
-        if (paymentMethod == PaymentMethod.VIRTUAL_ACCOUNT) {
-            return now.plusMinutes(VIRTUAL_ACCOUNT_EXPIRATION_MINUTES);
-        }
-
-        return now.plusMinutes(PAYMENT_EXPIRATION_MINUTES);
-    }
-
-    private String getGuestBuyerName(
-            Long buyerMemberId,
-            GuestBuyerRequest buyer) {
-        return buyerMemberId == null ? buyer.getName() : null;
-    }
-
-    private String getGuestBuyerEmail(
-            Long buyerMemberId,
-            GuestBuyerRequest buyer) {
-        return buyerMemberId == null ? buyer.getEmail() : null;
-    }
-
-    private String getGuestBuyerPhone(
-            Long buyerMemberId,
-            GuestBuyerRequest buyer) {
-        return buyerMemberId == null ? buyer.getPhone() : null;
+            new GuestOrderAccessTokenRequest(
+                retryRequest.getBuyer().getEmail(),
+                retryRequest.getBuyer().getPhone()
+            )
+        ).orderAccessToken();
     }
 }
