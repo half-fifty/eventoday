@@ -12,8 +12,18 @@ export const eventApi = {
   list: (params = {}) => apiRequest(`/v1/events?${new URLSearchParams(params)}`),
   detail: (eventId) => apiRequest(`/v1/events/${eventId}`),
   exhibitCategories: () => apiRequest("/v1/exhibit-categories"),
-  createTicketOrder: (eventId, payload) =>
-    apiRequest(`/events/${eventId}/ticket-orders`, json("POST", payload)),
+  createTicketOrder: (eventId, payload, idempotencyKey, requestOptions = {}) => {
+    const options = json("POST", payload);
+    return apiRequest(`/events/${eventId}/ticket-orders`, {
+      ...options,
+      ...requestOptions,
+      headers: {
+        ...options.headers,
+        ...(requestOptions.headers || {}),
+        "Idempotency-Key": idempotencyKey,
+      },
+    });
+  },
   organizationList: (organizationId, params = {}) =>
     apiRequest(`/v1/organizations/${organizationId}/events?${new URLSearchParams(params)}`),
   managedDetail: (organizationId, eventId) =>
