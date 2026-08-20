@@ -139,7 +139,7 @@ class PaymentWebhookIntegrationTest {
             orderNo,
             BigDecimal.valueOf(10000),
             "DONE",
-            "CARD",
+            "VIRTUAL_ACCOUNT",
             OffsetDateTime.now().minusMinutes(2),
             OffsetDateTime.now().minusMinutes(1)
         );

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BrowserQRCodeReader } from "@zxing/browser";
 import Icon from "./Icon.jsx";
 import { admissionApi } from "../api/admissionApi.js";
-import EventOperationCopilotPanel from "./EventOperationCopilotPanel.jsx";
 
 const ticketStatuses = ["", "ISSUED", "USED", "CANCELLED", "EXPIRED"];
 const actions = ["", "CHECK_IN", "CHECK_IN_CANCEL"];
@@ -411,7 +410,6 @@ export default function AdmissionManagementPanel({ eventId }) {
             )}
             {processing && <p className="text-caption text-ink-muted">입장 처리 중입니다.</p>}
           </div>
-          <EventOperationCopilotPanel eventId={eventId} />
         </div>
 
         <div className="space-y-lg">

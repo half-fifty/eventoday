@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { aiApi } from "../api/aiApi.js";
 import { paymentApi } from "../api/paymentApi.js";
-import AiFailureExplanationBox from "../components/AiFailureExplanationBox.jsx";
 import TopNav from "../components/TopNav.jsx";
 import useAuth from "../hooks/useAuth.js";
 import { REFUND_BANK_GROUPS, REFUND_BANKS } from "../constants/refundBanks.js";
@@ -248,13 +246,6 @@ export default function PaymentDetail() {
                     </div>
                   )}
                   {refundError && <p className="rounded-lg bg-error/10 p-sm text-caption text-error">{refundError}</p>}
-                  {refundError && (
-                    <AiFailureExplanationBox
-                      buttonLabel="AI로 실패 이유 설명받기"
-                      question="왜 환불이 안 되나요?"
-                      onRequest={(request) => aiApi.explainRefundFailure(paymentId, request, orderAccessToken)}
-                    />
-                  )}
                   {refundMessage && (
                     <div className="rounded-lg bg-primary/10 p-sm text-caption text-primary">
                       <p>{refundMessage}</p>
@@ -276,11 +267,6 @@ export default function PaymentDetail() {
                       ? "이미 환불 처리된 결제입니다."
                       : "현재 상태에서는 환불 신청 버튼을 표시하지 않습니다."}
                   </p>
-                  <AiFailureExplanationBox
-                    buttonLabel="AI로 환불 불가 이유 확인"
-                    question="왜 환불이 안 되나요?"
-                    onRequest={(request) => aiApi.explainRefundFailure(paymentId, request, orderAccessToken)}
-                  />
                 </div>
               )}
             </div>
