@@ -21,7 +21,7 @@ public class TicketOrderIdempotencyClaimService {
     private final TicketOrderIdempotencyRequestRepository repository;
     private final TicketOrderReliabilityProperties properties;
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public TicketOrderIdempotencyClaimResult claim(
             String idempotencyKey,
             String requestHash,
@@ -49,6 +49,18 @@ public class TicketOrderIdempotencyClaimService {
     public void markFailed(String idempotencyKey) {
         repository.findByIdempotencyKeyForUpdate(idempotencyKey)
             .ifPresent(request -> request.fail(OffsetDateTime.now()));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markFailed(String idempotencyKey, String requestHash, Long eventId) {
+        OffsetDateTime now = OffsetDateTime.now();
+        int inserted = repository.insertFailedIfAbsent(idempotencyKey, requestHash, eventId, now);
+        if (inserted == 1) {
+            return;
+        }
+
+        repository.findByIdempotencyKeyForUpdate(idempotencyKey)
+            .ifPresent(request -> request.fail(now));
     }
 
     private TicketOrderIdempotencyClaimResult claimExisting(

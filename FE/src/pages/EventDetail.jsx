@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ANONYMOUS, loadTossPayments } from "@tosspayments/tosspayments-sdk";
 import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/apiClient.js";
@@ -15,6 +15,11 @@ import VenueMapPins from "../components/VenueMapPins.jsx";
 import BoothPinPopup from "../components/BoothPinPopup.jsx";
 import BoothRecommendationMessage from "../components/BoothRecommendationMessage.jsx";
 import useAuth from "../hooks/useAuth.js";
+import {
+  admissionRetryDelayMs,
+  isTicketOrderAdmissionRejected,
+  MAX_ADMISSION_RETRIES,
+} from "../utils/ticketOrderAdmissionRetry.js";
 
 const formatDateTime = (value) => value
   ? new Date(value).toLocaleString("ko-KR", { dateStyle: "long", timeStyle: "short" })
@@ -27,6 +32,8 @@ const PAYMENT_METHODS = {
   VIRTUAL_ACCOUNT: "VIRTUAL_ACCOUNT",
 };
 const TOSS_VIRTUAL_ACCOUNT_TIME_ZONE = "Asia/Seoul";
+const PURCHASE_RETRYING_MESSAGE = "현재 주문 요청이 많습니다. 다시 시도하는 중이니 잠시만 기다려주세요.";
+const PURCHASE_BUSY_MESSAGE = "현재 주문 요청이 많습니다. 잠시 후 다시 시도해 주세요.";
 
 const formatTossVirtualAccountDueDate = (expiresAt) => {
   if (!expiresAt) return undefined;
@@ -75,6 +82,7 @@ export default function EventDetail() {
   const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS.CARD);
   const [purchasing, setPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState("");
+  const [purchaseInfo, setPurchaseInfo] = useState("");
   const [ticketOrderIdempotencyKey, setTicketOrderIdempotencyKey] = useState("");
   const [issuedCodes, setIssuedCodes] = useState([]);
   // 공지·자료 (WBS-199): 권한에 따라 BE가 필터링해 내려준다
@@ -93,6 +101,54 @@ export default function EventDetail() {
   const [loadingRecommendation, setLoadingRecommendation] = useState(false);
   const [recommendationError, setRecommendationError] = useState("");
   const [boothsMap, setBoothsMap] = useState({});
+  const retryTimerRef = useRef(null);
+  const purchaseRunRef = useRef(0);
+  const purchaseAbortControllerRef = useRef(null);
+
+  const clearPendingTicketOrderRetry = () => {
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  };
+
+  const cancelTicketOrderAttempt = () => {
+    purchaseRunRef.current += 1;
+    clearPendingTicketOrderRetry();
+    purchaseAbortControllerRef.current?.abort();
+    purchaseAbortControllerRef.current = null;
+  };
+
+  const waitForTicketOrderRetry = (delayMs, runId) => new Promise((resolve, reject) => {
+    clearPendingTicketOrderRetry();
+    retryTimerRef.current = window.setTimeout(() => {
+      retryTimerRef.current = null;
+      if (purchaseRunRef.current !== runId) {
+        reject(new DOMException("Ticket order retry cancelled.", "AbortError"));
+        return;
+      }
+      resolve();
+    }, delayMs);
+  });
+
+  const createTicketOrderWithAdmissionRetry = async (payload, idempotencyKey, runId, signal) => {
+    for (let attempt = 0; attempt <= MAX_ADMISSION_RETRIES; attempt += 1) {
+      try {
+        return await eventApi.createTicketOrder(eventId, payload, idempotencyKey, { signal });
+      } catch (requestError) {
+        if (!isTicketOrderAdmissionRejected(requestError) || attempt >= MAX_ADMISSION_RETRIES) {
+          throw requestError;
+        }
+        setPurchaseInfo(PURCHASE_RETRYING_MESSAGE);
+        await waitForTicketOrderRetry(admissionRetryDelayMs(requestError, attempt + 1), runId);
+      }
+    }
+    return null;
+  };
+
+  useEffect(() => () => {
+    cancelTicketOrderAttempt();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,6 +263,11 @@ export default function EventDetail() {
     }
     setPurchasing(true);
     setPurchaseError("");
+    setPurchaseInfo("");
+    const runId = purchaseRunRef.current + 1;
+    purchaseRunRef.current = runId;
+    const abortController = new AbortController();
+    purchaseAbortControllerRef.current = abortController;
     try {
       const payload = {
         quantity: ticketQuantity,
@@ -223,10 +284,19 @@ export default function EventDetail() {
       if (!ticketOrderIdempotencyKey) {
         setTicketOrderIdempotencyKey(idempotencyKey);
       }
-      const result = await eventApi.createTicketOrder(eventId, payload, idempotencyKey);
+      const result = await createTicketOrderWithAdmissionRetry(
+        payload,
+        idempotencyKey,
+        runId,
+        abortController.signal
+      );
       const order = result?.data;
       if (!order) throw new Error("티켓 주문 정보를 받지 못했습니다.");
+      if (purchaseRunRef.current !== runId) {
+        return;
+      }
 
+      setPurchaseInfo("");
       setCompletedOrderNo(order.orderNo || "");
       if (order.orderAccessToken) {
         sessionStorage.setItem(`ticket-order-token:${order.orderNo}`, order.orderAccessToken);
@@ -261,15 +331,27 @@ export default function EventDetail() {
       };
       await payment.requestPayment(paymentRequest);
     } catch (requestError) {
-      setPurchaseError(requestError.message || "티켓 구매를 시작하지 못했습니다.");
+      if (requestError?.name === "AbortError" || purchaseRunRef.current !== runId) {
+        return;
+      }
+      setPurchaseInfo("");
+      setPurchaseError(isTicketOrderAdmissionRejected(requestError)
+        ? PURCHASE_BUSY_MESSAGE
+        : requestError.message || "티켓 구매를 시작하지 못했습니다.");
     } finally {
-      setPurchasing(false);
+      if (purchaseRunRef.current === runId) {
+        setPurchasing(false);
+        purchaseAbortControllerRef.current = null;
+      }
     }
   };
 
   const closePurchase = () => {
+    cancelTicketOrderAttempt();
+    setPurchasing(false);
     setPurchaseOpen(false);
     setPurchaseError("");
+    setPurchaseInfo("");
     setIssuedCodes([]);
     setCompletedOrderNo("");
     setOrderNoCopyMessage("");
@@ -293,6 +375,7 @@ export default function EventDetail() {
       return;
     }
     setPurchaseError("");
+    setPurchaseInfo("");
     setTicketOrderIdempotencyKey(crypto.randomUUID());
     setPurchaseOpen(true);
   };
@@ -481,6 +564,7 @@ export default function EventDetail() {
             )}
             {!isAuthenticated && <div className="space-y-md border-t border-hairline pt-md"><p className="text-caption text-ink-muted">비회원 구매 정보</p><label className="block">이름<input required value={buyer.name} onChange={(e) => setBuyer({ ...buyer, name: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label><label className="block">이메일<input required type="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label><label className="block">전화번호<input required placeholder="010-1234-5678" value={buyer.phone} onChange={(e) => setBuyer({ ...buyer, phone: e.target.value })} className="mt-xs w-full h-11 border border-hairline rounded-lg px-md" /></label></div>}
             <div className="flex justify-between border-t border-hairline pt-md"><span>결제 금액</span><strong>{Number(event.ticketPrice) === 0 ? "무료" : `${(Number(event.ticketPrice) * Number(quantity || 0)).toLocaleString("ko-KR")}원`}</strong></div>
+            {purchaseInfo && <p className="text-caption text-primary bg-primary/10 rounded-lg p-sm">{purchaseInfo}</p>}
             {purchaseError && <p className="text-caption text-error bg-error/10 rounded-lg p-sm">{purchaseError}</p>}
             <button disabled={purchasing} className="w-full py-sm bg-primary text-white rounded-full disabled:opacity-50">{purchasing ? "주문 생성 중..." : Number(event.ticketPrice) === 0 ? "무료 티켓 받기" : "결제하기"}</button>
           </form>}

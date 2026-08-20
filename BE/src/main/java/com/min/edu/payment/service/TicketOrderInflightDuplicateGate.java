@@ -1,7 +1,6 @@
 package com.min.edu.payment.service;
 
-import org.springframework.data.redis.RedisConnectionFailureException;
-import org.springframework.data.redis.RedisSystemException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -31,7 +30,7 @@ public class TicketOrderInflightDuplicateGate {
             return Boolean.TRUE.equals(acquired)
                 ? InflightClaimResult.ACQUIRED
                 : InflightClaimResult.ALREADY_IN_FLIGHT;
-        } catch (RedisConnectionFailureException | RedisSystemException exception) {
+        } catch (DataAccessException exception) {
             log.warn("Redis ticket-order idempotency in-flight gate failed open.", exception);
             return InflightClaimResult.FAIL_OPEN;
         }
@@ -40,7 +39,7 @@ public class TicketOrderInflightDuplicateGate {
     public void release(String idempotencyKey) {
         try {
             stringRedisTemplate.delete(key(idempotencyKey));
-        } catch (RedisConnectionFailureException | RedisSystemException exception) {
+        } catch (DataAccessException exception) {
             log.warn("Redis ticket-order idempotency in-flight release failed.", exception);
         }
     }

@@ -48,6 +48,33 @@ public interface TicketOrderIdempotencyRequestRepository
         @Param("expiresAt") OffsetDateTime expiresAt
     );
 
+    @Modifying
+    @Query(value = """
+        insert into ticket_order_idempotency_requests (
+            idempotency_key,
+            request_hash,
+            status,
+            event_id,
+            created_at,
+            updated_at
+        )
+        values (
+            :idempotencyKey,
+            :requestHash,
+            'FAILED',
+            :eventId,
+            :now,
+            :now
+        )
+        on conflict (idempotency_key) do nothing
+        """, nativeQuery = true)
+    int insertFailedIfAbsent(
+        @Param("idempotencyKey") String idempotencyKey,
+        @Param("requestHash") String requestHash,
+        @Param("eventId") Long eventId,
+        @Param("now") OffsetDateTime now
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
         SELECT r

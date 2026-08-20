@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -17,26 +18,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.config.TicketOrderReliabilityProperties;
-import com.min.edu.payment.domain.PaymentMethod;
-import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderStatus;
-import com.min.edu.payment.domain.PaymentOrderType;
-import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.domain.TicketOrderIdempotencyRequest;
-import com.min.edu.payment.domain.TicketOrderStatus;
 import com.min.edu.payment.dto.request.CreateTicketOrderRequest;
 import com.min.edu.payment.dto.request.GuestBuyerRequest;
 import com.min.edu.payment.dto.response.CreateTicketOrderResponse;
-import com.min.edu.payment.dto.response.GuestOrderAccessTokenResponse;
 import com.min.edu.payment.exception.TicketOrderBusyException;
-import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.TicketOrderIdempotencyRequestRepository;
-import com.min.edu.payment.repository.TicketOrderRepository;
-import com.min.edu.admission.repository.ExchangeCodeRepository;
 
 @ExtendWith(MockitoExtension.class)
 class TicketOrderReliabilityServiceTest {
@@ -51,22 +44,13 @@ class TicketOrderReliabilityServiceTest {
     private TicketOrderAdmissionGate admissionGate;
 
     @Mock
-    private TicketOrderCreationProcessor creationProcessor;
+    private TicketOrderTransactionalCreator transactionalCreator;
+
+    @Mock
+    private TicketOrderCompletedResponseService completedResponseService;
 
     @Mock
     private TicketOrderIdempotencyRequestRepository idempotencyRequestRepository;
-
-    @Mock
-    private PaymentOrderRepository paymentOrderRepository;
-
-    @Mock
-    private TicketOrderRepository ticketOrderRepository;
-
-    @Mock
-    private ExchangeCodeRepository exchangeCodeRepository;
-
-    @Mock
-    private GuestOrderAccessService guestOrderAccessService;
 
     private TicketOrderService service;
 
@@ -78,12 +62,9 @@ class TicketOrderReliabilityServiceTest {
             inflightDuplicateGate,
             idempotencyClaimService,
             admissionGate,
-            creationProcessor,
+            transactionalCreator,
+            completedResponseService,
             idempotencyRequestRepository,
-            paymentOrderRepository,
-            ticketOrderRepository,
-            exchangeCodeRepository,
-            guestOrderAccessService,
             properties
         );
     }
@@ -91,29 +72,17 @@ class TicketOrderReliabilityServiceTest {
     @Test
     void create_returnsCompletedGuestOrderWithoutCreatingDuplicateOrder() {
         CreateTicketOrderRequest request = guestRequest(1);
-        TicketOrderIdempotencyRequest completed = completedIdempotency();
-        PaymentOrder paymentOrder = guestPaymentOrder(10L);
-        TicketOrder ticketOrder = ticketOrder(20L, paymentOrder.getId());
+        CreateTicketOrderResponse completed = response("ORDER-1", "TOKEN-B");
 
         given(inflightDuplicateGate.tryClaim("key-1")).willReturn(InflightClaimResult.ACQUIRED);
-        given(idempotencyClaimService.claim(eq("key-1"), any(), eq(1L)))
-            .willReturn(TicketOrderIdempotencyClaimResult.completed(completed));
-        given(paymentOrderRepository.findById(10L)).willReturn(Optional.of(paymentOrder));
-        given(ticketOrderRepository.findById(20L)).willReturn(Optional.of(ticketOrder));
-        given(guestOrderAccessService.issueGuestAccessToken(
-                eq("ORDER-1"),
-                any()))
-            .willReturn(new GuestOrderAccessTokenResponse(
-                "ORDER-1",
-                "TOKEN-B",
-                OffsetDateTime.now().plusDays(1)
-            ));
+        given(transactionalCreator.execute(eq("key-1"), any(), eq(1L), eq(null), eq(request)))
+            .willReturn(completed);
 
         CreateTicketOrderResponse response = service.create("key-1", 1L, null, request);
 
         assertThat(response.getOrderNo()).isEqualTo("ORDER-1");
         assertThat(response.getOrderAccessToken()).isEqualTo("TOKEN-B");
-        verify(creationProcessor, never()).create(any(), any(), any(), any());
+        verify(idempotencyClaimService, never()).claim(any(), any(), any());
     }
 
     @Test
@@ -129,8 +98,8 @@ class TicketOrderReliabilityServiceTest {
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.IDEMPOTENCY_KEY_CONFLICT);
 
-        verify(guestOrderAccessService, never()).issueGuestAccessToken(any(), any());
-        verify(creationProcessor, never()).create(any(), any(), any(), any());
+        verify(completedResponseService, never()).completedResponse(any(), any());
+        verify(transactionalCreator, never()).execute(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -165,64 +134,68 @@ class TicketOrderReliabilityServiceTest {
 
         verify(idempotencyClaimService, never()).claim(any(), any(), any());
         verify(idempotencyClaimService, never()).markFailed(any());
-        verify(creationProcessor, never()).create(any(), any(), any(), any());
+        verify(transactionalCreator, never()).execute(any(), any(), any(), any(), any());
     }
 
     @Test
     void create_returnsCompletedOrderWhenAdmissionRejectsCompletedRetry() {
         CreateTicketOrderRequest request = guestRequest(1);
         TicketOrderIdempotencyRequest completed = completedIdempotency();
-        PaymentOrder paymentOrder = guestPaymentOrder(10L);
-        TicketOrder ticketOrder = ticketOrder(20L, paymentOrder.getId());
+        CreateTicketOrderResponse completedResponse = response("ORDER-1", "TOKEN-B");
 
         given(inflightDuplicateGate.tryClaim("key-1")).willReturn(InflightClaimResult.ACQUIRED);
         given(admissionGate.tryAcquire(1L, "key-1")).willReturn(AdmissionResult.REJECTED);
         given(idempotencyRequestRepository.findByIdempotencyKey("key-1"))
             .willReturn(Optional.of(completed));
-        given(paymentOrderRepository.findById(10L)).willReturn(Optional.of(paymentOrder));
-        given(ticketOrderRepository.findById(20L)).willReturn(Optional.of(ticketOrder));
-        given(guestOrderAccessService.issueGuestAccessToken(eq("ORDER-1"), any()))
-            .willReturn(new GuestOrderAccessTokenResponse(
-                "ORDER-1",
-                "TOKEN-B",
-                OffsetDateTime.now().plusDays(1)
-            ));
+        given(completedResponseService.completedResponse(completed, request))
+            .willReturn(completedResponse);
 
         CreateTicketOrderResponse response = service.create("key-1", 1L, null, request);
 
         assertThat(response.getOrderAccessToken()).isEqualTo("TOKEN-B");
         verify(idempotencyClaimService, never()).claim(any(), any(), any());
-        verify(creationProcessor, never()).create(any(), any(), any(), any());
+        verify(transactionalCreator, never()).execute(any(), any(), any(), any(), any());
     }
 
     @Test
-    void create_marksFailedWhenAdmittedBusinessExecutionFailsAfterClaim() {
+    void create_rejectsAdmissionOverflowSameKeyWithDifferentFingerprintAsConflict() {
         CreateTicketOrderRequest request = guestRequest(1);
-        TicketOrderIdempotencyRequest claimed = processingIdempotency(
-            new TicketOrderRequestHasher().hash(1L, null, request)
-        );
+
+        given(inflightDuplicateGate.tryClaim("key-1")).willReturn(InflightClaimResult.ACQUIRED);
+        given(admissionGate.tryAcquire(1L, "key-1")).willReturn(AdmissionResult.REJECTED);
+        given(idempotencyRequestRepository.findByIdempotencyKey("key-1"))
+            .willReturn(Optional.of(completedIdempotencyWithHash("different-hash")));
+
+        assertThatThrownBy(() -> service.create("key-1", 1L, null, request))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.IDEMPOTENCY_KEY_CONFLICT);
+
+        verify(idempotencyClaimService, never()).claim(any(), any(), any());
+        verify(transactionalCreator, never()).execute(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void create_marksFailedAfterTransactionalCreationRollbackWhenCreationFails() {
+        CreateTicketOrderRequest request = guestRequest(1);
+        BusinessException failure = new BusinessException(GlobalErrorCode.TICKET_SOLD_OUT);
 
         given(inflightDuplicateGate.tryClaim("key-1")).willReturn(InflightClaimResult.ACQUIRED);
         given(admissionGate.tryAcquire(1L, "key-1")).willReturn(AdmissionResult.ACQUIRED);
-        given(idempotencyClaimService.claim(eq("key-1"), any(), eq(1L)))
-            .willReturn(TicketOrderIdempotencyClaimResult.claimed(claimed));
-        given(creationProcessor.create("key-1", 1L, null, request))
-            .willThrow(new BusinessException(GlobalErrorCode.TICKET_SOLD_OUT));
+        given(transactionalCreator.execute(eq("key-1"), any(), eq(1L), eq(null), eq(request)))
+            .willThrow(new TicketOrderBusinessCreationFailedException(failure));
 
         assertThatThrownBy(() -> service.create("key-1", 1L, null, request))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.TICKET_SOLD_OUT);
 
-        verify(idempotencyClaimService).markFailed("key-1");
+        verify(idempotencyClaimService).markFailed(eq("key-1"), any(), eq(1L));
     }
 
     @Test
     void create_continuesWhenRedisGatesFailOpen() {
         CreateTicketOrderRequest request = guestRequest(1);
-        TicketOrderIdempotencyRequest claimed = processingIdempotency(
-            new TicketOrderRequestHasher().hash(1L, null, request)
-        );
         CreateTicketOrderResponse created = new CreateTicketOrderResponse(
             "ORDER-1",
             20L,
@@ -238,14 +211,32 @@ class TicketOrderReliabilityServiceTest {
         );
 
         given(inflightDuplicateGate.tryClaim("key-1")).willReturn(InflightClaimResult.FAIL_OPEN);
-        given(idempotencyClaimService.claim(eq("key-1"), any(), eq(1L)))
-            .willReturn(TicketOrderIdempotencyClaimResult.claimed(claimed));
         given(admissionGate.tryAcquire(1L, "key-1")).willReturn(AdmissionResult.FAIL_OPEN);
-        given(creationProcessor.create("key-1", 1L, null, request)).willReturn(created);
+        given(transactionalCreator.execute(eq("key-1"), any(), eq(1L), eq(null), eq(request)))
+            .willReturn(created);
 
         CreateTicketOrderResponse response = service.create("key-1", 1L, null, request);
 
         assertThat(response).isSameAs(created);
+    }
+
+    @Test
+    void create_releasesRedisAfterTransactionalCreatorReturnsOutsideTransaction() {
+        CreateTicketOrderRequest request = guestRequest(1);
+        CreateTicketOrderResponse created = response("ORDER-1", "TOKEN-A");
+
+        given(inflightDuplicateGate.tryClaim("key-1")).willReturn(InflightClaimResult.ACQUIRED);
+        given(admissionGate.tryAcquire(1L, "key-1")).willReturn(AdmissionResult.ACQUIRED);
+        given(transactionalCreator.execute(eq("key-1"), any(), eq(1L), eq(null), eq(request)))
+            .willReturn(created);
+        doAnswer(invocation -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            return null;
+        }).when(admissionGate).release(1L, "key-1");
+
+        service.create("key-1", 1L, null, request);
+
+        verify(admissionGate).release(1L, "key-1");
     }
 
     private CreateTicketOrderRequest guestRequest(int quantity) {
@@ -278,35 +269,19 @@ class TicketOrderReliabilityServiceTest {
         );
     }
 
-    private PaymentOrder guestPaymentOrder(Long id) {
-        OffsetDateTime now = OffsetDateTime.now();
-        return PaymentOrder.builder()
-            .id(id)
-            .orderNo("ORDER-1")
-            .buyerName("guest")
-            .buyerEmail("guest@example.com")
-            .buyerPhone("010-1234-5678")
-            .orderType(PaymentOrderType.EVENT_TICKET)
-            .totalAmount(BigDecimal.valueOf(10000))
-            .requestedPaymentMethod(PaymentMethod.CARD)
-            .status(PaymentOrderStatus.PENDING.name())
-            .expiresAt(now.plusMinutes(10))
-            .createdAt(now)
-            .updatedAt(now)
-            .build();
-    }
-
-    private TicketOrder ticketOrder(Long id, Long paymentOrderId) {
-        OffsetDateTime now = OffsetDateTime.now();
-        return TicketOrder.builder()
-            .id(id)
-            .paymentOrderId(paymentOrderId)
-            .eventId(1L)
-            .unitPrice(BigDecimal.valueOf(10000))
-            .totalQuantity(1)
-            .status(TicketOrderStatus.PENDING_PAYMENT.name())
-            .createdAt(now)
-            .updatedAt(now)
-            .build();
+    private CreateTicketOrderResponse response(String orderNo, String accessToken) {
+        return new CreateTicketOrderResponse(
+            orderNo,
+            20L,
+            1,
+            BigDecimal.valueOf(10000),
+            BigDecimal.valueOf(10000),
+            true,
+            PaymentOrderStatus.PENDING.name(),
+            null,
+            OffsetDateTime.now().plusMinutes(10),
+            null,
+            accessToken
+        );
     }
 }

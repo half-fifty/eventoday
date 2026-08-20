@@ -1,5 +1,4 @@
 import http from 'k6/http';
-import { check } from 'k6';
 import { Counter } from 'k6/metrics';
 
 const baseUrl = (__ENV.BASE_URL || 'http://localhost:8080').replace(/\/+$/, '');
@@ -28,6 +27,10 @@ export const options = {
       iterations: vus,
       maxDuration,
     },
+  },
+  thresholds: {
+    business_error: ['count==0'],
+    unexpected_error: ['count==0'],
   },
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
 };
@@ -59,10 +62,6 @@ export default function () {
   );
 
   classify(res);
-
-  check(res, {
-    'classified response': () => true,
-  });
 }
 
 function classify(res) {

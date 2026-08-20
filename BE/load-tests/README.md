@@ -84,7 +84,16 @@ Expected result with inventory 100:
 - created `ticket_orders` for the event `<= 100`
 - no oversell
 
-If all requests reach the application and the DB remains healthy, `order_success` should be exactly 100 and the remaining responses should be `sold_out`.
+With Admission Control enabled, some requests may return `TICKET_429_001` before they reach
+the DB inventory update. In that mode, do not require `order_success = 100`; the correctness
+condition is no oversell, with `events.ticket_sold_quantity <= ticket_total_quantity` and
+created `ticket_orders` not exceeding inventory.
+
+To observe exactly 100 successful orders for the 100-ticket fixture, disable Admission Control
+for this run or set `TICKET_ORDER_ADMISSION_MAX_IN_FLIGHT_PER_EVENT` to at least the configured
+`VUS` so every request can compete at the DB inventory boundary. When all requests reach the
+application and the DB remains healthy, `order_success` should be exactly 100 and the remaining
+responses should be `sold_out`.
 
 ## Duplicate Idempotency Burst
 

@@ -4,13 +4,14 @@ const API_BASE_URL =
 let reissuePromise = null;
 
 class ApiError extends Error {
-    constructor(status, code, message, data) {
+    constructor(status, code, message, data, headers = null) {
         super(message);
 
         this.name = "ApiError";
         this.status = status;
         this.code = code;
         this.data = data;
+        this.headers = headers;
     }
 }
 
@@ -77,7 +78,8 @@ const parseResponse = async (response) => {
             response.status,
             result?.code || "UNKNOWN_ERROR",
             result?.message || "요청 처리에 실패했습니다.",
-            result?.data || null
+            result?.data || null,
+            response.headers
         );
     }
 
@@ -137,7 +139,8 @@ const parseBlobResponse = async (response) => {
             response.status,
             result?.code || "UNKNOWN_ERROR",
             result?.message || "요청 처리에 실패했습니다.",
-            result?.data || null
+            result?.data || null,
+            response.headers
         );
     }
 

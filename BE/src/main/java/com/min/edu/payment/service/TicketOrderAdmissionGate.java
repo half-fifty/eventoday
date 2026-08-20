@@ -3,8 +3,7 @@ package com.min.edu.payment.service;
 import java.time.Instant;
 import java.util.List;
 
-import org.springframework.data.redis.RedisConnectionFailureException;
-import org.springframework.data.redis.RedisSystemException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
@@ -52,7 +51,7 @@ public class TicketOrderAdmissionGate {
             return Long.valueOf(1L).equals(result)
                 ? AdmissionResult.ACQUIRED
                 : AdmissionResult.REJECTED;
-        } catch (RedisConnectionFailureException | RedisSystemException exception) {
+        } catch (DataAccessException exception) {
             log.warn("Redis ticket-order admission gate failed open: eventId={}", eventId, exception);
             return AdmissionResult.FAIL_OPEN;
         }
@@ -61,7 +60,7 @@ public class TicketOrderAdmissionGate {
     public void release(Long eventId, String idempotencyKey) {
         try {
             stringRedisTemplate.opsForZSet().remove(key(eventId), idempotencyKey);
-        } catch (RedisConnectionFailureException | RedisSystemException exception) {
+        } catch (DataAccessException exception) {
             log.warn("Redis ticket-order admission release failed: eventId={}", eventId, exception);
         }
     }

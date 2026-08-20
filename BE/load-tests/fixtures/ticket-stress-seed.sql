@@ -28,6 +28,10 @@ target_ticket_orders AS (
     FROM ticket_orders
     WHERE event_id IN (SELECT id FROM target_events)
 ),
+deleted_idempotency_requests AS (
+    DELETE FROM ticket_order_idempotency_requests
+    WHERE event_id IN (SELECT id FROM target_events)
+),
 deleted_virtual_accounts AS (
     DELETE FROM payment_virtual_accounts
     WHERE payment_id IN (

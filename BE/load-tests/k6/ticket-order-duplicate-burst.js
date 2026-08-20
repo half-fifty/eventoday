@@ -1,7 +1,7 @@
 import http from 'k6/http';
 import { Counter } from 'k6/metrics';
 
-http.setResponseCallback(http.expectedStatuses({ min: 200, max: 399 }, 429));
+http.setResponseCallback(http.expectedStatuses({ min: 200, max: 399 }, 409, 429));
 
 const baseUrl = (__ENV.BASE_URL || 'http://localhost:8080').replace(/\/+$/, '');
 const apiPrefix = __ENV.API_PREFIX || '/api';
@@ -33,6 +33,10 @@ export const options = {
       iterations,
       maxDuration: __ENV.MAX_DURATION || '30s',
     },
+  },
+  thresholds: {
+    idempotency_conflict: ['count==0'],
+    unexpected_error: ['count==0'],
   },
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
 };
