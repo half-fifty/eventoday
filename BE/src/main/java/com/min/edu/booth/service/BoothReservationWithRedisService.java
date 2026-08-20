@@ -262,13 +262,13 @@ public class BoothReservationWithRedisService {
 
         // 슬롯 상태 확인 (OPEN이어야 함)
         if (slot.getStatus() != BoothReservationSlotStatus.OPEN) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+            throw new BusinessException(GlobalErrorCode.BOOTH_RESERVATION_SLOT_NOT_OPEN);
         }
 
         // partySize가 남은 자리를 초과하는지 확인
         int remainingCapacity = slot.getCapacity() - slot.getReservedCount();
         if (request.getPartySize() > remainingCapacity) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+            throw new BusinessException(GlobalErrorCode.BOOTH_RESERVATION_SLOT_FULL);
         }
 
         // 한 번이라도 예약한 적이 있는 부스는(취소된 예약 포함) 재예약을 허용하지 않는다.
@@ -276,10 +276,11 @@ public class BoothReservationWithRedisService {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
-        // Redis에 임시 선점 시도 (WBS-146)
+        // Redis 선점 (WBS-146) — 같은 회원이 더블클릭 등으로 같은 슬롯에 요청을 중복으로 밀어넣는 것을
+        // 막는 용도. 키가 회원별로 분리돼 있어 다른 회원의 정당한 예약 시도를 막지는 않는다.
         boolean reserved = redisReservationService.reserveSlot(boothId, request.getSlotId(), memberId);
         if (!reserved) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);  // 이미 다른 사용자가 선점
+            throw new BusinessException(GlobalErrorCode.RESERVATION_ALREADY_EXISTS);  // 방금 보낸 요청이 아직 처리 중
         }
 
         try {
@@ -292,7 +293,6 @@ public class BoothReservationWithRedisService {
                     .status(BoothReservationStatus.RESERVED)
                     .createdAt(now)
                     .reservedAt(now)
-                    .createdAt(now)
                     .updatedAt(now)
                     .build();
 

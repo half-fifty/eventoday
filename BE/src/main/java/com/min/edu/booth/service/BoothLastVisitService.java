@@ -4,8 +4,6 @@ import com.min.edu.booth.domain.BoothReservation;
 import com.min.edu.booth.domain.BoothReservationStatus;
 import com.min.edu.booth.dto.LastVisitedBoothResponse;
 import com.min.edu.booth.repository.BoothReservationRepository;
-import com.min.edu.common.exception.BusinessException;
-import com.min.edu.common.exception.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,14 +15,13 @@ public class BoothLastVisitService {
 
     private final BoothReservationRepository reservationRepository;
 
+    // 방문 이력이 없으면 null을 반환한다 - "아직 방문한 부스 없음"은 정상적인 빈 상태라
+    // 에러(404)로 다룰 이유가 없다.
     public LastVisitedBoothResponse getLastVisitedBooth(Long memberId) {
-        // 1. 회원의 가장 최근 방문 부스 조회
-        BoothReservation reservation = reservationRepository
+        return reservationRepository
                 .findFirstByMemberIdAndStatusOrderByCheckedInAtDesc(memberId, BoothReservationStatus.CHECKED_IN)
-                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
-
-        // 2. 응답 반환
-        return toResponse(reservation);
+                .map(this::toResponse)
+                .orElse(null);
     }
 
     private LastVisitedBoothResponse toResponse(BoothReservation reservation) {

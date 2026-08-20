@@ -36,12 +36,10 @@ public class BoothCongestionController {
     public ResponseEntity<List<PopularBoothResponse>> getPopularBooths(@PathVariable Long eventId) {
         var popularBooths = boothCongestionService.getPopularBooths(eventId);
 
-        var responses = popularBooths.stream()
-                .map((booth) -> {
-                    int rank = popularBooths.indexOf(booth) + 1;
-                    return PopularBoothResponse.from(booth, rank);
-                })
-                .toList();
+        var responses = new java.util.ArrayList<PopularBoothResponse>(popularBooths.size());
+        for (int i = 0; i < popularBooths.size(); i++) {
+            responses.add(PopularBoothResponse.from(popularBooths.get(i), i + 1));
+        }
 
         return ResponseEntity.ok(responses);
     }
@@ -68,10 +66,14 @@ public class BoothCongestionController {
     @GetMapping("/{boothId}/forecast")
     public ResponseEntity<ForecastListResponse> getForecast(
             @PathVariable Long boothId,
-            @RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}") LocalDate date
+            // @RequestParam의 defaultValue는 SpEL을 평가하지 않고 리터럴 문자열을 그대로 LocalDate로
+            // 파싱하려 들기 때문에, 예전 "#{T(java.time.LocalDate).now()}" 값은 파라미터를 생략하면
+            // 파싱 오류로 이어졌다. required=false로 받고 메서드 안에서 직접 기본값을 채운다.
+            @RequestParam(required = false) LocalDate date
     ) {
-        var forecasts = boothCongestionForecastService.getForecastByDate(boothId, date);
-        var bestTimeSlot = boothCongestionForecastService.getBestTimeSlot(boothId, date);
+        LocalDate resolvedDate = date != null ? date : LocalDate.now();
+        var forecasts = boothCongestionForecastService.getForecastByDate(boothId, resolvedDate);
+        var bestTimeSlot = boothCongestionForecastService.getBestTimeSlot(boothId, resolvedDate);
 
         var responses = forecasts.stream()
                 .map(CongestionForecastResponse::from)
@@ -79,7 +81,7 @@ public class BoothCongestionController {
 
         return ResponseEntity.ok(
                 ForecastListResponse.builder()
-                        .forecastDate(date)
+                        .forecastDate(resolvedDate)
                         .forecasts(responses)
                         .bestTimeSlot(bestTimeSlot.map(CongestionForecastResponse::from).orElse(null))
                         .build()

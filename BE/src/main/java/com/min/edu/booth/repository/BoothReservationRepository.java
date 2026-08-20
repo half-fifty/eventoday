@@ -37,12 +37,6 @@ public interface BoothReservationRepository extends JpaRepository<BoothReservati
     // 회원의 특정 부스 예약 조회 (상태 무관) - 취소된 예약이어도 "이미 예약했던 부스" 상태를 보여주기 위해 사용
     Optional<BoothReservation> findByMemberIdAndBoothId(Long memberId, Long boothId);
 
-    // 회원의 같은 부스 진행 중(RESERVED) 예약 존재 여부
-    boolean existsByMemberIdAndBoothIdAndStatus(Long memberId, Long boothId, BoothReservationStatus status);
-
-    // 회원의 특정 부스 예약 조회 (내 예약 상태 확인용)
-    Optional<BoothReservation> findByMemberIdAndBoothIdAndStatus(Long memberId, Long boothId, BoothReservationStatus status);
-
     // 슬롯 삭제 가능 여부 확인용 (취소된 예약도 FK로 슬롯을 참조하므로 상태와 무관하게 확인한다)
     boolean existsByBoothReservationSlotId(Long boothReservationSlotId);
 
@@ -73,6 +67,14 @@ public interface BoothReservationRepository extends JpaRepository<BoothReservati
             @Param("expectedStatus") BoothReservationStatus expectedStatus,
             @Param("newStatus") BoothReservationStatus newStatus,
             @Param("now") OffsetDateTime now);
+
+    // 노쇼 자동 처리 전용 원자적 UPDATE — updateStatusIfCurrentStatus와 별도로 두는 이유는 noShowAt까지
+    // 같이 찍어야 하기 때문. RESERVED 상태인 건만 정확히 한 번 NO_SHOW로 바뀌어(갱신 건수 1),
+    // 스케줄러 실행이 겹치거나 인스턴스가 여러 개 떠도 슬롯 자리가 이중으로 복원되지 않는다.
+    @Modifying
+    @Query("update BoothReservation r set r.status = 'NO_SHOW', r.noShowAt = :now, r.updatedAt = :now " +
+            "where r.id = :id and r.status = 'RESERVED'")
+    int markNoShowIfReserved(@Param("id") Long id, @Param("now") OffsetDateTime now);
 
     // 회원의 마지막 방문 부스 조회 (가장 최근)
     Optional<BoothReservation> findFirstByMemberIdAndStatusOrderByCheckedInAtDesc(
