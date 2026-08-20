@@ -86,6 +86,13 @@ public class BoothReviewModerationService {
 
         BoothReview review = boothReviewRepository.findByIdAndBoothIdForUpdate(reviewId, boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        // 이미 숨김 상태면(신고 누적으로 자동 숨김된 경우 포함) 조용히 끝낸다 - 매니저가 두 번
+        // 클릭하거나 이미 자동 숨김된 리뷰를 다시 숨기려 하면, 재알림 없이 멱등하게 처리한다.
+        if (review.isHidden()) {
+            return;
+        }
+
         review.hide(REASON_MANAGER_HIDDEN, OffsetDateTime.now());
         boothReviewRepository.saveAndFlush(review);
         publishHiddenNotification(review, "부스 담당자에 의해 비공개 처리되었습니다.");
@@ -132,6 +139,11 @@ public class BoothReviewModerationService {
                 .collect(Collectors.toMap(BoothReview::getId, Function.identity()));
 
         return reportsByReviewId.entrySet().stream()
+                // 신고 목록 조회와 리뷰 배치 조회 사이(둘 다 락 없는 별도 SELECT)에 작성자가 직접
+                // 리뷰를 삭제하면(FK CASCADE로 신고 기록은 이미 사라졌어도, 그 사이 시점에 잡힌
+                // 스냅샷엔 남아있을 수 있음) reviewsById에 해당 리뷰가 없을 수 있다 - 그런 리뷰는
+                // 대시보드에서 건너뛴다.
+                .filter(entry -> reviewsById.containsKey(entry.getKey()))
                 .map(entry -> toSummary(reviewsById.get(entry.getKey()), entry.getValue()))
                 .sorted(Comparator.comparingLong(BoothReviewReportSummaryResponse::getReportCount).reversed())
                 .toList();

@@ -64,12 +64,17 @@ public class BoothCongestionService {
     }
 
     /**
-     * 이벤트의 한산한 부스 조회 (최근 10분 QR 스캔 적은 순, 상위 10개) — 스캔이 0건인 부스도 포함한다.
+     * 이벤트의 한산한 부스 조회 (혼잡도 LOW 등급인 부스만, 스캔 적은 순 상위 10개) — 스캔이 0건인
+     * 부스도 후보에 포함한다. 정렬 자체는 스캔 수 오름차순 쿼리를 쓰지만, 그 상위 몇 개가 전부
+     * HIGH/MEDIUM일 수도 있으므로(예: 모든 부스가 붐비는 시간대) 실제로 LOW 등급인 것만 남긴다 —
+     * 그래야 "한산한 부스" 목록이 실제로는 안 한산한 부스를 추천하는 일이 없다.
      */
     public List<BoothCongestion> getUncrowdedBooths(Long eventId) {
         var rows = boothQrScanRepository.findAllBoothsWithCongestion(
                 eventId, windowStart(), PageRequest.of(0, RANKING_LIMIT));
-        return toCongestionList(rows.getContent());
+        return toCongestionList(rows.getContent()).stream()
+                .filter(congestion -> congestion.getCongestionLevel() == CongestionLevel.LOW)
+                .toList();
     }
 
     private OffsetDateTime windowStart() {
