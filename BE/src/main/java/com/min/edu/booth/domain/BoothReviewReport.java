@@ -2,6 +2,8 @@ package com.min.edu.booth.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -40,6 +42,12 @@ public class BoothReviewReport {
     @Column(name = "reporter_member_id", nullable = false)
     private Long reporterMemberId;
 
+    // 신고 사유 코드 (필수) — 자유 텍스트만 받으면 집계·우선순위 판단이 어려워 정해진 코드로 받는다.
+    @Column(name = "reason_code", nullable = false, length = 30)
+    @Enumerated(EnumType.STRING)
+    private BoothReviewReportReason reasonCode;
+
+    // reasonCode == OTHER일 때의 부가 설명 (선택)
     @Column(name = "reason", length = 200)
     private String reason;
 

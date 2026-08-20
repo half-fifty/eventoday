@@ -40,6 +40,10 @@ public class BoothReviewResponse {
 
     private boolean hidden;  // 신고 누적/운영자 조치로 숨김 처리됐는지 (본인 리뷰 목록에서만 의미 있음)
 
+    private String hiddenReason;  // 숨김 사유: REPORTED(신고 누적)/MANAGER_HIDDEN(운영자 조치), 숨김 아니면 null
+
+    private boolean reportedByMe;  // 조회하는 회원이 이미 이 리뷰를 신고했는지 (비로그인/본인 리뷰는 항상 false)
+
     private BoothReviewReplyResponse reply;  // 부스 담당자가 남긴 답글 (없으면 null)
 
     private List<BoothReviewPhotoResponse> photos;  // 첨부 사진 (없으면 빈 리스트)
