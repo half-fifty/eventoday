@@ -159,7 +159,10 @@ public enum GlobalErrorCode implements ErrorCode {
     BOOTH_REVIEW_ALREADY_REPORTED(HttpStatus.CONFLICT, "BOOTH_409_008", "이미 신고한 리뷰입니다."),
     BOOTH_RESERVATION_SLOT_NOT_OPEN(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_010", "예약을 받지 않는 시간대입니다."),
     BOOTH_RESERVATION_SLOT_FULL(HttpStatus.CONFLICT, "BOOTH_409_009", "선택하신 시간대의 자리가 모두 찼습니다."),
-    VENUE_MAP_AUTO_LAYOUT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "BOOTH_503_002", "평면도 자동 배치 제안 서비스를 이용할 수 없습니다.");
+    VENUE_MAP_AUTO_LAYOUT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "BOOTH_503_002", "평면도 자동 배치 제안 서비스를 이용할 수 없습니다."),
+    // 공지·자료 AI 작성 보조 (부스 리뷰 요약과 별개로 관리한다)
+    CONTENT_AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "CONTENT_503_001", "AI 작성 기능을 사용할 수 없습니다. 잠시 후 다시 시도해주세요."),
+    CONTENT_AI_INVALID_RESPONSE(HttpStatus.SERVICE_UNAVAILABLE, "CONTENT_503_002", "AI 응답을 이해하지 못했습니다. 다시 시도해주세요.");
 
 
 

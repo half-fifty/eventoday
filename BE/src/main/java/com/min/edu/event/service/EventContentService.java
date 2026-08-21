@@ -3,6 +3,8 @@ package com.min.edu.event.service;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+// 본문은 리치 텍스트 에디터가 만든 HTML이므로 저장 전에 정제한다 (사이트 공지와 동일한 규칙)
+import com.min.edu.common.html.HtmlSanitizer;
 import com.min.edu.event.domain.Event;
 import com.min.edu.event.domain.EventContent;
 import com.min.edu.event.domain.EventContentAudience;
@@ -339,7 +341,7 @@ public class EventContentService {
                 request.resourceType(),
                 request.audience(),
                 request.title(),
-                request.content(),
+                HtmlSanitizer.sanitize(request.content()),
                 fileId,
                 request.version(),
                 request.pinned(),
@@ -411,7 +413,7 @@ public class EventContentService {
                     request.resourceType(),
                     request.audience(),
                     request.title(),
-                    request.content(),
+                    HtmlSanitizer.sanitize(request.content()),
                     fileId,
                     request.version(),
                     request.pinned(),
