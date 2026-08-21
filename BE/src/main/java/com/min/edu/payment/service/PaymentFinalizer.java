@@ -3,7 +3,6 @@ package com.min.edu.payment.service;
 import java.time.OffsetDateTime;
 
 import org.springframework.stereotype.Component;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.min.edu.common.exception.BusinessException;
@@ -22,7 +21,7 @@ import com.min.edu.payment.domain.PaymentVirtualAccount;
 import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.dto.request.ConfirmPaymentRequest;
 import com.min.edu.payment.dto.response.ConfirmPaymentResponse;
-import com.min.edu.payment.event.TicketReservationCompletedEvent;
+import com.min.edu.payment.outbox.service.PaymentOutboxWriter;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.PaymentVirtualAccountRepository;
@@ -48,8 +47,8 @@ public class PaymentFinalizer {
     private final TicketExchangeCodeIssuer ticketExchangeCodeIssuer;
     private final AdvertisementRepository advertisementRepository;
     private final EventRepository eventRepository;
-    private final ApplicationEventPublisher applicationEventPublisher;
     private final PaymentAuditLogWriter auditLogWriter;
+    private final PaymentOutboxWriter paymentOutboxWriter;
 
     @Transactional
     public ConfirmPaymentResponse finalizePayment(
@@ -370,10 +369,10 @@ public class PaymentFinalizer {
         String eventName = eventRepository.findById(ticketOrder.getEventId())
             .map(event -> event.getName())
             .orElse("");
-        applicationEventPublisher.publishEvent(new TicketReservationCompletedEvent(
+        paymentOutboxWriter.appendTicketReservationConfirmation(
             paymentOrder.getOrderNo(),
             paymentOrder.getBuyerEmail(),
             eventName
-        ));
+        );
     }
 }

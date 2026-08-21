@@ -13,12 +13,10 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 
-import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.min.edu.common.exception.BusinessException;
@@ -41,7 +39,7 @@ import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.domain.TicketOrderStatus;
 import com.min.edu.payment.dto.request.ConfirmPaymentRequest;
 import com.min.edu.payment.dto.response.ConfirmPaymentResponse;
-import com.min.edu.payment.event.TicketReservationCompletedEvent;
+import com.min.edu.payment.outbox.service.PaymentOutboxWriter;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.PaymentVirtualAccountRepository;
@@ -85,10 +83,10 @@ class PaymentFinalizerTest {
     private EventRepository eventRepository;
 
     @Mock
-    private ApplicationEventPublisher applicationEventPublisher;
+    private PaymentAuditLogWriter auditLogWriter;
 
     @Mock
-    private PaymentAuditLogWriter auditLogWriter;
+    private PaymentOutboxWriter paymentOutboxWriter;
 
     private PaymentFinalizer paymentFinalizer;
 
@@ -107,8 +105,8 @@ class PaymentFinalizerTest {
             ticketExchangeCodeIssuer,
             advertisementRepository,
             eventRepository,
-            applicationEventPublisher,
-            auditLogWriter
+            auditLogWriter,
+            paymentOutboxWriter
         );
 
         given(entityManager.createNativeQuery(any(String.class))).willReturn(query);
@@ -158,7 +156,7 @@ class PaymentFinalizerTest {
     }
 
     @Test
-    void finalizePayment_publishesGuestReservationCompletedEventForNewGuestPayment() {
+    void finalizePayment_appendsGuestReservationConfirmationOutboxForNewGuestPayment() {
         PaymentOrder paymentOrder = pendingGuestPaymentOrder();
         TicketOrder ticketOrder = pendingTicketOrder();
         Payment savedPayment = payment();
@@ -175,12 +173,11 @@ class PaymentFinalizerTest {
 
         paymentFinalizer.finalizePayment(null, request(), tossResponse());
 
-        ArgumentCaptor<TicketReservationCompletedEvent> captor =
-            ArgumentCaptor.forClass(TicketReservationCompletedEvent.class);
-        verify(applicationEventPublisher).publishEvent(captor.capture());
-        assertThat(captor.getValue().orderNo()).isEqualTo("ORDER-1");
-        assertThat(captor.getValue().buyerEmail()).isEqualTo("guest@example.com");
-        assertThat(captor.getValue().eventName()).isEqualTo("test-event");
+        verify(paymentOutboxWriter).appendTicketReservationConfirmation(
+            "ORDER-1",
+            "guest@example.com",
+            "test-event"
+        );
         verify(auditLogWriter).append(
             eq(1L),
             eq(5L),
@@ -198,7 +195,7 @@ class PaymentFinalizerTest {
     }
 
     @Test
-    void finalizePayment_doesNotPublishReservationCompletedEventForMemberPayment() {
+    void finalizePayment_doesNotAppendReservationConfirmationOutboxForMemberPayment() {
         PaymentOrder paymentOrder = pendingPaymentOrder();
         TicketOrder ticketOrder = pendingTicketOrder();
         Payment savedPayment = payment();
@@ -214,7 +211,7 @@ class PaymentFinalizerTest {
 
         paymentFinalizer.finalizePayment(10L, request(), tossResponse());
 
-        verify(applicationEventPublisher, never()).publishEvent(any());
+        verify(paymentOutboxWriter, never()).appendTicketReservationConfirmation(any(), any(), any());
     }
 
     @Test
@@ -358,7 +355,7 @@ class PaymentFinalizerTest {
             paymentFinalizer.finalizePayment(10L, request(), tossResponse());
 
         assertThat(response.getPaymentId()).isEqualTo(5L);
-        verify(applicationEventPublisher, never()).publishEvent(any());
+        verify(paymentOutboxWriter, never()).appendTicketReservationConfirmation(any(), any(), any());
         verifyNoInteractions(auditLogWriter);
     }
 
