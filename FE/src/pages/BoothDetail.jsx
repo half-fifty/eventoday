@@ -814,7 +814,7 @@ export default function BoothDetail() {
                           <div className="flex items-center justify-between mb-1">
                             <div className="flex items-center gap-sm">
                               <span className="text-caption font-body-strong">{review.memberName}</span>
-                              {(review.mine ?? myReviewForThisBooth?.id === review.id) && (
+                              {review.mine && (
                                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-container/10 text-primary-focus">내 후기</span>
                               )}
                             </div>

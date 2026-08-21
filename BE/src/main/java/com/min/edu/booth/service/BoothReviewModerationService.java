@@ -74,7 +74,9 @@ public class BoothReviewModerationService {
         }
 
         long reportCount = boothReviewReportRepository.countByBoothReviewId(reviewId);
-        boolean deleted = reportCount >= AUTO_DELETE_REPORT_THRESHOLD;
+        // 운영자가 이미 감사 목적으로 수동 숨김(hideReview)해둔 리뷰라면, 신고 누적으로 더 지나가는
+        // 순간에도 하드 삭제하지 않는다 - 운영자가 남겨두기로 한 기록을 자동화 로직이 지워버리면 안 됨.
+        boolean deleted = reportCount >= AUTO_DELETE_REPORT_THRESHOLD && !review.isHidden();
         if (deleted) {
             // BoothReview 삭제 시 booth_review_reports/replies/photos는 전부 ON DELETE CASCADE라
             // 별도 정리 없이 함께 지워진다.
@@ -102,7 +104,9 @@ public class BoothReviewModerationService {
      * 다시 줄일 수 있게 해, 실수로 신고했거나 오해가 풀린 경우 되돌릴 여지를 준다.
      */
     public void cancelReport(Long boothId, Long reviewId, Long reporterMemberId) {
-        boothReviewRepository.findByIdAndBoothId(reviewId, boothId)
+        // reportReview()와 동일한 비관적 락으로 직렬화한다 - 락 없이 조회하면, 신고 3건째가
+        // 임계치를 넘겨 삭제를 결정하는 시점과 동시에 기존 신고자가 취소를 시도하는 경쟁 상태가 생길 수 있다.
+        boothReviewRepository.findByIdAndBoothIdForUpdate(reviewId, boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
         BoothReviewReport report = boothReviewReportRepository
@@ -154,7 +158,7 @@ public class BoothReviewModerationService {
     }
 
     /**
-     * 운영자(부스 담당자)용 "신고된 리뷰" 대시보드 — 자동 숨김 임계치(3건)에 못 미친 신고 1~2건짜리
+     * 운영자(부스 담당자)용 "신고된 리뷰" 대시보드 — 자동 삭제 임계치(3건)에 못 미친 신고 1~2건짜리
      * 리뷰도 여기서 미리 확인하고 필요하면 hideReview로 선제 조치할 수 있게 한다. 신고 많은 순 정렬.
      */
     public List<BoothReviewReportSummaryResponse> listReportedReviews(Long boothId, AuthenticatedMemberDto manager) {
