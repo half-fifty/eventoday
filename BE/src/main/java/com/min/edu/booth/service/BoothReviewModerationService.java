@@ -54,7 +54,7 @@ public class BoothReviewModerationService {
 
         // 본인 리뷰 자기 신고 방지
         if (review.getMemberId().equals(reporterMemberId)) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+            throw new BusinessException(GlobalErrorCode.BOOTH_REVIEW_SELF_REPORT_NOT_ALLOWED);
         }
 
         try {
