@@ -89,7 +89,12 @@ public class BoothReviewService {
         Event event = eventRepository.findById(booth.getEventId())
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
-        boolean isWritablePeriod = event.getStatus() == EventStatus.PUBLISHED
+        // EventLifecycleScheduler가 endAt이 지난 PUBLISHED 행사를 매분 ENDED로 전환하므로,
+        // 종료 유예기간(7일)을 PUBLISHED만으로 판단하면 종료 1분 뒤부터 사실상 죽은 코드가 된다.
+        // 유예기간 안에서는 ENDED 상태도 리뷰 작성 가능한 상태로 인정한다.
+        boolean isReviewableStatus = event.getStatus() == EventStatus.PUBLISHED
+                || event.getStatus() == EventStatus.ENDED;
+        boolean isWritablePeriod = isReviewableStatus
                 && !now.isBefore(event.getStartAt())
                 && now.isBefore(event.getEndAt().plusDays(REVIEW_WRITABLE_GRACE_PERIOD_DAYS));
         if (!isWritablePeriod) {
