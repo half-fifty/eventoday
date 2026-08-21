@@ -156,6 +156,7 @@ public enum GlobalErrorCode implements ErrorCode {
     BOOTH_REVIEW_COMMENT_BLOCKED(HttpStatus.BAD_REQUEST, "BOOTH_400_006", "부적절한 표현이 포함되어 있어 등록할 수 없습니다."),
     BOOTH_REVIEW_COMMENT_FLAGGED_BY_AI(HttpStatus.BAD_REQUEST, "BOOTH_400_007", "커뮤니티 가이드라인에 위배되는 내용으로 판단되어 등록할 수 없습니다."),
     BOOTH_REVIEW_ALREADY_REPORTED(HttpStatus.CONFLICT, "BOOTH_409_008", "이미 신고한 리뷰입니다."),
+    BOOTH_REVIEW_REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "BOOTH_404_003", "신고 내역을 찾을 수 없습니다."),
     BOOTH_RESERVATION_SLOT_NOT_OPEN(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_010", "예약을 받지 않는 시간대입니다."),
     BOOTH_RESERVATION_SLOT_FULL(HttpStatus.CONFLICT, "BOOTH_409_009", "선택하신 시간대의 자리가 모두 찼습니다."),
     VENUE_MAP_AUTO_LAYOUT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "BOOTH_503_002", "평면도 자동 배치 제안 서비스를 이용할 수 없습니다.");

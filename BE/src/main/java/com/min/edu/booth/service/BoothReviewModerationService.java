@@ -23,16 +23,19 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-// 리뷰 신고 접수 + 신고 누적 시 자동 숨김, 그리고 운영자의 수동 숨김/해제를 다룬다.
-// 삭제 대신 숨김(soft-hide)만 하는 이유: 하드 삭제하면 나중에 오판이었는지 감사(audit)할 근거가
-// 사라지고, 운영자가 되돌릴 수도 없다. hidden_reason/hidden_at을 남겨 추적 가능하게 한다.
+// 리뷰 신고 접수 + 신고 누적 시 자동 삭제, 신고자에게 처리결과 알림, 그리고 운영자의 수동 숨김/해제를 다룬다.
+//
+// 신고 누적 임계치 도달 시 하드 삭제하는 이유: 이 기능은 이용자(신고/신고취소) 쪽만 프론트에 연결하고
+// 운영자용 숨김 해제 대시보드는 별도 파트라 당장 만들지 않기로 했다. 소프트 숨김으로 두면 되돌릴 사람이
+// 없어 "숨겨졌지만 아무도 다시 볼 수 없는" 상태로 방치되므로, 차라리 확정적으로 삭제한다.
+// 단, 운영자가 신고 누적을 기다리지 않고 즉시 처리하는 수동 숨김/해제(hideReview/unhideReview)는
+// 감사·복구가 필요한 별개 워크플로우라 기존 soft-hide 방식을 그대로 둔다.
 @Service
 @RequiredArgsConstructor
 @Transactional
 public class BoothReviewModerationService {
 
-    private static final int AUTO_HIDE_REPORT_THRESHOLD = 3;
-    private static final String REASON_REPORTED = "REPORTED";
+    private static final int AUTO_DELETE_REPORT_THRESHOLD = 3;
     private static final String REASON_MANAGER_HIDDEN = "MANAGER_HIDDEN";
 
     private final BoothReviewRepository boothReviewRepository;
@@ -42,13 +45,13 @@ public class BoothReviewModerationService {
 
     /**
      * 리뷰 신고. 같은 회원이 같은 리뷰를 두 번 신고할 수 없고, 신고가 누적 임계치(3건)를
-     * 넘는 순간 자동으로 숨김 처리된다.
+     * 넘는 순간 리뷰가 삭제된다. 신고자에게는 매번 접수/처리 결과를 알린다.
      */
     public void reportReview(
             Long boothId, Long reviewId, BoothReviewReportReason reasonCode, String reason, Long reporterMemberId) {
         // 비관적 락으로 이 리뷰에 대한 신고 접수를 직렬화한다. 락 없이 COUNT만 하면, 동시에 들어온
         // 신고 3건이 각자 자기 신고만 반영된 개수를 보고(예: 1, 1, 1) 아무도 임계치(3)를 못 넘겨
-        // 자동 숨김이 누락될 수 있다 — READ COMMITTED에서 실제로 재현되는 경쟁 상태.
+        // 자동 삭제가 누락될 수 있다 — READ COMMITTED에서 실제로 재현되는 경쟁 상태.
         BoothReview review = boothReviewRepository.findByIdAndBoothIdForUpdate(reviewId, boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
@@ -71,11 +74,42 @@ public class BoothReviewModerationService {
         }
 
         long reportCount = boothReviewReportRepository.countByBoothReviewId(reviewId);
-        if (reportCount >= AUTO_HIDE_REPORT_THRESHOLD && !review.isHidden()) {
-            review.hide(REASON_REPORTED, OffsetDateTime.now());
-            boothReviewRepository.saveAndFlush(review);
-            publishHiddenNotification(review, "신고가 누적되어 비공개 처리되었습니다.");
+        boolean deleted = reportCount >= AUTO_DELETE_REPORT_THRESHOLD;
+        if (deleted) {
+            // BoothReview 삭제 시 booth_review_reports/replies/photos는 전부 ON DELETE CASCADE라
+            // 별도 정리 없이 함께 지워진다.
+            applicationEventPublisher.publishEvent(new BoothReviewNotificationEvent(
+                    review.getId(),
+                    review.getMemberId(),
+                    NotificationType.BOOTH_REVIEW_DELETED_BY_REPORT,
+                    "작성하신 리뷰가 삭제되었습니다",
+                    "신고가 누적되어 커뮤니티 가이드라인 위반으로 리뷰가 삭제되었습니다."));
+            boothReviewRepository.delete(review);
         }
+
+        applicationEventPublisher.publishEvent(new BoothReviewNotificationEvent(
+                reviewId,
+                reporterMemberId,
+                NotificationType.BOOTH_REVIEW_REPORT_RESULT,
+                "신고가 접수되었습니다",
+                deleted
+                        ? "신고해주신 리뷰가 누적된 신고로 삭제 처리되었습니다."
+                        : "신고해주신 내용이 접수되었습니다. 검토 후 필요한 조치가 이뤄집니다."));
+    }
+
+    /**
+     * 신고 취소 — 본인이 넣은 신고를 철회한다. 아직 임계치에 도달하지 않은 리뷰라면 신고 누적을
+     * 다시 줄일 수 있게 해, 실수로 신고했거나 오해가 풀린 경우 되돌릴 여지를 준다.
+     */
+    public void cancelReport(Long boothId, Long reviewId, Long reporterMemberId) {
+        boothReviewRepository.findByIdAndBoothId(reviewId, boothId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        BoothReviewReport report = boothReviewReportRepository
+                .findByBoothReviewIdAndReporterMemberId(reviewId, reporterMemberId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.BOOTH_REVIEW_REPORT_NOT_FOUND));
+
+        boothReviewReportRepository.delete(report);
     }
 
     /**

@@ -146,7 +146,7 @@ public class BoothReviewController {
     }
 
     /**
-     * 부스 리뷰 신고 — 같은 리뷰를 두 번 신고할 수 없고, 누적 3건이면 자동 숨김 처리된다.
+     * 부스 리뷰 신고 — 같은 리뷰를 두 번 신고할 수 없고, 누적 3건이면 리뷰가 삭제된다.
      */
     @PostMapping("/{reviewId}/reports")
     public ResponseEntity<Void> reportReview(
@@ -161,6 +161,23 @@ public class BoothReviewController {
 
         reviewModerationService.reportReview(
                 boothId, reviewId, request.getReasonCode(), request.getReason(), principal.getMemberId());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * 부스 리뷰 신고 취소 — 본인이 넣은 신고만 철회할 수 있다.
+     */
+    @DeleteMapping("/{reviewId}/reports")
+    public ResponseEntity<Void> cancelReport(
+            @PathVariable Long boothId,
+            @PathVariable Long reviewId,
+            @AuthenticationPrincipal AuthenticatedMemberDto principal) {
+
+        if (principal == null) {
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+        }
+
+        reviewModerationService.cancelReport(boothId, reviewId, principal.getMemberId());
         return ResponseEntity.noContent().build();
     }
 
