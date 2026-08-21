@@ -106,6 +106,51 @@ class VirtualAccountPaymentServiceTest {
     }
 
     @Test
+    void saveWaitingForDeposit_recordsGuestActorWhenRequesterMemberIdIsNull() {
+        VirtualAccountPaymentService service = new VirtualAccountPaymentService(
+            paymentOrderRepository,
+            ticketOrderRepository,
+            paymentRepository,
+            virtualAccountRepository,
+            auditLogWriter
+        );
+        PaymentOrder paymentOrder = pendingGuestVirtualAccountOrder();
+        TicketOrder ticketOrder = pendingTicketOrder();
+        Payment savedPayment = waitingPayment();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(ticketOrder));
+        given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
+        given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
+        given(virtualAccountRepository.save(any(PaymentVirtualAccount.class)))
+            .willAnswer(invocation -> invocation.getArgument(0));
+
+        service.saveWaitingForDeposit(
+            null,
+            paymentOrder,
+            "payment-key",
+            virtualAccountTossResponse()
+        );
+
+        verify(auditLogWriter).append(
+            eq(1L),
+            eq(5L),
+            eq(null),
+            eq(PaymentAuditEventType.PAYMENT_WAITING_FOR_DEPOSIT),
+            eq(PaymentOrderStatus.PENDING.name()),
+            eq(PaymentOrderStatus.WAITING_FOR_DEPOSIT.name()),
+            eq(PaymentAuditSource.CONFIRM),
+            eq(null),
+            eq(PaymentAuditActorType.GUEST),
+            eq(null),
+            eq(null),
+            any()
+        );
+    }
+
+    @Test
     void saveWaitingForDeposit_rejectsVirtualAccountResponseWithoutBankCode() {
         VirtualAccountPaymentService service = new VirtualAccountPaymentService(
             paymentOrderRepository,
@@ -176,6 +221,24 @@ class VirtualAccountPaymentServiceTest {
             .id(1L)
             .orderNo("ORDER-1")
             .buyerMemberId(10L)
+            .orderType(PaymentOrderType.EVENT_TICKET)
+            .totalAmount(BigDecimal.valueOf(10000))
+            .requestedPaymentMethod(PaymentMethod.VIRTUAL_ACCOUNT)
+            .status(PaymentOrderStatus.PENDING.name())
+            .expiresAt(OffsetDateTime.parse("2026-08-03T10:30:00+09:00"))
+            .createdAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))
+            .updatedAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))
+            .build();
+    }
+
+    private PaymentOrder pendingGuestVirtualAccountOrder() {
+        return PaymentOrder.builder()
+            .id(1L)
+            .orderNo("ORDER-1")
+            .buyerMemberId(null)
+            .buyerName("guest")
+            .buyerEmail("guest@example.com")
+            .buyerPhone("010-1234-5678")
             .orderType(PaymentOrderType.EVENT_TICKET)
             .totalAmount(BigDecimal.valueOf(10000))
             .requestedPaymentMethod(PaymentMethod.VIRTUAL_ACCOUNT)

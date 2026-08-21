@@ -60,7 +60,7 @@ public class RefundAttemptRecorder {
                     existingRefund.getStatus().name(),
                     PaymentAuditSource.REFUND,
                     "RETRY_AFTER_FAILED",
-                    PaymentAuditActorType.MEMBER,
+                    PaymentAuditActorType.fromRequester(requesterMemberId),
                     requesterMemberId,
                     null,
                     refundAttemptedAt
@@ -88,7 +88,7 @@ public class RefundAttemptRecorder {
             savedRefund.getStatus().name(),
             PaymentAuditSource.REFUND,
             null,
-            PaymentAuditActorType.MEMBER,
+            PaymentAuditActorType.fromRequester(requesterMemberId),
             requesterMemberId,
             null,
             refundAttemptedAt
@@ -114,7 +114,7 @@ public class RefundAttemptRecorder {
             refund.getStatus().name(),
             PaymentAuditSource.REFUND,
             null,
-            PaymentAuditActorType.MEMBER,
+            PaymentAuditActorType.fromRequester(refund.getRequesterMemberId()),
             refund.getRequesterMemberId(),
             null,
             refund.getCompletedAt()

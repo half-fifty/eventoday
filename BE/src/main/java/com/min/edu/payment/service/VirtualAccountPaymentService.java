@@ -122,7 +122,7 @@ public class VirtualAccountPaymentService {
             lockedOrder.getStatus(),
             PaymentAuditSource.CONFIRM,
             null,
-            PaymentAuditActorType.MEMBER,
+            PaymentAuditActorType.fromRequester(requesterMemberId),
             requesterMemberId,
             null,
             now

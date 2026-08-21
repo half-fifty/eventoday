@@ -164,7 +164,7 @@ public class PaymentFinalizer {
             paymentOrder.getStatus(),
             source,
             null,
-            actorType(source),
+            actorType(source, requesterMemberId),
             actorId(source, requesterMemberId),
             null,
             now
@@ -348,9 +348,9 @@ public class PaymentFinalizer {
             .getSingleResult();
     }
 
-    private PaymentAuditActorType actorType(PaymentAuditSource source) {
+    private PaymentAuditActorType actorType(PaymentAuditSource source, Long requesterMemberId) {
         return source == PaymentAuditSource.CONFIRM
-            ? PaymentAuditActorType.MEMBER
+            ? PaymentAuditActorType.fromRequester(requesterMemberId)
             : PaymentAuditActorType.SYSTEM;
     }
 

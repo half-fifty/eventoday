@@ -2,5 +2,10 @@ package com.min.edu.payment.domain;
 
 public enum PaymentAuditActorType {
     MEMBER,
-    SYSTEM
+    GUEST,
+    SYSTEM;
+
+    public static PaymentAuditActorType fromRequester(Long requesterMemberId) {
+        return requesterMemberId == null ? GUEST : MEMBER;
+    }
 }

@@ -79,6 +79,38 @@ class RefundAttemptRecorderTest {
     }
 
     @Test
+    void prepare_recordsGuestActorWhenRequesterMemberIdIsNull() {
+        OffsetDateTime refundAttemptedAt = OffsetDateTime.parse("2026-08-12T16:59:59.999+09:00");
+        RefundPaymentProjection payment = projection();
+        given(paymentRefundRepository.findByPaymentId(1L)).willReturn(Optional.empty());
+        given(paymentRefundRepository.saveAndFlush(org.mockito.ArgumentMatchers.any(PaymentRefund.class)))
+            .willReturn(refund(9L, null, refundAttemptedAt));
+
+        PaymentRefund refund = recorder.prepare(
+            payment,
+            null,
+            new CreateRefundRequest("reason"),
+            refundAttemptedAt
+        );
+
+        assertThat(refund.getId()).isEqualTo(9L);
+        verify(auditLogWriter).append(
+            eq(11L),
+            eq(1L),
+            eq(9L),
+            eq(PaymentAuditEventType.REFUND_REQUESTED),
+            eq(null),
+            eq("REQUESTED"),
+            eq(PaymentAuditSource.REFUND),
+            eq(null),
+            eq(PaymentAuditActorType.GUEST),
+            eq(null),
+            eq(null),
+            eq(refundAttemptedAt)
+        );
+    }
+
+    @Test
     void prepare_updatesFailedRefundRequestedAtFromNewRefundAttemptedAt() {
         OffsetDateTime oldRequestedAt = OffsetDateTime.parse("2026-08-12T15:00:00+09:00");
         OffsetDateTime retryAttemptedAt = OffsetDateTime.parse("2026-08-12T16:59:59.999+09:00");
@@ -146,6 +178,31 @@ class RefundAttemptRecorderTest {
         );
     }
 
+    @Test
+    void markAmbiguous_recordsSystemActor() {
+        OffsetDateTime requestedAt = OffsetDateTime.parse("2026-08-12T16:59:59.999+09:00");
+        PaymentRefund refund = refund(7L, 10L, requestedAt);
+        given(paymentRefundRepository.findById(7L)).willReturn(Optional.of(refund));
+        given(paymentRepository.findById(1L)).willReturn(Optional.of(payment()));
+
+        recorder.markAmbiguous(7L, "PROVIDER_TIMEOUT");
+
+        verify(auditLogWriter).append(
+            eq(11L),
+            eq(1L),
+            eq(7L),
+            eq(PaymentAuditEventType.REFUND_AMBIGUOUS),
+            eq("REQUESTED"),
+            eq("REQUESTED"),
+            eq(PaymentAuditSource.REFUND),
+            eq("PROVIDER_TIMEOUT"),
+            eq(PaymentAuditActorType.SYSTEM),
+            eq(null),
+            eq(null),
+            any()
+        );
+    }
+
     private RefundPaymentProjection projection() {
         return new RefundPaymentProjection() {
             @Override public Long getPaymentId() { return 1L; }
@@ -169,10 +226,14 @@ class RefundAttemptRecorderTest {
     }
 
     private PaymentRefund refund(Long id, OffsetDateTime requestedAt) {
+        return refund(id, 10L, requestedAt);
+    }
+
+    private PaymentRefund refund(Long id, Long requesterMemberId, OffsetDateTime requestedAt) {
         return PaymentRefund.builder()
             .id(id)
             .paymentId(1L)
-            .requesterMemberId(10L)
+            .requesterMemberId(requesterMemberId)
             .refundAmount(BigDecimal.valueOf(10000))
             .reason("old reason")
             .status(com.min.edu.payment.domain.PaymentRefundStatus.REQUESTED)

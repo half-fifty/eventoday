@@ -173,7 +173,7 @@ class PaymentFinalizerTest {
         given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
         given(eventRepository.findById(3L)).willReturn(Optional.of(event()));
 
-        paymentFinalizer.finalizePayment(10L, request(), tossResponse());
+        paymentFinalizer.finalizePayment(null, request(), tossResponse());
 
         ArgumentCaptor<TicketReservationCompletedEvent> captor =
             ArgumentCaptor.forClass(TicketReservationCompletedEvent.class);
@@ -181,6 +181,20 @@ class PaymentFinalizerTest {
         assertThat(captor.getValue().orderNo()).isEqualTo("ORDER-1");
         assertThat(captor.getValue().buyerEmail()).isEqualTo("guest@example.com");
         assertThat(captor.getValue().eventName()).isEqualTo("test-event");
+        verify(auditLogWriter).append(
+            eq(1L),
+            eq(5L),
+            eq(null),
+            eq(PaymentAuditEventType.PAYMENT_PAID),
+            eq(PaymentOrderStatus.PENDING.name()),
+            eq(PaymentOrderStatus.PAID.name()),
+            eq(PaymentAuditSource.CONFIRM),
+            eq(null),
+            eq(PaymentAuditActorType.GUEST),
+            eq(null),
+            eq(null),
+            any()
+        );
     }
 
     @Test

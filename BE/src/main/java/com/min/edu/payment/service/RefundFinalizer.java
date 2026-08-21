@@ -123,7 +123,7 @@ public class RefundFinalizer {
             payment.getStatus(),
             PaymentAuditSource.REFUND,
             null,
-            PaymentAuditActorType.MEMBER,
+            PaymentAuditActorType.fromRequester(requesterMemberId),
             requesterMemberId,
             null,
             now
@@ -137,7 +137,7 @@ public class RefundFinalizer {
             refund.getStatus().name(),
             PaymentAuditSource.REFUND,
             null,
-            PaymentAuditActorType.MEMBER,
+            PaymentAuditActorType.fromRequester(requesterMemberId),
             requesterMemberId,
             null,
             now
