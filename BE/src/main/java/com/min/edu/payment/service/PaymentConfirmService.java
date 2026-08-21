@@ -58,7 +58,7 @@ public class PaymentConfirmService {
         validateBeforeToss(paymentOrder, memberId, orderAccessToken, request);
 
         if (paymentOrder.isPaid()) {
-            return finalizeWithoutToss(request);
+            return finalizeWithoutToss(memberId, request);
         }
 
         if (paymentOrder.isWaitingForDeposit()
@@ -81,7 +81,7 @@ public class PaymentConfirmService {
                 request
             );
             if (latestPaymentOrder.isPaid()) {
-                return finalizeWithoutToss(request);
+                return finalizeWithoutToss(memberId, request);
             }
             if (latestPaymentOrder.isWaitingForDeposit()
                     && requestedMethod(latestPaymentOrder) == PaymentMethod.VIRTUAL_ACCOUNT) {
@@ -92,7 +92,7 @@ public class PaymentConfirmService {
             }
 
             TossConfirmResponse tossResponse = confirmWithToss(request, latestPaymentOrder);
-            return handleProviderPayment(request, latestPaymentOrder, tossResponse);
+            return handleProviderPayment(memberId, request, latestPaymentOrder, tossResponse);
         } finally {
             if (claim.acquired()) {
                 inflightDuplicateGate.release(request.getOrderId(), claim.token());
@@ -220,7 +220,7 @@ public class PaymentConfirmService {
         validateAccess(latestPaymentOrder, memberId, orderAccessToken, request.getOrderId());
 
         if (latestPaymentOrder.isPaid()) {
-            return finalizeWithoutToss(request);
+            return finalizeWithoutToss(memberId, request);
         }
 
         if (latestPaymentOrder.isWaitingForDeposit()
@@ -235,6 +235,7 @@ public class PaymentConfirmService {
     }
 
     private ConfirmPaymentResponse handleProviderPayment(
+            Long memberId,
             ConfirmPaymentRequest request,
             PaymentOrder paymentOrder,
             TossConfirmResponse tossResponse) {
@@ -242,13 +243,14 @@ public class PaymentConfirmService {
 
         if (requestedMethod(paymentOrder) == PaymentMethod.VIRTUAL_ACCOUNT) {
             return virtualAccountPaymentService.saveWaitingForDeposit(
+                memberId,
                 paymentOrder,
                 request.getPaymentKey(),
                 tossResponse
             );
         }
 
-        return finalizeWithLock(request, tossResponse);
+        return finalizeWithLock(memberId, request, tossResponse);
     }
 
     private TossConfirmResponse recoverAlreadyProcessedPayment(
@@ -365,8 +367,11 @@ public class PaymentConfirmService {
         return response == null ? null : response.method();
     }
 
-    private ConfirmPaymentResponse finalizeWithoutToss(ConfirmPaymentRequest request) {
+    private ConfirmPaymentResponse finalizeWithoutToss(
+            Long memberId,
+            ConfirmPaymentRequest request) {
         return finalizeWithLock(
+            memberId,
             request,
             new TossConfirmResponse(
                 request.getPaymentKey(),
@@ -383,10 +388,11 @@ public class PaymentConfirmService {
     }
 
     private ConfirmPaymentResponse finalizeWithLock(
+            Long memberId,
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse) {
         try {
-            return paymentFinalizer.finalizePayment(request, tossResponse);
+            return paymentFinalizer.finalizePayment(memberId, request, tossResponse);
         } catch (RuntimeException exception) {
             BusinessException businessException = exceptionTranslator.translate(exception);
             if (businessException != null) {

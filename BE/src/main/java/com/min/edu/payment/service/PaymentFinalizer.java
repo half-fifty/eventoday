@@ -11,6 +11,9 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
+import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderType;
@@ -46,15 +49,19 @@ public class PaymentFinalizer {
     private final AdvertisementRepository advertisementRepository;
     private final EventRepository eventRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final PaymentAuditLogWriter auditLogWriter;
 
     @Transactional
     public ConfirmPaymentResponse finalizePayment(
+            Long requesterMemberId,
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse) {
         return finalizePayment(
+            requesterMemberId,
             request,
             tossResponse,
-            properties.getFinalizationLockTimeoutMs()
+            properties.getFinalizationLockTimeoutMs(),
+            PaymentAuditSource.CONFIRM
         );
     }
 
@@ -63,16 +70,46 @@ public class PaymentFinalizer {
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse) {
         return finalizePayment(
+            null,
             request,
             tossResponse,
-            properties.getWebhookFinalizationLockTimeoutMs()
+            properties.getWebhookFinalizationLockTimeoutMs(),
+            PaymentAuditSource.WEBHOOK
+        );
+    }
+
+    @Transactional
+    public ConfirmPaymentResponse finalizePaymentFromReconciliation(
+            ConfirmPaymentRequest request,
+            TossConfirmResponse tossResponse) {
+        return finalizePayment(
+            null,
+            request,
+            tossResponse,
+            properties.getWebhookFinalizationLockTimeoutMs(),
+            PaymentAuditSource.RECONCILIATION
+        );
+    }
+
+    @Transactional
+    public ConfirmPaymentResponse finalizePaymentFromExpiration(
+            ConfirmPaymentRequest request,
+            TossConfirmResponse tossResponse) {
+        return finalizePayment(
+            null,
+            request,
+            tossResponse,
+            properties.getWebhookFinalizationLockTimeoutMs(),
+            PaymentAuditSource.EXPIRATION
         );
     }
 
     private ConfirmPaymentResponse finalizePayment(
+            Long requesterMemberId,
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse,
-            long lockTimeoutMs) {
+            long lockTimeoutMs,
+            PaymentAuditSource source) {
         setLocalLockTimeout(lockTimeoutMs);
 
         PaymentOrder paymentOrder = paymentOrderRepository
@@ -108,6 +145,7 @@ public class PaymentFinalizer {
             .orElse(null);
 
         OffsetDateTime now = OffsetDateTime.now();
+        String fromStatus = paymentOrder.getStatus();
         Payment payment = completePayment(
             existingPayment,
             paymentOrder,
@@ -117,6 +155,20 @@ public class PaymentFinalizer {
         );
 
         markPaymentOrderPaid(paymentOrder, now);
+        auditLogWriter.append(
+            paymentOrder.getId(),
+            payment.getId(),
+            null,
+            PaymentAuditEventType.PAYMENT_PAID,
+            fromStatus,
+            paymentOrder.getStatus(),
+            source,
+            null,
+            actorType(source, requesterMemberId),
+            actorId(source, requesterMemberId),
+            null,
+            now
+        );
         if (ticketOrder != null) {
             ticketOrder.confirm(tossResponse.approvedAt(), now);
             ticketExchangeCodeIssuer.issueIfAbsent(ticketOrder, paymentOrder.getBuyerMemberId(), now);
@@ -294,6 +346,16 @@ public class PaymentFinalizer {
             .createNativeQuery("select set_config('lock_timeout', :timeout, true)")
             .setParameter("timeout", lockTimeoutMs + "ms")
             .getSingleResult();
+    }
+
+    private PaymentAuditActorType actorType(PaymentAuditSource source, Long requesterMemberId) {
+        return source == PaymentAuditSource.CONFIRM
+            ? PaymentAuditActorType.fromRequester(requesterMemberId)
+            : PaymentAuditActorType.SYSTEM;
+    }
+
+    private Long actorId(PaymentAuditSource source, Long requesterMemberId) {
+        return source == PaymentAuditSource.CONFIRM ? requesterMemberId : null;
     }
 
     private void publishGuestReservationCompleted(

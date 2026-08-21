@@ -27,6 +27,9 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
+import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderStatus;
 import com.min.edu.payment.domain.PaymentOrderType;
@@ -76,6 +79,9 @@ class RefundFinalizerTest {
     @Mock
     private TicketInventoryGateway ticketInventoryGateway;
 
+    @Mock
+    private PaymentAuditLogWriter auditLogWriter;
+
     private RefundFinalizer refundFinalizer;
     private RefundEligibilityPolicy refundEligibilityPolicy;
 
@@ -96,7 +102,8 @@ class RefundFinalizerTest {
             paymentRefundRepository,
             exchangeCodeRepository,
             ticketInventoryGateway,
-            refundEligibilityPolicy
+            refundEligibilityPolicy,
+            auditLogWriter
         );
 
         given(entityManager.createNativeQuery(any(String.class))).willReturn(query);
@@ -150,6 +157,103 @@ class RefundFinalizerTest {
         assertThat(refund.isCompleted()).isTrue();
         assertThat(exchangeCodes).allMatch(ExchangeCode::isCancelled);
         verify(refundEligibilityPolicy).evaluate(any());
+        verify(auditLogWriter).append(
+            eq(11L),
+            eq(1L),
+            eq(7L),
+            eq(PaymentAuditEventType.PAYMENT_REFUNDED),
+            eq(PaymentStatus.PAID.name()),
+            eq(PaymentStatus.REFUNDED.name()),
+            eq(PaymentAuditSource.REFUND),
+            eq(null),
+            eq(PaymentAuditActorType.MEMBER),
+            eq(10L),
+            eq(null),
+            any()
+        );
+        verify(auditLogWriter).append(
+            eq(11L),
+            eq(1L),
+            eq(7L),
+            eq(PaymentAuditEventType.REFUND_COMPLETED),
+            eq("REQUESTED"),
+            eq("COMPLETED"),
+            eq(PaymentAuditSource.REFUND),
+            eq(null),
+            eq(PaymentAuditActorType.MEMBER),
+            eq(10L),
+            eq(null),
+            any()
+        );
+    }
+
+    @Test
+    void finalizeRefund_recordsGuestActorWhenRequesterMemberIdIsNull() {
+        OffsetDateTime now = OffsetDateTime.now();
+        RefundPaymentProjection projection = projection(
+            PaymentStatus.PAID.name(),
+            PaymentOrderStatus.PAID.name(),
+            TicketOrderStatus.CONFIRMED.name(),
+            now.minusHours(2),
+            now.plusMinutes(30)
+        );
+        PaymentOrder paymentOrder = paidPaymentOrder();
+        Payment payment = paidPayment();
+        TicketOrder ticketOrder = confirmedTicketOrder();
+        PaymentRefund refund = requestedRefund(now.minusHours(1), null);
+        List<ExchangeCode> exchangeCodes = List.of(
+            ExchangeCode.createForTicketOrder(3L, 2L, null, "code-1", null, now.minusHours(1)),
+            ExchangeCode.createForTicketOrder(3L, 2L, null, "code-2", null, now.minusHours(1))
+        );
+
+        given(paymentRepository.findRefundPaymentById(1L)).willReturn(Optional.of(projection));
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.findById(1L)).willReturn(Optional.of(payment));
+        given(ticketOrderRepository.findByPaymentOrderId(11L)).willReturn(Optional.of(ticketOrder));
+        given(paymentRefundRepository.findById(7L)).willReturn(Optional.of(refund));
+        given(exchangeCodeRepository.existsByTicketOrderIdAndStatus(any(), any())).willReturn(false);
+        given(exchangeCodeRepository.findAllByTicketOrderIdOrderByIdAsc(2L))
+            .willReturn(exchangeCodes);
+        given(ticketInventoryGateway.release(3L, 2)).willReturn(true);
+        given(paymentRefundRepository.saveAndFlush(refund)).willReturn(refund);
+
+        refundFinalizer.finalizeRefund(
+            7L,
+            1L,
+            null,
+            new CreateRefundRequest("reason"),
+            tossResponse()
+        );
+
+        verify(auditLogWriter).append(
+            eq(11L),
+            eq(1L),
+            eq(7L),
+            eq(PaymentAuditEventType.PAYMENT_REFUNDED),
+            eq(PaymentStatus.PAID.name()),
+            eq(PaymentStatus.REFUNDED.name()),
+            eq(PaymentAuditSource.REFUND),
+            eq(null),
+            eq(PaymentAuditActorType.GUEST),
+            eq(null),
+            eq(null),
+            any()
+        );
+        verify(auditLogWriter).append(
+            eq(11L),
+            eq(1L),
+            eq(7L),
+            eq(PaymentAuditEventType.REFUND_COMPLETED),
+            eq("REQUESTED"),
+            eq("COMPLETED"),
+            eq(PaymentAuditSource.REFUND),
+            eq(null),
+            eq(PaymentAuditActorType.GUEST),
+            eq(null),
+            eq(null),
+            any()
+        );
     }
 
     @Test
@@ -390,10 +494,14 @@ class RefundFinalizerTest {
     }
 
     private PaymentRefund requestedRefund(OffsetDateTime requestedAt) {
+        return requestedRefund(requestedAt, 10L);
+    }
+
+    private PaymentRefund requestedRefund(OffsetDateTime requestedAt, Long requesterMemberId) {
         return PaymentRefund.builder()
             .id(7L)
             .paymentId(1L)
-            .requesterMemberId(10L)
+            .requesterMemberId(requesterMemberId)
             .refundAmount(BigDecimal.valueOf(10000))
             .reason("reason")
             .status(com.min.edu.payment.domain.PaymentRefundStatus.REQUESTED)

@@ -254,7 +254,7 @@ class TicketOrderServiceTest {
         verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().orderNo()).isEqualTo("EVT-20260803-A81C29F4307B");
         assertThat(eventCaptor.getValue().buyerEmail()).isEqualTo("guest@example.com");
-        assertThat(eventCaptor.getValue().eventName()).isEqualTo("테스트 행사");
+        assertThat(eventCaptor.getValue().eventName()).isEqualTo("test-event");
     }
 
     @Test
@@ -370,7 +370,7 @@ class TicketOrderServiceTest {
     private EventTicketSnapshot event(BigDecimal ticketPrice) {
         return new EventTicketSnapshot(
             1L,
-            "테스트 행사",
+            "test-event",
             EventStatus.PUBLISHED,
             ticketPrice,
             10,

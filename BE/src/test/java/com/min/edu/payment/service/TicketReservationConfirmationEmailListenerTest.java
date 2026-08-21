@@ -29,7 +29,7 @@ class TicketReservationConfirmationEmailListenerTest {
         listener.sendConfirmationEmail(new TicketReservationCompletedEvent(
             "EVT-20260811-ABCDEF",
             "guest@example.com",
-            "테스트 행사"
+            "test-event"
         ));
 
         ArgumentCaptor<EmailMessage> captor = ArgumentCaptor.forClass(EmailMessage.class);
@@ -37,9 +37,9 @@ class TicketReservationConfirmationEmailListenerTest {
         EmailMessage message = captor.getValue();
         org.assertj.core.api.Assertions.assertThat(message.to()).isEqualTo("guest@example.com");
         org.assertj.core.api.Assertions.assertThat(message.subject())
-            .isEqualTo("[Eventoday] 티켓 예매가 완료되었습니다.");
+            .isEqualTo("[Eventoday] ticket purchase completed");
         org.assertj.core.api.Assertions.assertThat(message.content())
-            .contains("테스트 행사")
+            .contains("test-event")
             .contains("EVT-20260811-ABCDEF")
             .doesNotContain("orderAccessToken")
             .doesNotContain("qrToken");
@@ -56,7 +56,7 @@ class TicketReservationConfirmationEmailListenerTest {
         assertThatCode(() -> listener.sendConfirmationEmail(new TicketReservationCompletedEvent(
             "EVT-20260811-ABCDEF",
             "guest@example.com",
-            "테스트 행사"
+            "test-event"
         ))).doesNotThrowAnyException();
     }
 
@@ -68,7 +68,7 @@ class TicketReservationConfirmationEmailListenerTest {
         listener.sendConfirmationEmail(new TicketReservationCompletedEvent(
             "EVT-20260811-ABCDEF",
             " ",
-            "테스트 행사"
+            "test-event"
         ));
 
         verify(emailSender, never()).send(any());
