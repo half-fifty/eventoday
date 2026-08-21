@@ -141,7 +141,10 @@ public enum GlobalErrorCode implements ErrorCode {
     // booth congestion 관련 에러
     BOOTH_NOT_FOUND(HttpStatus.NOT_FOUND, "BOOTH_404_001", "부스를 찾을 수 없습니다"),
     BOOTH_CONGESTION_NOT_FOUND(HttpStatus.NOT_FOUND, "BOOTH_404_002", "부스 혼잡도 정보를 찾을 수 없습니다"),
-    BOOTH_REVIEW_SUMMARY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "BOOTH_503_001", "리뷰 요약 서비스를 이용할 수 없습니다.");
+    BOOTH_REVIEW_SUMMARY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "BOOTH_503_001", "리뷰 요약 서비스를 이용할 수 없습니다."),
+    // 공지·자료 AI 작성 보조 (부스 리뷰 요약과 별개로 관리한다)
+    CONTENT_AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "CONTENT_503_001", "AI 작성 기능을 사용할 수 없습니다. 잠시 후 다시 시도해주세요."),
+    CONTENT_AI_INVALID_RESPONSE(HttpStatus.SERVICE_UNAVAILABLE, "CONTENT_503_002", "AI 응답을 이해하지 못했습니다. 다시 시도해주세요.");
 
 
 
