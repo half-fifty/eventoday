@@ -1,0 +1,11 @@
+package com.min.edu.payment.policy;
+
+public enum RefundEligibilityReasonCode {
+    ELIGIBLE,
+    PAYMENT_NOT_PAID,
+    PAYMENT_ORDER_NOT_PAID,
+    TICKET_ORDER_NOT_CONFIRMED,
+    REFUND_AMOUNT_NOT_POSITIVE,
+    OPERATION_CUTOFF_PASSED,
+    EXCHANGE_CODE_ALREADY_REDEEMED
+}

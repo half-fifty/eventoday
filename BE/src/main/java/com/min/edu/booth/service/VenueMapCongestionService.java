@@ -1,5 +1,6 @@
 package com.min.edu.booth.service;
 
+import com.min.edu.booth.congestion.service.BoothCongestionCalculator;
 import com.min.edu.booth.domain.Booth;
 import com.min.edu.booth.domain.BoothMapPosition;
 import com.min.edu.booth.domain.VenueMap;
@@ -28,6 +29,7 @@ public class VenueMapCongestionService {
     private final BoothMapPositionRepository boothMapPositionRepository;
     private final BoothRepository boothRepository;
     private final BoothQrScanRepository qrScanRepository;
+    private final BoothCongestionCalculator congestionCalculator;
 
     /**
      * WBS-161: 혼잡도를 포함한 평면도 마커 조회
@@ -41,7 +43,7 @@ public class VenueMapCongestionService {
                 .findByEventIdAndMapTypeAndStatusOrderByFloorNameAsc(eventId, mapType, VenueMapStatus.PUBLISHED);
 
         // 혼잡도 데이터 (최근 10분)
-        OffsetDateTime since = OffsetDateTime.now().minusMinutes(10);
+        OffsetDateTime since = OffsetDateTime.now().minusMinutes(BoothCongestionCalculator.WINDOW_MINUTES);
         Map<Long, Long> congestionMap = getCongestionMap(eventId, since);
 
 
@@ -126,16 +128,11 @@ public class VenueMapCongestionService {
     }
 
     /**
-     * 혼잡도 수준 판단
+     * 혼잡도 수준 판단 — BoothCongestionCalculator(부스 상세 화면과 공유하는 기준)에 위임한다.
+     * 예전엔 이 서비스가 20/10 임계치를 따로 하드코딩해서, 부스 상세 화면의 혼잡도와 어긋날 수 있었다.
      */
     private String determineCongestionLevel(Long congestionCount) {
-        if (congestionCount >= 20) {
-            return "HIGH";      // 혼잡
-        } else if (congestionCount >= 10) {
-            return "MEDIUM";    // 보통
-        } else {
-            return "LOW";       // 한산
-        }
+        return congestionCalculator.evaluate(congestionCount).name();
     }
 
     /**

@@ -261,11 +261,13 @@ export default function PaymentDetail() {
                   </button>
                 </form>
               ) : (
-                <p className="text-caption text-ink-muted">
-                  {payment.paymentStatus === "REFUNDED" || payment.ticketOrderStatus === "REFUNDED"
-                    ? "이미 환불 처리된 결제입니다."
-                    : "현재 상태에서는 환불 신청 버튼을 표시하지 않습니다."}
-                </p>
+                <div className="space-y-md">
+                  <p className="text-caption text-ink-muted">
+                    {payment.paymentStatus === "REFUNDED" || payment.ticketOrderStatus === "REFUNDED"
+                      ? "이미 환불 처리된 결제입니다."
+                      : "현재 상태에서는 환불 신청 버튼을 표시하지 않습니다."}
+                  </p>
+                </div>
               )}
             </div>
           </section>

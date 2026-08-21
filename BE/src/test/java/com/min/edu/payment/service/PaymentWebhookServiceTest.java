@@ -63,6 +63,8 @@ class PaymentWebhookServiceTest {
         TossPaymentWebhookRequest request = webhook("DONE");
         TossConfirmResponse tossPayment = tossPayment("DONE");
         given(tossPaymentClient.getPayment("payment-key")).willReturn(tossPayment);
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(virtualAccountOrder()));
 
         service.handleTossWebhook(request);
 
@@ -93,6 +95,31 @@ class PaymentWebhookServiceTest {
         given(tossPaymentClient.getPayment("payment-key")).willReturn(tossPayment("READY"));
 
         service.handleTossWebhook(request);
+
+        verify(paymentFinalizer, never()).finalizePaymentFromWebhook(any(), any());
+    }
+
+    @Test
+    void handleTossWebhook_ignoresLateWaitingForDepositAfterLocalPaymentIsPaid() {
+        PaymentWebhookService service = service();
+        Payment paidPayment = Payment.builder()
+            .id(2L)
+            .paymentOrderId(1L)
+            .pgProvider(PaymentProvider.TOSS_PAYMENTS)
+            .paymentKey("payment-key")
+            .method("VIRTUAL_ACCOUNT")
+            .amount(BigDecimal.valueOf(10000))
+            .status(PaymentStatus.PAID.name())
+            .requestedAt(requestedAt())
+            .approvedAt(approvedAt())
+            .updatedAt(approvedAt())
+            .build();
+        TossConfirmResponse tossPayment = tossPayment("WAITING_FOR_DEPOSIT");
+
+        given(tossPaymentClient.getPayment("payment-key")).willReturn(tossPayment);
+        given(paymentRepository.findByPaymentKey("payment-key")).willReturn(Optional.of(paidPayment));
+
+        service.handleTossWebhook(webhook("WAITING_FOR_DEPOSIT"));
 
         verify(paymentFinalizer, never()).finalizePaymentFromWebhook(any(), any());
     }
@@ -136,6 +163,8 @@ class PaymentWebhookServiceTest {
         PaymentWebhookService service = service();
         TossConfirmResponse tossPayment = tossPayment("DONE");
         given(tossPaymentClient.getPayment("payment-key")).willReturn(tossPayment);
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(virtualAccountOrder()));
         given(paymentFinalizer.finalizePaymentFromWebhook(any(), any()))
             .willThrow(new CannotAcquireLockException("lock timeout"));
 
@@ -236,6 +265,20 @@ class PaymentWebhookServiceTest {
         verify(paymentFinalizer, never()).finalizePaymentFromWebhook(any(), any());
     }
 
+    @Test
+    void handleTossWebhook_ignoresDoneWhenLocalOrderIsRefunded() {
+        PaymentWebhookService service = service();
+        TossConfirmResponse tossPayment = tossPayment("DONE");
+
+        given(tossPaymentClient.getPayment("payment-key")).willReturn(tossPayment);
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(refundedOrder()));
+
+        service.handleTossWebhook(webhook("DONE"));
+
+        verify(paymentFinalizer, never()).finalizePaymentFromWebhook(any(), any());
+    }
+
     private TossPaymentWebhookRequest webhook(String status) {
         return new TossPaymentWebhookRequest(
             "PAYMENT_STATUS_CHANGED",
@@ -306,6 +349,21 @@ class PaymentWebhookServiceTest {
             .totalAmount(BigDecimal.valueOf(10000))
             .requestedPaymentMethod(PaymentMethod.VIRTUAL_ACCOUNT)
             .status(PaymentOrderStatus.WAITING_FOR_DEPOSIT.name())
+            .expiresAt(OffsetDateTime.parse("2026-08-03T10:30:00+09:00"))
+            .createdAt(requestedAt())
+            .updatedAt(requestedAt())
+            .build();
+    }
+
+    private PaymentOrder refundedOrder() {
+        return PaymentOrder.builder()
+            .id(1L)
+            .orderNo("ORDER-1")
+            .buyerMemberId(10L)
+            .orderType(PaymentOrderType.EVENT_TICKET)
+            .totalAmount(BigDecimal.valueOf(10000))
+            .requestedPaymentMethod(PaymentMethod.CARD)
+            .status(PaymentOrderStatus.REFUNDED.name())
             .expiresAt(OffsetDateTime.parse("2026-08-03T10:30:00+09:00"))
             .createdAt(requestedAt())
             .updatedAt(requestedAt())

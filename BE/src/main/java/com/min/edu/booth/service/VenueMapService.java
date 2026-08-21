@@ -1,5 +1,8 @@
 package com.min.edu.booth.service;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -8,10 +11,15 @@ import java.util.stream.Collectors;
 
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
+import com.min.edu.booth.ai.GeminiVisionClient;
+import com.min.edu.booth.ai.dto.DetectedBoothBox;
 import com.min.edu.booth.domain.Booth;
 import com.min.edu.booth.domain.BoothMapPosition;
 import com.min.edu.booth.domain.VenueMap;
@@ -19,6 +27,7 @@ import com.min.edu.booth.domain.VenueMapStatus;
 import com.min.edu.booth.domain.VenueMapType;
 import com.min.edu.booth.dto.BoothMapPositionResponseDto;
 import com.min.edu.booth.dto.BoothMapPositionUpsertRequestDto;
+import com.min.edu.booth.dto.VenueMapAutoLayoutSuggestionDto;
 import com.min.edu.booth.dto.VenueMapCreateRequestDto;
 import com.min.edu.booth.dto.VenueMapResponseDto;
 import com.min.edu.booth.repository.BoothMapPositionRepository;
@@ -29,11 +38,14 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventRepository;
+import com.min.edu.file.dto.FileMetaResponseDto;
 import com.min.edu.file.service.FileService;
 import com.min.edu.member.domain.PlatformRole;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class VenueMapService {
@@ -44,6 +56,20 @@ public class VenueMapService {
     private final EventRepository eventRepository;
     private final EventMemberRepository eventMemberRepository;
     private final FileService fileService;
+    private final GeminiVisionClient geminiVisionClient;
+
+    // 저장소 자체 presigned URL을 내려받는 용도라 요청마다 설정을 주입받을 필요는 없지만,
+    // 다른 외부 호출들과 마찬가지로 타임아웃 없이 무한정 대기하지 않도록 명시적으로 둔다.
+    private final RestClient imageDownloadClient = buildImageDownloadClient();
+
+    private static RestClient buildImageDownloadClient() {
+        HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(3))
+            .build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(Duration.ofSeconds(15));
+        return RestClient.builder().requestFactory(requestFactory).build();
+    }
 
     @Transactional(readOnly = true)
     public List<VenueMapResponseDto> list(Long eventId, AuthenticatedMemberDto member) {
@@ -99,6 +125,78 @@ public class VenueMapService {
             throw e;
         }
         return toResponses(eventId, List.of(saved)).get(0);
+    }
+
+    // Vision으로 좌표를 "제안"만 하고 저장하지는 않는다 - 라벨 오독(I/1 혼동 등) 가능성이
+    // 실측으로 확인됐기 때문에, 최종 저장은 관리자가 upsertPositions로 직접 확정해야 한다.
+    //
+    // 이 메서드 전체를 @Transactional로 묶지 않는다 - Gemini 호출은 45초까지 걸릴 수 있는데,
+    // 트랜잭션으로 감싸면 그 시간 내내 커넥션 풀에서 DB 커넥션을 하나 붙잡고 있게 되어(기본
+    // 풀 크기는 10) 동시 요청 몇 건만으로도 앱 전체의 DB 커넥션이 고갈될 수 있다. 아래
+    // 리포지토리 호출들은 각자 Spring Data JPA가 제공하는 자체 짧은 트랜잭션으로 충분하다.
+    public List<VenueMapAutoLayoutSuggestionDto> suggestAutoLayout(
+            Long eventId, Long mapId, AuthenticatedMemberDto member) {
+        requireEventManager(eventId, member);
+        VenueMap venueMap = getByIdAndEventIdOrThrow(mapId, eventId);
+
+        FileMetaResponseDto fileMeta = fileService.getFileMeta(venueMap.getImageFileId(), member.getMemberId());
+        byte[] imageBytes = downloadImage(fileMeta.getDownloadUrl());
+
+        List<DetectedBoothBox> detections = geminiVisionClient.detectBooths(imageBytes, fileMeta.getMimeType());
+
+        Map<String, Booth> boothsByNormalizedCode = buildBoothsByNormalizedCode(eventId);
+
+        return detections.stream()
+            .map(detection -> {
+                Booth matched = boothsByNormalizedCode.get(normalizeBoothCode(detection.label()));
+                return VenueMapAutoLayoutSuggestionDto.builder()
+                    .label(detection.label())
+                    .boothId(matched != null ? matched.getId() : null)
+                    .boothCode(matched != null ? matched.getBoothCode() : null)
+                    .matched(matched != null)
+                    .xRatio(detection.xRatio())
+                    .yRatio(detection.yRatio())
+                    .build();
+            })
+            .toList();
+    }
+
+    // 정규화했을 때 코드가 겹치는 부스(예: "A-01"과 "A01")가 있으면 어느 쪽에 매칭시켜야
+    // 할지 알 수 없다. 하나를 임의로 골라 조용히 틀린 부스에 매칭시키는 대신, 그런 라벨은
+    // 아예 매칭 후보에서 빼서 관리자가 직접 배치하게 한다.
+    private Map<String, Booth> buildBoothsByNormalizedCode(Long eventId) {
+        Map<String, List<Booth>> grouped = boothRepository.findByEventId(eventId).stream()
+            .filter(booth -> booth.getBoothCode() != null)
+            .collect(Collectors.groupingBy(booth -> normalizeBoothCode(booth.getBoothCode())));
+
+        grouped.forEach((normalized, booths) -> {
+            if (booths.size() > 1) {
+                log.warn(
+                    "부스 코드가 정규화 후 충돌하여 자동 배치 매칭에서 제외합니다. eventId={}, normalized={}, boothCodes={}",
+                    eventId, normalized, booths.stream().map(Booth::getBoothCode).toList());
+            }
+        });
+
+        return grouped.entrySet().stream()
+            .filter(entry -> entry.getValue().size() == 1)
+            .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().get(0)));
+    }
+
+    // 부스 코드와 Vision이 읽은 라벨을 대소문자·구분자 차이 없이 매칭하기 위한 정규화.
+    private String normalizeBoothCode(String code) {
+        return code == null ? "" : code.trim().toUpperCase().replaceAll("[\\s-]", "");
+    }
+
+    private byte[] downloadImage(String url) {
+        try {
+            // Presigned URL은 AWS 서명 쿼리 파라미터(X-Amz-Credential 등)가 이미 퍼센트 인코딩되어
+            // 있다. .uri(String)으로 넘기면 RestClient가 이를 템플릿으로 보고 다시 인코딩해
+            // 서명이 깨지므로, 인코딩을 건드리지 않는 URI 객체로 그대로 넘긴다.
+            return imageDownloadClient.get().uri(URI.create(url)).retrieve().body(byte[].class);
+        } catch (RestClientException e) {
+            log.warn("평면도 이미지 다운로드에 실패했습니다. message={}", e.getMessage(), e);
+            throw new BusinessException(GlobalErrorCode.VENUE_MAP_AUTO_LAYOUT_UNAVAILABLE, e);
+        }
     }
 
     @Transactional

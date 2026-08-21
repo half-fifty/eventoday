@@ -1,5 +1,6 @@
 package com.min.edu.booth.service;
 
+import com.min.edu.admission.repository.AdmissionTicketRepository;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.Booth;
 import com.min.edu.booth.domain.BoothReservation;
@@ -17,6 +18,7 @@ import com.min.edu.booth.repository.BoothReservationSlotRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.Event;
+import com.min.edu.event.domain.EventStatus;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.member.domain.Member;
 import com.min.edu.member.repository.MemberRepository;
@@ -47,6 +49,7 @@ public class BoothReservationWithRedisService {
     private final BoothManagerPermissionChecker boothManagerPermissionChecker;
     private final MemberRepository memberRepository;
     private final EventRepository eventRepository;
+    private final AdmissionTicketRepository admissionTicketRepository;
     private final RedisReservationService redisReservationService;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -233,6 +236,21 @@ public class BoothReservationWithRedisService {
         Booth booth = boothRepository.findById(boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
+        // 행사가 취소되었거나 이미 종료됐으면 예약 불가 (Redis 선점을 시도하기 전에 먼저 걸러낸다)
+        Event event = eventRepository.findById(booth.getEventId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+        boolean eventAvailable = event.getStatus() != EventStatus.CANCELLED
+                && event.getStatus() != EventStatus.ENDED
+                && event.getEndAt().isAfter(now);
+        if (!eventAvailable) {
+            throw new BusinessException(GlobalErrorCode.BOOTH_RESERVATION_EVENT_NOT_AVAILABLE);
+        }
+
+        // 티켓 구매자만 예약 가능 (해당 행사의 AdmissionTicket 보유 여부로 확인)
+        if (!admissionTicketRepository.existsByMemberIdAndEventId(memberId, event.getId())) {
+            throw new BusinessException(GlobalErrorCode.BOOTH_RESERVATION_TICKET_REQUIRED);
+        }
+
         // 슬롯 확인 (비관적 잠금으로 동시성 제어)
         BoothReservationSlot slot = slotRepository.findByIdWithLock(request.getSlotId())
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
@@ -244,13 +262,13 @@ public class BoothReservationWithRedisService {
 
         // 슬롯 상태 확인 (OPEN이어야 함)
         if (slot.getStatus() != BoothReservationSlotStatus.OPEN) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+            throw new BusinessException(GlobalErrorCode.BOOTH_RESERVATION_SLOT_NOT_OPEN);
         }
 
         // partySize가 남은 자리를 초과하는지 확인
         int remainingCapacity = slot.getCapacity() - slot.getReservedCount();
         if (request.getPartySize() > remainingCapacity) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+            throw new BusinessException(GlobalErrorCode.BOOTH_RESERVATION_SLOT_FULL);
         }
 
         // 한 번이라도 예약한 적이 있는 부스는(취소된 예약 포함) 재예약을 허용하지 않는다.
@@ -258,10 +276,11 @@ public class BoothReservationWithRedisService {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
-        // Redis에 임시 선점 시도 (WBS-146)
+        // Redis 선점 (WBS-146) — 같은 회원이 더블클릭 등으로 같은 슬롯에 요청을 중복으로 밀어넣는 것을
+        // 막는 용도. 키가 회원별로 분리돼 있어 다른 회원의 정당한 예약 시도를 막지는 않는다.
         boolean reserved = redisReservationService.reserveSlot(boothId, request.getSlotId(), memberId);
         if (!reserved) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);  // 이미 다른 사용자가 선점
+            throw new BusinessException(GlobalErrorCode.RESERVATION_ALREADY_EXISTS);  // 방금 보낸 요청이 아직 처리 중
         }
 
         try {
@@ -274,7 +293,6 @@ public class BoothReservationWithRedisService {
                     .status(BoothReservationStatus.RESERVED)
                     .createdAt(now)
                     .reservedAt(now)
-                    .createdAt(now)
                     .updatedAt(now)
                     .build();
 

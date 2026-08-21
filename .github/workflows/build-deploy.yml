@@ -39,6 +39,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # ----------------------------------------------------------------
+      # 배포에 필요한 Secret / Variable 누락 검증
+      # ----------------------------------------------------------------
       - name: Validate deployment configuration
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
@@ -57,6 +60,7 @@ jobs:
           AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
@@ -84,6 +88,8 @@ jobs:
             AWS_SECRET_KEY
             SMTP_USERNAME
             SMTP_PASSWORD
+            GEMINI_API_KEY
+
             VITE_API_BASE_URL
             VITE_KAKAO_MAP_JS_KEY
             VITE_TOSS_CLIENT_KEY
@@ -205,6 +211,7 @@ jobs:
           AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
         run: |
           set -euo pipefail
@@ -227,6 +234,8 @@ jobs:
             printf 'AWS_SECRET_KEY=%s\n' "${AWS_SECRET_KEY}"
             printf 'SMTP_USERNAME=%s\n' "${SMTP_USERNAME}"
             printf 'SMTP_PASSWORD=%s\n' "${SMTP_PASSWORD}"
+            printf 'GEMINI_API_KEY=%s\n' "${GEMINI_API_KEY}"
+
           } | sudo kubectl create secret generic eventoday-secret \
             --namespace eventoday \
             --from-env-file=/dev/stdin \
@@ -235,12 +244,7 @@ jobs:
             | sudo kubectl apply -f -
 
       # ----------------------------------------------------------------
-      # 핵심 변경 부분
       # 배포는 ArgoCD가 유일한 주체로 수행한다.
-      # CI는 git manifest만 갱신하고, ArgoCD에게 git을 즉시 다시 읽으라고
-      # 강제(hard refresh)한 뒤, 원하는 커밋까지 동기화되고 Healthy가
-      # 될 때까지 기다린다. (kubectl로 직접 이미지를 바꾸면 ArgoCD의
-      # selfHeal과 서로 되돌리기 경쟁을 벌이게 되어 제거함)
       # ----------------------------------------------------------------
       - name: Sync ArgoCD and wait for healthy rollout
         env:

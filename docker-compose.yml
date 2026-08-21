@@ -65,26 +65,6 @@ services:
       retries: 10
       start_period: 20s
 
-  elasticsearch:
-    # BE가 쓰는 elasticsearch-java 클라이언트가 9.x라서 서버도 9.x로 맞춘다 (버전이 어긋나면 REST 호출 400 발생).
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
-    container_name: eventoday_Elasticsearch
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200"
-    environment:
-      discovery.type: single-node
-      xpack.security.enabled: "false"
-      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
-    volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
   minio:
     image: minio/minio
     container_name: eventoday_MinIO
@@ -122,4 +102,3 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
-  elasticsearch_data:
