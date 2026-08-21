@@ -1,19 +1,27 @@
 package com.min.edu.payment.outbox.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.min.edu.TestcontainersConfiguration;
 import com.min.edu.payment.domain.PaymentMethod;
@@ -62,6 +70,12 @@ class PaymentOutboxAtomicityIntegrationTest {
 
     @Autowired
     private PaymentOutboxEventRepository outboxEventRepository;
+
+    @Autowired
+    private PaymentOutboxWriter outboxWriter;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -132,17 +146,98 @@ class PaymentOutboxAtomicityIntegrationTest {
 
     @Test
     void writerUniqueConstraintPreventsDuplicateBusinessEvent() {
-        PaymentOutboxWriter writer = new PaymentOutboxWriter(
-            outboxEventRepository,
-            new tools.jackson.databind.ObjectMapper()
-        );
-
-        writer.appendTicketReservationConfirmation("ORDER-DUP-1", "guest@example.com", "event");
-        writer.appendTicketReservationConfirmation("ORDER-DUP-1", "guest@example.com", "event");
+        outboxWriter.appendTicketReservationConfirmation("ORDER-DUP-1", "guest@example.com", "event");
+        outboxWriter.appendTicketReservationConfirmation("ORDER-DUP-1", "guest@example.com", "event");
 
         assertThat(outboxEventRepository.findAll())
             .filteredOn(event -> event.getAggregateId().equals("ORDER-DUP-1"))
             .hasSize(1);
+    }
+
+    @Test
+    void concurrentWriterDuplicateBusinessEventInsertsExactlyOneRow() throws Exception {
+        String orderNo = "ORDER-CONCURRENT-DUP-" + UUID.randomUUID();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Callable<Void> write = () -> {
+                outboxWriter.appendTicketReservationConfirmation(orderNo, "guest@example.com", "event");
+                return null;
+            };
+
+            for (var future : executor.invokeAll(List.of(write, write))) {
+                future.get();
+            }
+
+            assertThat(outboxEventRepository.findAll())
+                .filteredOn(event -> event.getAggregateId().equals(orderNo))
+                .hasSize(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void eventIdUniqueCollisionPropagates() {
+        UUID eventId = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.now();
+        outboxEventRepository.insertPending(
+            eventId,
+            PaymentOutboxEventType.SEND_TICKET_RESERVATION_CONFIRMATION_EMAIL.name(),
+            "ORDER-EVENT-ID-1",
+            "{}",
+            now
+        );
+
+        assertThatThrownBy(() -> outboxEventRepository.insertPending(
+            eventId,
+            PaymentOutboxEventType.SEND_TICKET_RESERVATION_CONFIRMATION_EMAIL.name(),
+            "ORDER-EVENT-ID-2",
+            "{}",
+            now
+        )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void nonBusinessConstraintViolationPropagates() {
+        assertThatThrownBy(() -> outboxEventRepository.insertPending(
+            UUID.randomUUID(),
+            PaymentOutboxEventType.SEND_TICKET_RESERVATION_CONFIRMATION_EMAIL.name(),
+            "O".repeat(65),
+            "{}",
+            OffsetDateTime.now()
+        )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void nonBusinessOutboxIntegrityFailureRollsBackBusinessTransaction() {
+        String orderNo = "ORDER-INTEGRITY-ROLLBACK-" + UUID.randomUUID();
+        TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+
+        assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status -> {
+            OffsetDateTime now = OffsetDateTime.now();
+            paymentOrderRepository.save(PaymentOrder.builder()
+                .orderNo(orderNo)
+                .buyerMemberId(null)
+                .buyerName("guest")
+                .buyerEmail("guest@example.com")
+                .buyerPhone("010-1234-5678")
+                .orderType(PaymentOrderType.EVENT_TICKET)
+                .totalAmount(BigDecimal.valueOf(10000))
+                .requestedPaymentMethod(PaymentMethod.CARD)
+                .status(PaymentOrderStatus.PENDING.name())
+                .expiresAt(now.plusMinutes(10))
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
+            outboxWriter.appendTicketReservationConfirmation(
+                UUID.randomUUID(),
+                "O".repeat(65),
+                "guest@example.com",
+                "event"
+            );
+        })).isInstanceOf(DataIntegrityViolationException.class);
+
+        assertThat(paymentOrderRepository.findByOrderNo(orderNo)).isEmpty();
     }
 
     private void assertOnePendingOutbox(String orderNo) {

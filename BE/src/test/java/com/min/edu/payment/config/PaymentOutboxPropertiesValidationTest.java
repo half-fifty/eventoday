@@ -34,9 +34,17 @@ class PaymentOutboxPropertiesValidationTest {
         assertInvalid("payment.outbox.max-retries=21");
     }
 
-    private void assertInvalid(String property) {
+    @Test
+    void failsFastWhenLeaseRenewalIntervalIsNotShorterThanLeaseDuration() {
+        assertInvalid(
+            "payment.outbox.lease-duration=30s",
+            "payment.outbox.lease-renewal-interval=30s"
+        );
+    }
+
+    private void assertInvalid(String... properties) {
         contextRunner
-            .withPropertyValues(property)
+            .withPropertyValues(properties)
             .run(context -> assertThat(context).hasFailed());
     }
 

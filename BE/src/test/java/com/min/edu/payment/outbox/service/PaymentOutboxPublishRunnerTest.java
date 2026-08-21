@@ -20,10 +20,14 @@ import tools.jackson.databind.ObjectMapper;
 class PaymentOutboxPublishRunnerTest {
 
     private final PaymentOutboxClaimService claimService = Mockito.mock(PaymentOutboxClaimService.class);
+    private final PaymentOutboxLeaseService leaseService = Mockito.mock(PaymentOutboxLeaseService.class);
+    private final PaymentOutboxLeaseHeartbeat leaseHeartbeat = Mockito.mock(PaymentOutboxLeaseHeartbeat.class);
     private final PaymentOutboxResultService resultService = Mockito.mock(PaymentOutboxResultService.class);
     private final EmailSender emailSender = Mockito.mock(EmailSender.class);
     private final PaymentOutboxPublishRunner runner = new PaymentOutboxPublishRunner(
         claimService,
+        leaseService,
+        leaseHeartbeat,
         resultService,
         emailSender,
         new TicketReservationConfirmationEmailFactory(),
@@ -33,6 +37,7 @@ class PaymentOutboxPublishRunnerTest {
     @Test
     void publish_sendsEmailOutsideClaimAndMarksPublished() {
         given(claimService.claim(1L, "owner-1")).willReturn(Optional.of(event()));
+        given(leaseService.renew(1L, "owner-1")).willReturn(true);
 
         runner.publish(1L, "owner-1");
 
@@ -44,12 +49,25 @@ class PaymentOutboxPublishRunnerTest {
     void publish_sendFailureMarksRetry() {
         RuntimeException failure = new RuntimeException("smtp down");
         given(claimService.claim(1L, "owner-1")).willReturn(Optional.of(event()));
+        given(leaseService.renew(1L, "owner-1")).willReturn(true);
         Mockito.doThrow(failure).when(emailSender).send(any(EmailMessage.class));
 
         runner.publish(1L, "owner-1");
 
         verify(resultService).markSendFailure(1L, "owner-1", failure);
         verify(resultService, never()).markPublished(any(), any());
+    }
+
+    @Test
+    void publish_ownershipLostBeforeSendSkipsEmailAndResultUpdate() {
+        given(claimService.claim(1L, "owner-1")).willReturn(Optional.of(event()));
+        given(leaseService.renew(1L, "owner-1")).willReturn(false);
+
+        runner.publish(1L, "owner-1");
+
+        verify(emailSender, never()).send(any());
+        verify(resultService, never()).markPublished(any(), any());
+        verify(resultService, never()).markSendFailure(any(), any(), any());
     }
 
     @Test

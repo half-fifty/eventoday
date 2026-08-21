@@ -1,11 +1,11 @@
 package com.min.edu.payment.outbox.service;
 
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
-import com.min.edu.payment.outbox.domain.PaymentOutboxEvent;
 import com.min.edu.payment.outbox.domain.PaymentOutboxEventType;
 import com.min.edu.payment.outbox.dto.TicketReservationConfirmationEmailPayload;
 import com.min.edu.payment.outbox.repository.PaymentOutboxEventRepository;
@@ -21,7 +21,17 @@ public class PaymentOutboxWriter {
     private final PaymentOutboxEventRepository paymentOutboxEventRepository;
     private final ObjectMapper objectMapper;
 
+    @Transactional
     public void appendTicketReservationConfirmation(
+            String orderNo,
+            String buyerEmail,
+            String eventName) {
+        appendTicketReservationConfirmation(UUID.randomUUID(), orderNo, buyerEmail, eventName);
+    }
+
+    @Transactional
+    void appendTicketReservationConfirmation(
+            UUID eventId,
             String orderNo,
             String buyerEmail,
             String eventName) {
@@ -30,21 +40,13 @@ public class PaymentOutboxWriter {
             return;
         }
 
-        if (paymentOutboxEventRepository.existsByEventTypeAndAggregateId(
-                PaymentOutboxEventType.SEND_TICKET_RESERVATION_CONFIRMATION_EMAIL,
-                orderNo)) {
-            return;
-        }
-
-        try {
-            paymentOutboxEventRepository.save(PaymentOutboxEvent.ticketReservationConfirmation(
-                orderNo,
-                serialize(new TicketReservationConfirmationEmailPayload(orderNo, buyerEmail, eventName)),
-                OffsetDateTime.now()
-            ));
-        } catch (DataIntegrityViolationException duplicate) {
-            // Concurrent duplicate business invocation lost the unique-key race.
-        }
+        paymentOutboxEventRepository.insertPending(
+            eventId,
+            PaymentOutboxEventType.SEND_TICKET_RESERVATION_CONFIRMATION_EMAIL.name(),
+            orderNo,
+            serialize(new TicketReservationConfirmationEmailPayload(orderNo, buyerEmail, eventName)),
+            OffsetDateTime.now()
+        );
     }
 
     private String serialize(TicketReservationConfirmationEmailPayload payload) {

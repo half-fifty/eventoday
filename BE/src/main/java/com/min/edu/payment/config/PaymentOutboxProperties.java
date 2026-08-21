@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotNull;
@@ -33,6 +34,10 @@ public class PaymentOutboxProperties {
     @DurationMin(seconds = 1)
     private Duration leaseDuration = Duration.ofSeconds(30);
 
+    @NotNull
+    @DurationMin(millis = 1)
+    private Duration leaseRenewalInterval = Duration.ofSeconds(10);
+
     @Min(1)
     @Max(20)
     private int maxRetries = 5;
@@ -44,4 +49,9 @@ public class PaymentOutboxProperties {
     @NotNull
     @DurationMin(seconds = 1)
     private Duration maxBackoff = Duration.ofMinutes(5);
+
+    @AssertTrue(message = "payment.outbox.lease-renewal-interval must be shorter than payment.outbox.lease-duration")
+    public boolean isLeaseRenewalIntervalShorterThanLeaseDuration() {
+        return leaseRenewalInterval.compareTo(leaseDuration) < 0;
+    }
 }

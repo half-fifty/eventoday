@@ -17,6 +17,8 @@ import tools.jackson.databind.ObjectMapper;
 public class PaymentOutboxPublishRunner {
 
     private final PaymentOutboxClaimService claimService;
+    private final PaymentOutboxLeaseService leaseService;
+    private final PaymentOutboxLeaseHeartbeat leaseHeartbeat;
     private final PaymentOutboxResultService resultService;
     private final EmailSender emailSender;
     private final TicketReservationConfirmationEmailFactory emailFactory;
@@ -28,16 +30,27 @@ public class PaymentOutboxPublishRunner {
     }
 
     private void sendClaimed(PaymentOutboxEvent event, String leaseOwner) {
-        try {
+        if (!leaseService.renew(event.getId(), leaseOwner)) {
+            log.warn(
+                "Payment outbox send skipped after ownership loss. id={}, eventType={}, retryCount={}",
+                event.getId(),
+                event.getEventType(),
+                event.getRetryCount()
+            );
+            return;
+        }
+
+        try (PaymentOutboxLeaseHeartbeat.LeaseHeartbeat ignored =
+                 leaseHeartbeat.start(event.getId(), leaseOwner)) {
             send(event);
             resultService.markPublished(event.getId(), leaseOwner);
         } catch (Exception exception) {
             log.warn(
-                "Payment outbox email send failed. id={}, eventType={}, retryCount={}",
+                "Payment outbox email send failed. id={}, eventType={}, retryCount={}, errorType={}",
                 event.getId(),
                 event.getEventType(),
                 event.getRetryCount(),
-                exception
+                exception.getClass().getName()
             );
             resultService.markSendFailure(event.getId(), leaseOwner, exception);
         }
