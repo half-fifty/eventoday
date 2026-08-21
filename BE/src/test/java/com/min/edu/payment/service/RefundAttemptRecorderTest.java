@@ -1,6 +1,8 @@
 package com.min.edu.payment.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -11,7 +13,13 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditSource;
+import com.min.edu.payment.domain.PaymentProvider;
 import com.min.edu.payment.domain.PaymentRefund;
+import com.min.edu.payment.domain.PaymentStatus;
+import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.dto.request.CreateRefundRequest;
 import com.min.edu.payment.repository.PaymentRefundRepository;
 import com.min.edu.payment.repository.RefundPaymentProjection;
@@ -19,12 +27,20 @@ import com.min.edu.payment.repository.RefundPaymentProjection;
 class RefundAttemptRecorderTest {
 
     private PaymentRefundRepository paymentRefundRepository;
+    private PaymentRepository paymentRepository;
+    private PaymentAuditLogWriter auditLogWriter;
     private RefundAttemptRecorder recorder;
 
     @BeforeEach
     void setUp() {
         paymentRefundRepository = org.mockito.Mockito.mock(PaymentRefundRepository.class);
-        recorder = new RefundAttemptRecorder(paymentRefundRepository);
+        paymentRepository = org.mockito.Mockito.mock(PaymentRepository.class);
+        auditLogWriter = org.mockito.Mockito.mock(PaymentAuditLogWriter.class);
+        recorder = new RefundAttemptRecorder(
+            paymentRefundRepository,
+            paymentRepository,
+            auditLogWriter
+        );
     }
 
     @Test
@@ -44,6 +60,19 @@ class RefundAttemptRecorderTest {
 
         assertThat(refund.getRequestedAt()).isEqualTo(refundAttemptedAt);
         verify(paymentRefundRepository).saveAndFlush(refund);
+        verify(auditLogWriter).append(
+            eq(11L),
+            eq(1L),
+            eq(null),
+            eq(PaymentAuditEventType.REFUND_REQUESTED),
+            eq(null),
+            eq("REQUESTED"),
+            eq(PaymentAuditSource.REFUND),
+            eq(null),
+            eq(10L),
+            eq(null),
+            eq(refundAttemptedAt)
+        );
     }
 
     @Test
@@ -70,6 +99,52 @@ class RefundAttemptRecorderTest {
         assertThat(refund.getRequestedAt()).isEqualTo(retryAttemptedAt);
         assertThat(refund.getReason()).isEqualTo("retry reason");
         assertThat(refund.isFailed()).isFalse();
+        verify(auditLogWriter).append(
+            eq(11L),
+            eq(1L),
+            eq(null),
+            eq(PaymentAuditEventType.REFUND_REQUESTED),
+            eq("FAILED"),
+            eq("REQUESTED"),
+            eq(PaymentAuditSource.REFUND),
+            eq("RETRY_AFTER_FAILED"),
+            eq(10L),
+            eq(null),
+            eq(retryAttemptedAt)
+        );
+    }
+
+    @Test
+    void markFailed_recordsRefundFailedAudit() {
+        OffsetDateTime requestedAt = OffsetDateTime.parse("2026-08-12T16:59:59.999+09:00");
+        PaymentRefund refund = PaymentRefund.builder()
+            .id(7L)
+            .paymentId(1L)
+            .requesterMemberId(10L)
+            .refundAmount(BigDecimal.valueOf(10000))
+            .reason("reason")
+            .status(com.min.edu.payment.domain.PaymentRefundStatus.REQUESTED)
+            .requestedAt(requestedAt)
+            .build();
+        given(paymentRefundRepository.findById(7L)).willReturn(Optional.of(refund));
+        given(paymentRepository.findById(1L)).willReturn(Optional.of(payment()));
+
+        recorder.markFailed(7L);
+
+        assertThat(refund.isFailed()).isTrue();
+        verify(auditLogWriter).append(
+            eq(11L),
+            eq(1L),
+            eq(7L),
+            eq(PaymentAuditEventType.REFUND_FAILED),
+            eq("REQUESTED"),
+            eq("FAILED"),
+            eq(PaymentAuditSource.REFUND),
+            eq(null),
+            eq(10L),
+            eq(null),
+            any()
+        );
     }
 
     private RefundPaymentProjection projection() {
@@ -92,5 +167,20 @@ class RefundAttemptRecorderTest {
             @Override public Integer getQuantity() { return 2; }
             @Override public String getTicketOrderStatus() { return "CONFIRMED"; }
         };
+    }
+
+    private Payment payment() {
+        return Payment.builder()
+            .id(1L)
+            .paymentOrderId(11L)
+            .pgProvider(PaymentProvider.TOSS_PAYMENTS)
+            .paymentKey("payment-key")
+            .method("CARD")
+            .amount(BigDecimal.valueOf(10000))
+            .status(PaymentStatus.PAID.name())
+            .requestedAt(OffsetDateTime.now())
+            .approvedAt(OffsetDateTime.now())
+            .updatedAt(OffsetDateTime.now())
+            .build();
     }
 }

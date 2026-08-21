@@ -3,12 +3,15 @@ package com.min.edu.payment.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderStatus;
@@ -47,13 +50,17 @@ class VirtualAccountPaymentServiceTest {
     @Mock
     private PaymentVirtualAccountRepository virtualAccountRepository;
 
+    @Mock
+    private PaymentAuditLogWriter auditLogWriter;
+
     @Test
     void saveWaitingForDeposit_storesTossDueDateAsKoreaOffsetDateTime() {
         VirtualAccountPaymentService service = new VirtualAccountPaymentService(
             paymentOrderRepository,
             ticketOrderRepository,
             paymentRepository,
-            virtualAccountRepository
+            virtualAccountRepository,
+            auditLogWriter
         );
         PaymentOrder paymentOrder = pendingVirtualAccountOrder();
         TicketOrder ticketOrder = pendingTicketOrder();
@@ -80,6 +87,19 @@ class VirtualAccountPaymentServiceTest {
         assertThat(captor.getValue().getDueAt())
             .isEqualTo(OffsetDateTime.parse("2026-08-03T10:30:00+09:00"));
         assertThat(captor.getValue().getTossStatus()).isEqualTo("WAITING_FOR_DEPOSIT");
+        verify(auditLogWriter).append(
+            eq(1L),
+            eq(5L),
+            eq(null),
+            eq(PaymentAuditEventType.PAYMENT_WAITING_FOR_DEPOSIT),
+            eq(PaymentOrderStatus.PENDING.name()),
+            eq(PaymentOrderStatus.WAITING_FOR_DEPOSIT.name()),
+            eq(PaymentAuditSource.CONFIRM),
+            eq(null),
+            eq(10L),
+            eq(null),
+            any()
+        );
     }
 
     @Test
@@ -88,7 +108,8 @@ class VirtualAccountPaymentServiceTest {
             paymentOrderRepository,
             ticketOrderRepository,
             paymentRepository,
-            virtualAccountRepository
+            virtualAccountRepository,
+            auditLogWriter
         );
         PaymentOrder paymentOrder = pendingVirtualAccountOrder();
 

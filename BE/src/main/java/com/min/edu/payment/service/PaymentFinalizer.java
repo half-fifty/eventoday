@@ -11,6 +11,8 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderType;
@@ -46,6 +48,7 @@ public class PaymentFinalizer {
     private final AdvertisementRepository advertisementRepository;
     private final EventRepository eventRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final PaymentAuditLogWriter auditLogWriter;
 
     @Transactional
     public ConfirmPaymentResponse finalizePayment(
@@ -54,7 +57,8 @@ public class PaymentFinalizer {
         return finalizePayment(
             request,
             tossResponse,
-            properties.getFinalizationLockTimeoutMs()
+            properties.getFinalizationLockTimeoutMs(),
+            PaymentAuditSource.CONFIRM
         );
     }
 
@@ -65,14 +69,40 @@ public class PaymentFinalizer {
         return finalizePayment(
             request,
             tossResponse,
-            properties.getWebhookFinalizationLockTimeoutMs()
+            properties.getWebhookFinalizationLockTimeoutMs(),
+            PaymentAuditSource.WEBHOOK
+        );
+    }
+
+    @Transactional
+    public ConfirmPaymentResponse finalizePaymentFromReconciliation(
+            ConfirmPaymentRequest request,
+            TossConfirmResponse tossResponse) {
+        return finalizePayment(
+            request,
+            tossResponse,
+            properties.getWebhookFinalizationLockTimeoutMs(),
+            PaymentAuditSource.RECONCILIATION
+        );
+    }
+
+    @Transactional
+    public ConfirmPaymentResponse finalizePaymentFromExpiration(
+            ConfirmPaymentRequest request,
+            TossConfirmResponse tossResponse) {
+        return finalizePayment(
+            request,
+            tossResponse,
+            properties.getWebhookFinalizationLockTimeoutMs(),
+            PaymentAuditSource.EXPIRATION
         );
     }
 
     private ConfirmPaymentResponse finalizePayment(
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse,
-            long lockTimeoutMs) {
+            long lockTimeoutMs,
+            PaymentAuditSource source) {
         setLocalLockTimeout(lockTimeoutMs);
 
         PaymentOrder paymentOrder = paymentOrderRepository
@@ -108,6 +138,7 @@ public class PaymentFinalizer {
             .orElse(null);
 
         OffsetDateTime now = OffsetDateTime.now();
+        String fromStatus = paymentOrder.getStatus();
         Payment payment = completePayment(
             existingPayment,
             paymentOrder,
@@ -117,6 +148,19 @@ public class PaymentFinalizer {
         );
 
         markPaymentOrderPaid(paymentOrder, now);
+        auditLogWriter.append(
+            paymentOrder.getId(),
+            payment.getId(),
+            null,
+            PaymentAuditEventType.PAYMENT_PAID,
+            fromStatus,
+            paymentOrder.getStatus(),
+            source,
+            null,
+            paymentOrder.getBuyerMemberId(),
+            null,
+            now
+        );
         if (ticketOrder != null) {
             ticketOrder.confirm(tossResponse.approvedAt(), now);
             ticketExchangeCodeIssuer.issueIfAbsent(ticketOrder, paymentOrder.getBuyerMemberId(), now);

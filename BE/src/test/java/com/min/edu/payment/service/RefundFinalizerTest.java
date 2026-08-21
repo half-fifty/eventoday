@@ -76,6 +76,9 @@ class RefundFinalizerTest {
     @Mock
     private TicketInventoryGateway ticketInventoryGateway;
 
+    @Mock
+    private PaymentAuditLogWriter auditLogWriter;
+
     private RefundFinalizer refundFinalizer;
     private RefundEligibilityPolicy refundEligibilityPolicy;
 
@@ -96,7 +99,8 @@ class RefundFinalizerTest {
             paymentRefundRepository,
             exchangeCodeRepository,
             ticketInventoryGateway,
-            refundEligibilityPolicy
+            refundEligibilityPolicy,
+            auditLogWriter
         );
 
         given(entityManager.createNativeQuery(any(String.class))).willReturn(query);

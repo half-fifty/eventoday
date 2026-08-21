@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -26,6 +27,8 @@ import com.min.edu.event.domain.Event;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderStatus;
@@ -83,6 +86,9 @@ class PaymentFinalizerTest {
     @Mock
     private ApplicationEventPublisher applicationEventPublisher;
 
+    @Mock
+    private PaymentAuditLogWriter auditLogWriter;
+
     private PaymentFinalizer paymentFinalizer;
 
     @BeforeEach
@@ -100,7 +106,8 @@ class PaymentFinalizerTest {
             ticketExchangeCodeIssuer,
             advertisementRepository,
             eventRepository,
-            applicationEventPublisher
+            applicationEventPublisher,
+            auditLogWriter
         );
 
         given(entityManager.createNativeQuery(any(String.class))).willReturn(query);
@@ -132,6 +139,19 @@ class PaymentFinalizerTest {
         assertThat(ticketOrder.getConfirmedAt()).isEqualTo(tossResponse().approvedAt());
         assertThat(ticketOrder.getUpdatedAt()).isAfter(tossResponse().approvedAt());
         verify(ticketExchangeCodeIssuer).issueIfAbsent(any(), any(), any());
+        verify(auditLogWriter).append(
+            eq(1L),
+            eq(5L),
+            eq(null),
+            eq(PaymentAuditEventType.PAYMENT_PAID),
+            eq(PaymentOrderStatus.PENDING.name()),
+            eq(PaymentOrderStatus.PAID.name()),
+            eq(PaymentAuditSource.CONFIRM),
+            eq(null),
+            eq(10L),
+            eq(null),
+            any()
+        );
         verify(query).setParameter("timeout", "300ms");
     }
 
@@ -243,6 +263,7 @@ class PaymentFinalizerTest {
 
         assertThat(response.getPaymentId()).isEqualTo(5L);
         verify(applicationEventPublisher, never()).publishEvent(any());
+        verifyNoInteractions(auditLogWriter);
     }
 
     @Test
