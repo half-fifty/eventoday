@@ -97,7 +97,11 @@ public class ContentAiResultParser {
                     // 아래 공통 처리로 넘어간다
                 }
             }
-            log.warn("AI 응답을 JSON으로 해석하지 못했습니다. response={}", abbreviate(rawResponse));
+            // AI 응답에는 행사 정보나 작성자가 입력한 본문이 그대로 섞일 수 있어 운영 로그에는 길이만 남긴다.
+            // 원인을 추적해야 할 때만 로그 레벨을 DEBUG로 올려서 확인한다.
+            log.warn("AI 응답을 JSON으로 해석하지 못했습니다. responseLength={}",
+                    rawResponse == null ? 0 : rawResponse.length());
+            log.debug("해석하지 못한 AI 응답: {}", abbreviate(rawResponse));
             throw new BusinessException(GlobalErrorCode.CONTENT_AI_INVALID_RESPONSE, first);
         }
     }

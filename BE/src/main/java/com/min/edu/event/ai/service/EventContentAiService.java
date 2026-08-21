@@ -19,7 +19,6 @@ import com.min.edu.member.domain.PlatformRole;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 행사 공지·자료 AI 작성 보조 서비스.
@@ -28,11 +27,20 @@ import org.springframework.transaction.annotation.Transactional;
  * 1) 권한 — 해당 행사의 EVENT_MANAGER 또는 PLATFORM_ADMIN (EventContentService.create와 동일)
  * 2) 프롬프트 — 행사명·기간·장소와 공개 대상을 넣어주고, 공지와 자료를 다르게 다룬다
  */
+// 클래스 단위 @Transactional을 두지 않는다.
+// 외부 AI 호출이 최대 45초 걸리는데 트랜잭션 안에서 실행하면 그동안 DB 커넥션을 붙잡는다.
+// 조회는 각 리포지토리 메서드의 짧은 트랜잭션에 맡기고, AI 호출은 트랜잭션 밖에서 수행한다.
+// (BoothReviewSummaryService와 동일한 판단)
 @Service
-@Transactional(readOnly = true)
 public class EventContentAiService {
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy년 M월 d일");
+
+    /**
+     * 프롬프트에 넣을 행사 정보만 담은 스냅샷.
+     * 트랜잭션이 끝난 뒤 엔티티를 들고 다니지 않도록 필요한 값만 미리 복사한다.
+     */
+    private record EventContext(String name, String period, String venueName) {}
 
     private final ContentAiChatClient contentAiChatClient;
     private final ContentAiResultParser resultParser;
@@ -53,19 +61,26 @@ public class EventContentAiService {
     public EventContentAiDtos.GenerateResponse generate(
             Long eventId, EventContentAiDtos.GenerateRequest request, AuthenticatedMemberDto actor) {
 
-        Event event = eventRepository.findById(eventId)
-                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+        // 조회·권한 확인을 먼저 끝내고 필요한 값만 뽑아둔다. 이후 DB를 다시 건드리지 않는다.
+        EventContext context = loadEventContext(eventId);
         requireEventManager(eventId, actor);
         validate(request);
 
+        // 여기서부터는 트랜잭션 밖 — 외부 호출이 길어져도 커넥션을 점유하지 않는다
         String rawResponse = contentAiChatClient.chat(
-                systemPrompt(request.contentType()), buildUserPrompt(event, request));
+                systemPrompt(request.contentType()), buildUserPrompt(context, request));
 
         if (request.action().isTitleSuggestion()) {
             ContentAiResultParser.Result result = resultParser.parseTitleSuggestions(rawResponse);
             return EventContentAiDtos.GenerateResponse.ofTitles(result.titleSuggestions());
         }
+
         ContentAiResultParser.Result result = resultParser.parseContent(rawResponse);
+        // 새 글 작성은 제목까지 만들어야 하는 작업이다. 제목이 없으면 실패로 알린다.
+        // (조용히 넘기면 화면에서 기존 제목이 그대로 남아 사용자가 원인을 알기 어렵다)
+        if (request.action() == ContentAiAction.GENERATE && isBlank(result.title())) {
+            throw new BusinessException(GlobalErrorCode.CONTENT_AI_INVALID_RESPONSE);
+        }
         return EventContentAiDtos.GenerateResponse.ofContent(result.title(), result.content());
     }
 
@@ -91,9 +106,25 @@ public class EventContentAiService {
         if (action.isContentRequired() && isBlank(request.content())) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
+        // 문체 변환은 바꿀 문체를 지정해야 의미가 있다.
+        // 비워두면 기본 문체로 조용히 바뀌어 사용자가 원인을 알기 어렵다.
+        if (action == ContentAiAction.TONE && request.tone() == null) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
     }
 
-    private String buildUserPrompt(Event event, EventContentAiDtos.GenerateRequest request) {
+    /** 행사 조회 — 이 메서드 안에서 트랜잭션이 시작되고 끝난다 */
+    private EventContext loadEventContext(Long eventId) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
+
+        String period = event.getStartAt() == null
+                ? null
+                : formatDate(event.getStartAt()) + " ~ " + formatDate(event.getEndAt());
+        return new EventContext(event.getName(), period, event.getVenueName());
+    }
+
+    private String buildUserPrompt(EventContext context, EventContentAiDtos.GenerateRequest request) {
         ContentAiAction action = request.action();
         ContentAiTone tone = ContentAiTone.orDefault(request.tone());
 
@@ -107,13 +138,12 @@ public class EventContentAiService {
         // 행사 맥락 — 이 정보가 있어야 "어느 행사의 공지인지" 드러나는 글이 나온다.
         // 다만 아래 값도 사용자가 입력한 데이터이므로 지시가 아니라 참고 자료로 못박는다.
         prompt.append("<event_info>\n");
-        prompt.append("행사명: ").append(event.getName()).append('\n');
-        if (event.getStartAt() != null) {
-            prompt.append("행사 기간: ").append(formatDate(event.getStartAt()))
-                    .append(" ~ ").append(formatDate(event.getEndAt())).append('\n');
+        prompt.append("행사명: ").append(context.name()).append('\n');
+        if (context.period() != null) {
+            prompt.append("행사 기간: ").append(context.period()).append('\n');
         }
-        if (event.getVenueName() != null && !event.getVenueName().isBlank()) {
-            prompt.append("장소: ").append(event.getVenueName()).append('\n');
+        if (!isBlank(context.venueName())) {
+            prompt.append("장소: ").append(context.venueName()).append('\n');
         }
         prompt.append("읽는 사람: ").append(audienceLabel(request.audience())).append('\n');
         if (!isBlank(request.resourceType())) {

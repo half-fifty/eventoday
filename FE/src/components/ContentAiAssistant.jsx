@@ -188,7 +188,14 @@ export default function ContentAiAssistant({
                   key={item.value}
                   type="button"
                   ref={index === 0 ? initialFocusRef : undefined}
-                  onClick={() => { setAction(item.value); setResult(null); setError(""); }}
+                  onClick={() => {
+                    setAction(item.value);
+                    setResult(null);
+                    setError("");
+                    // 확인 단계에서 작업을 바꾸면 result가 비는데 확인 창이 남아 있으면
+                    // "교체"를 눌렀을 때 result.title 접근에서 터진다. 함께 해제한다.
+                    setConfirming(false);
+                  }}
                   disabled={loading || disabled}
                   title={disabled ? "본문을 먼저 작성해주세요." : item.hint}
                   className={`inline-flex items-center gap-xxs rounded-full border px-md py-xs text-caption transition-colors disabled:opacity-40 ${

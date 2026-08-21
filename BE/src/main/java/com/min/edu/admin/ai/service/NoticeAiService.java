@@ -59,6 +59,11 @@ public class NoticeAiService {
             return NoticeAiDtos.GenerateResponse.ofTitles(result.titleSuggestions());
         }
         ContentAiResultParser.Result result = resultParser.parseContent(rawResponse);
+        // 새 글 작성은 제목까지 만들어야 하는 작업이다. 제목이 없으면 실패로 알린다.
+        // (조용히 넘기면 화면에서 기존 제목이 그대로 남아 사용자가 원인을 알기 어렵다)
+        if (action == ContentAiAction.GENERATE && isBlank(result.title())) {
+            throw new BusinessException(GlobalErrorCode.CONTENT_AI_INVALID_RESPONSE);
+        }
         return NoticeAiDtos.GenerateResponse.ofContent(result.title(), result.content());
     }
 
@@ -69,6 +74,11 @@ public class NoticeAiService {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
         if (action.isContentRequired() && isBlank(request.content())) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+        // 문체 변환은 바꿀 문체를 지정해야 의미가 있다.
+        // 비워두면 기본 문체로 조용히 바뀌어 사용자가 원인을 알기 어렵다.
+        if (action == ContentAiAction.TONE && request.tone() == null) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
     }
