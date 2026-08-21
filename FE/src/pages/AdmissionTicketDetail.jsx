@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { aiApi } from "../api/aiApi.js";
 import { admissionApi } from "../api/admissionApi.js";
-import AiFailureExplanationBox from "../components/AiFailureExplanationBox.jsx";
 import TopNav from "../components/TopNav.jsx";
 import { shareOrDownloadAdmissionTicketImage } from "../utils/admissionTicketImage.js";
 
@@ -107,9 +105,6 @@ export default function AdmissionTicketDetail() {
     };
   }, [ticket?.admissionTicketId, ticket?.qrAvailable]);
 
-  const canExplainAdmissionFailure =
-    ticket && (ticket.admissionTicketStatus !== "ISSUED" || !ticket.qrAvailable);
-
   return (
     <div className="min-h-screen bg-surface-container-low text-on-surface">
       <TopNav active="mypage" />
@@ -151,15 +146,6 @@ export default function AdmissionTicketDetail() {
                 <Info label="QR 조회 가능" value={ticket.qrAvailable ? "가능" : "불가"} />
               </div>
             </div>
-
-            {canExplainAdmissionFailure && (
-              <AiFailureExplanationBox
-                buttonLabel="AI로 입장 불가 이유 확인"
-                question="왜 입장이 안 되나요?"
-                onRequest={(request) => aiApi.explainMyAdmissionFailure(admissionTicketId, request)}
-                className="bg-white p-xl"
-              />
-            )}
 
             <div className="rounded-2xl border border-hairline bg-white p-xl text-center">
               <h2 className="mb-md font-display-md text-[22px]">입장 QR</h2>

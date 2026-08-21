@@ -42,6 +42,7 @@ import com.min.edu.payment.event.TicketInventoryGateway;
 import com.min.edu.payment.event.TicketReservationCompletedEvent;
 import com.min.edu.payment.policy.TicketOrderPolicy;
 import com.min.edu.payment.repository.PaymentOrderRepository;
+import com.min.edu.payment.repository.TicketOrderIdempotencyRequestRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.support.OrderAccessTokenProvider;
 import com.min.edu.payment.support.OrderNoGenerator;
@@ -62,6 +63,9 @@ class TicketOrderServiceTest {
     private TicketOrderRepository ticketOrderRepository;
 
     @Mock
+    private TicketOrderIdempotencyRequestRepository idempotencyRequestRepository;
+
+    @Mock
     private ExchangeCodeRepository exchangeCodeRepository;
 
     @Mock
@@ -79,16 +83,17 @@ class TicketOrderServiceTest {
     private TicketOrderPolicy ticketOrderPolicy;
 
     @InjectMocks
-    private TicketOrderService ticketOrderService;
+    private TicketOrderCreationProcessor ticketOrderService;
 
     @BeforeEach
     void setUp() {
         ticketOrderPolicy = new TicketOrderPolicy(new EventOperationDeadlinePolicy());
-        ticketOrderService = new TicketOrderService(
+        ticketOrderService = new TicketOrderCreationProcessor(
             eventTicketReader,
             ticketInventoryGateway,
             paymentOrderRepository,
             ticketOrderRepository,
+            idempotencyRequestRepository,
             exchangeCodeRepository,
             orderNoGenerator,
             exchangeCodeGenerator,
@@ -282,8 +287,7 @@ class TicketOrderServiceTest {
 
     @Test
     void create_failsWhenInventoryReserveFails() {
-        given(eventTicketReader.getTicketSnapshot(1L)).willReturn(paidEvent());
-        given(orderNoGenerator.generate()).willReturn("EVT-20260803-A81C29F4307B");
+        givenDefaultOrderDependencies(paidEvent());
         given(ticketInventoryGateway.reserve(1L, 2)).willReturn(false);
 
         assertThatThrownBy(() -> ticketOrderService.create(

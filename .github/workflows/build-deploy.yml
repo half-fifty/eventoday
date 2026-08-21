@@ -62,22 +62,11 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-          # 운영 Copilot / AI 설명용 Gemini Chat Key
-          AI_COPILOT_API_KEY: ${{ secrets.AI_COPILOT_API_KEY }}
-
-          # RAG Embedding용 Gemini Key
-          # 실제 값은 AI_COPILOT_API_KEY와 동일해도 됨
-          AI_RAG_API_KEY: ${{ secrets.AI_RAG_API_KEY }}
-
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
           VITE_TOSS_CLIENT_KEY: ${{ vars.VITE_TOSS_CLIENT_KEY }}
           FRONTEND_URL: ${{ vars.FRONTEND_URL }}
           COOKIE_SECURE: ${{ vars.COOKIE_SECURE }}
-
-          # RAG 기능 설정
-          AI_RAG_ENABLED: ${{ vars.AI_RAG_ENABLED }}
-          AI_RAG_INGESTION_ENABLED: ${{ vars.AI_RAG_INGESTION_ENABLED }}
 
         run: |
           set -euo pipefail
@@ -101,10 +90,6 @@ jobs:
             SMTP_PASSWORD
             GEMINI_API_KEY
 
-            AI_COPILOT_API_KEY
-            AI_RAG_ENABLED
-            AI_RAG_INGESTION_ENABLED
-
             VITE_API_BASE_URL
             VITE_KAKAO_MAP_JS_KEY
             VITE_TOSS_CLIENT_KEY
@@ -118,11 +103,6 @@ jobs:
               exit 1
             fi
           done
-
-          if [[ "${AI_RAG_ENABLED}" == "true" && -z "${AI_RAG_API_KEY}" ]]; then
-            echo "::error::Required deployment setting is missing when AI_RAG_ENABLED=true: AI_RAG_API_KEY"
-            exit 1
-          fi
 
       # ----------------------------------------------------------------
       # 백엔드 이미지 빌드 및 GHCR 업로드
@@ -233,12 +213,6 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-          # AI 신규 설정
-          AI_COPILOT_API_KEY: ${{ secrets.AI_COPILOT_API_KEY }}
-          AI_RAG_API_KEY: ${{ secrets.AI_RAG_API_KEY }}
-          AI_RAG_ENABLED: ${{ vars.AI_RAG_ENABLED }}
-          AI_RAG_INGESTION_ENABLED: ${{ vars.AI_RAG_INGESTION_ENABLED }}
-
         run: |
           set -euo pipefail
 
@@ -261,18 +235,6 @@ jobs:
             printf 'SMTP_USERNAME=%s\n' "${SMTP_USERNAME}"
             printf 'SMTP_PASSWORD=%s\n' "${SMTP_PASSWORD}"
             printf 'GEMINI_API_KEY=%s\n' "${GEMINI_API_KEY}"
-
-            # 운영 Copilot Chat
-            printf 'AI_COPILOT_API_KEY=%s\n' "${AI_COPILOT_API_KEY}"
-
-            # RAG Embedding
-            printf 'AI_RAG_API_KEY=%s\n' "${AI_RAG_API_KEY}"
-
-            # RAG 활성화 여부
-            printf 'AI_RAG_ENABLED=%s\n' "${AI_RAG_ENABLED}"
-
-            # 서버 시작 시 정책 문서를 다시 Embedding할지 여부
-            printf 'AI_RAG_INGESTION_ENABLED=%s\n' "${AI_RAG_INGESTION_ENABLED}"
 
           } | sudo kubectl create secret generic eventoday-secret \
             --namespace eventoday \

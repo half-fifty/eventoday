@@ -17,6 +17,8 @@ import java.util.Arrays;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import com.min.edu.payment.exception.TicketOrderBusyException;
+
 import lombok.extern.slf4j.Slf4j;
 
 @RestControllerAdvice
@@ -27,6 +29,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
         ErrorCode errorCode = e.getErrorCode();
         return ResponseEntity.status(errorCode.getStatus()).body(ApiResponse.error(errorCode));
+    }
+
+    @ExceptionHandler(TicketOrderBusyException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTicketOrderBusyException(TicketOrderBusyException e) {
+        ErrorCode errorCode = e.getErrorCode();
+        return ResponseEntity.status(errorCode.getStatus())
+            .header("Retry-After", Long.toString(e.getRetryAfterSeconds()))
+            .body(ApiResponse.error(errorCode));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

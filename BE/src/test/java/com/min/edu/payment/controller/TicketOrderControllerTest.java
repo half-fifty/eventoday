@@ -58,6 +58,7 @@ class TicketOrderControllerTest {
     @Test
     void createTicketOrder_createsGuestOrder() throws Exception {
         given(ticketOrderService.create(
+                eq("order-key-1"),
                 eq(1L),
                 eq(null),
                 org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)))
@@ -65,6 +66,7 @@ class TicketOrderControllerTest {
 
         mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
+                .header("Idempotency-Key", "order-key-1")
                 .content("""
                     {
                       "quantity": 2,
@@ -80,6 +82,7 @@ class TicketOrderControllerTest {
             .andExpect(jsonPath("$.data.paymentRequired").value(false));
 
         verify(ticketOrderService).create(
+            eq("order-key-1"),
             eq(1L),
             eq(null),
             org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)
@@ -98,6 +101,7 @@ class TicketOrderControllerTest {
             );
 
         given(ticketOrderService.create(
+                eq("order-key-2"),
                 eq(1L),
                 eq(10L),
                 org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)))
@@ -107,6 +111,7 @@ class TicketOrderControllerTest {
 
         mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
+                .header("Idempotency-Key", "order-key-2")
                 .content("""
                     {
                       "quantity": 2
@@ -116,6 +121,7 @@ class TicketOrderControllerTest {
             .andExpect(jsonPath("$.data.paymentRequired").value(true));
 
         verify(ticketOrderService).create(
+            eq("order-key-2"),
             eq(1L),
             eq(10L),
             org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)
@@ -147,6 +153,7 @@ class TicketOrderControllerTest {
     @Test
     void createTicketOrder_returnsBusinessErrorWhenGuestBuyerIsMissing() throws Exception {
         given(ticketOrderService.create(
+                eq("order-key-3"),
                 eq(1L),
                 eq(null),
                 org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)))
@@ -154,6 +161,7 @@ class TicketOrderControllerTest {
 
         mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
+                .header("Idempotency-Key", "order-key-3")
                 .content("""
                     {
                       "quantity": 1
@@ -166,6 +174,7 @@ class TicketOrderControllerTest {
     @Test
     void createTicketOrder_returnsEventNotFound() throws Exception {
         given(ticketOrderService.create(
+                eq("order-key-4"),
                 eq(1L),
                 eq(null),
                 org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)))
@@ -173,6 +182,7 @@ class TicketOrderControllerTest {
 
         mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
+                .header("Idempotency-Key", "order-key-4")
                 .content("""
                     {
                       "quantity": 1,
