@@ -6,6 +6,7 @@ import com.min.edu.booth.domain.BoothReview;
 import com.min.edu.booth.domain.BoothReviewPhoto;
 import com.min.edu.booth.domain.BoothReviewReply;
 import com.min.edu.booth.dto.BoothReviewPhotoResponse;
+import com.min.edu.booth.dto.BoothReviewRatingSummaryResponse;
 import com.min.edu.booth.dto.BoothReviewReplyResponse;
 import com.min.edu.booth.dto.BoothReviewResponse;
 import com.min.edu.booth.dto.BoothReviewSortOption;
@@ -14,6 +15,7 @@ import com.min.edu.booth.dto.UpdateBoothReviewRequest;
 import com.min.edu.booth.repository.BoothRepository;
 import com.min.edu.booth.repository.BoothReviewPhotoRepository;
 import com.min.edu.booth.repository.BoothReviewReplyRepository;
+import com.min.edu.booth.repository.BoothReviewReportRepository;
 import com.min.edu.booth.repository.BoothReviewRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
@@ -25,6 +27,7 @@ import com.min.edu.member.domain.Member;
 import com.min.edu.member.repository.MemberRepository;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +49,10 @@ import java.time.OffsetDateTime;
 @Transactional
 public class BoothReviewService {
 
+    // 행사 종료 직후 현장이 아니라 귀가 후에 후기를 남기려는 관람객이 많아, 종료 시각을 넘겨도
+    // 이 기간 안이면 계속 작성할 수 있게 유예를 둔다.
+    private static final long REVIEW_WRITABLE_GRACE_PERIOD_DAYS = 7;
+
     private final BoothReviewRepository boothReviewRepository;
     private final MemberRepository memberRepository;
     private final BoothRepository boothRepository;
@@ -55,6 +62,7 @@ public class BoothReviewService {
     private final BoothReviewAiModerationService aiModerationService;
     private final BoothReviewReplyRepository boothReviewReplyRepository;
     private final BoothReviewPhotoRepository boothReviewPhotoRepository;
+    private final BoothReviewReportRepository boothReviewReportRepository;
     private final FileAssetRepository fileAssetRepository;
 
     /**
@@ -81,10 +89,15 @@ public class BoothReviewService {
         Event event = eventRepository.findById(booth.getEventId())
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
-        boolean isOngoing = event.getStatus() == EventStatus.PUBLISHED
+        // EventLifecycleScheduler가 endAt이 지난 PUBLISHED 행사를 매분 ENDED로 전환하므로,
+        // 종료 유예기간(7일)을 PUBLISHED만으로 판단하면 종료 1분 뒤부터 사실상 죽은 코드가 된다.
+        // 유예기간 안에서는 ENDED 상태도 리뷰 작성 가능한 상태로 인정한다.
+        boolean isReviewableStatus = event.getStatus() == EventStatus.PUBLISHED
+                || event.getStatus() == EventStatus.ENDED;
+        boolean isWritablePeriod = isReviewableStatus
                 && !now.isBefore(event.getStartAt())
-                && event.getEndAt().isAfter(now);
-        if (!isOngoing) {
+                && now.isBefore(event.getEndAt().plusDays(REVIEW_WRITABLE_GRACE_PERIOD_DAYS));
+        if (!isWritablePeriod) {
             throw new BusinessException(GlobalErrorCode.BOOTH_REVIEW_EVENT_NOT_ONGOING);
         }
 
@@ -166,17 +179,24 @@ public class BoothReviewService {
     }
 
     /**
-     * 2. 평균 별점 조회
+     * 2. 평균 별점 + 리뷰 개수 조회
      */
-    public Double getAverageRating(Long boothId) {
-        return boothReviewRepository.findAverageRatingByBoothId(boothId)
-                .orElse(0.0);
+    public BoothReviewRatingSummaryResponse getAverageRating(Long boothId) {
+        Double average = boothReviewRepository.findAverageRatingByBoothId(boothId).orElse(0.0);
+        long count = boothReviewRepository.countByBoothId(boothId);
+        return BoothReviewRatingSummaryResponse.builder()
+                .averageRating(average)
+                .reviewCount(count)
+                .build();
     }
 
     /**
      * 3. 부스별 후기 목록 (WBS-159)
+     *
+     * @param viewerMemberId 조회하는 회원 ID (비로그인이면 null) — "내가 이미 신고했는지" 배지 계산용
      */
-    public Page<BoothReviewResponse> getBoothReviews(Long boothId, Pageable pageable, BoothReviewSortOption sort) {
+    public Page<BoothReviewResponse> getBoothReviews(
+            Long boothId, Pageable pageable, BoothReviewSortOption sort, Long viewerMemberId) {
         Page<BoothReview> reviews = switch (sort == null ? BoothReviewSortOption.LATEST : sort) {
             case RATING_DESC -> boothReviewRepository.findByBoothIdOrderByRatingDesc(boothId, pageable);
             case RATING_ASC -> boothReviewRepository.findByBoothIdOrderByRatingAsc(boothId, pageable);
@@ -186,17 +206,26 @@ public class BoothReviewService {
         Event event = booth != null ? eventRepository.findById(booth.getEventId()).orElse(null) : null;
         Map<Long, BoothReviewReplyResponse> repliesByReviewId = repliesByReviewId(reviews.getContent());
         Map<Long, List<BoothReviewPhotoResponse>> photosByReviewId = photosByReviewId(reviews.getContent());
+        Set<Long> reportedReviewIds = reportedReviewIdsByViewer(reviews.getContent(), viewerMemberId);
         // 비로그인도 조회 가능한 공개 엔드포인트라 다른 사람의 memberId는 노출하지 않는다.
         return reviews.map(review -> toResponse(review, booth, event, false,
                 repliesByReviewId.get(review.getId()),
-                photosByReviewId.getOrDefault(review.getId(), List.of())));
+                photosByReviewId.getOrDefault(review.getId(), List.of()),
+                reportedReviewIds.contains(review.getId()),
+                isMine(review, viewerMemberId)));
+    }
+
+    // memberId를 노출하지 않는 공개 목록에서도 프론트가 "내 리뷰"를 판별할 수 있도록 별도 플래그로 계산한다.
+    private boolean isMine(BoothReview review, Long viewerMemberId) {
+        return viewerMemberId != null && review.getMemberId().equals(viewerMemberId);
     }
 
     /**
      * 3-1. Controller에서 호출하는 getReviews() 메서드
      */
-    public Page<BoothReviewResponse> getReviews(Long boothId, Pageable pageable, BoothReviewSortOption sort) {
-        return getBoothReviews(boothId, pageable, sort);
+    public Page<BoothReviewResponse> getReviews(
+            Long boothId, Pageable pageable, BoothReviewSortOption sort, Long viewerMemberId) {
+        return getBoothReviews(boothId, pageable, sort, viewerMemberId);
     }
 
     /**
@@ -211,28 +240,51 @@ public class BoothReviewService {
         return reviews.map(review -> {
             Booth booth = boothsById.get(review.getBoothId());
             Event event = booth != null ? eventsById.get(booth.getEventId()) : null;
-            // 로그인한 본인의 후기 목록이라 본인 memberId 노출은 안전하다.
+            // 로그인한 본인의 후기 목록이라 본인 memberId 노출은 안전하다. 본인 리뷰는 자기 자신을
+            // 신고할 수 없으니 reportedByMe는 항상 false, mine은 항상 true.
             return toResponse(review, booth, event, true,
                     repliesByReviewId.get(review.getId()),
-                    photosByReviewId.getOrDefault(review.getId(), List.of()));
+                    photosByReviewId.getOrDefault(review.getId(), List.of()),
+                    false, true);
         });
     }
 
     /**
      * 5. 부스별 리뷰 검색
+     *
+     * @param viewerMemberId 조회하는 회원 ID (비로그인이면 null) — "내가 이미 신고했는지" 배지 계산용
      */
     public Page<BoothReviewResponse> searchReviews(
-            Long boothId, String keyword, Pageable pageable) {
+            Long boothId, String keyword, Pageable pageable, Long viewerMemberId) {
+        if (keyword == null || keyword.isBlank()) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
         Page<BoothReview> reviews = boothReviewRepository
                 .findByBoothIdAndCommentContainingIgnoreCase(boothId, keyword, pageable);
         Booth booth = boothRepository.findById(boothId).orElse(null);
         Event event = booth != null ? eventRepository.findById(booth.getEventId()).orElse(null) : null;
         Map<Long, BoothReviewReplyResponse> repliesByReviewId = repliesByReviewId(reviews.getContent());
         Map<Long, List<BoothReviewPhotoResponse>> photosByReviewId = photosByReviewId(reviews.getContent());
+        Set<Long> reportedReviewIds = reportedReviewIdsByViewer(reviews.getContent(), viewerMemberId);
         // 비로그인도 조회 가능한 공개 엔드포인트라 다른 사람의 memberId는 노출하지 않는다.
         return reviews.map(review -> toResponse(review, booth, event, false,
                 repliesByReviewId.get(review.getId()),
-                photosByReviewId.getOrDefault(review.getId(), List.of())));
+                photosByReviewId.getOrDefault(review.getId(), List.of()),
+                reportedReviewIds.contains(review.getId()),
+                isMine(review, viewerMemberId)));
+    }
+
+    // 페이지 안 리뷰 ID들 중 이 회원이 이미 신고한 것만 배치로 조회한다 (N+1 방지). 비로그인이면 전부 false.
+    private Set<Long> reportedReviewIdsByViewer(List<BoothReview> reviews, Long viewerMemberId) {
+        if (viewerMemberId == null) {
+            return Set.of();
+        }
+        List<Long> reviewIds = reviews.stream().map(BoothReview::getId).toList();
+        if (reviewIds.isEmpty()) {
+            return Set.of();
+        }
+        return new HashSet<>(boothReviewReportRepository
+                .findBoothReviewIdByReporterMemberIdAndBoothReviewIdIn(viewerMemberId, reviewIds));
     }
 
     private Map<Long, Booth> boothsById(List<BoothReview> reviews) {
@@ -347,7 +399,8 @@ public class BoothReviewService {
                 .map(this::toPhotoResponse)
                 .toList();
         // 작성/수정 직후 본인에게 돌려주는 응답이라 본인 memberId 노출은 안전하다.
-        return toResponse(review, booth, event, true, reply, photos);
+        // 방금 작성/수정한 자기 리뷰이니 reportedByMe는 항상 false, mine은 항상 true.
+        return toResponse(review, booth, event, true, reply, photos, false, true);
     }
 
     /**
@@ -355,10 +408,14 @@ public class BoothReviewService {
      *
      * @param exposeMemberId 비로그인도 볼 수 있는 공개 목록(부스별 후기)에서는 false로 넘겨
      *                       다른 회원의 memberId가 노출되지 않도록 한다.
+     * @param reportedByMe   조회하는 회원이 이 리뷰를 이미 신고했는지
+     * @param mine           조회하는 회원 본인이 작성한 리뷰인지 (memberId를 못 내려주는 공개 목록에서도
+     *                       프론트가 이 값으로 "내 리뷰"를 판별할 수 있다)
      */
     private BoothReviewResponse toResponse(
             BoothReview review, Booth booth, Event event, boolean exposeMemberId,
-            BoothReviewReplyResponse reply, List<BoothReviewPhotoResponse> photos) {
+            BoothReviewReplyResponse reply, List<BoothReviewPhotoResponse> photos, boolean reportedByMe,
+            boolean mine) {
         return BoothReviewResponse.builder()
                 .id(review.getId())
                 .boothId(review.getBoothId())
@@ -373,6 +430,9 @@ public class BoothReviewService {
                 .createdAt(review.getCreatedAt())
                 .updatedAt(review.getUpdatedAt())
                 .hidden(review.isHidden())
+                .hiddenReason(review.getHiddenReason())
+                .reportedByMe(reportedByMe)
+                .mine(mine)
                 .reply(reply)
                 .photos(photos)
                 .build();

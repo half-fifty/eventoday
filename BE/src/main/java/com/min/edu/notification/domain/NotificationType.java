@@ -7,5 +7,7 @@ public enum NotificationType {
     EVENT_APPROVED,
     EVENT_REJECTED,
     BOOTH_APPLICATION_APPROVED, // 부스 신청 승인 알림
-    BOOTH_APPLICATION_REJECTED  // 부스 신청 반려 알림
+    BOOTH_APPLICATION_REJECTED, // 부스 신청 반려 알림
+    BOOTH_REVIEW_REPLIED, // 내 리뷰에 부스 담당자 답글이 달렸다는 알림
+    BOOTH_REVIEW_HIDDEN // 내 리뷰가 신고 누적/운영자 조치로 숨김 처리되었다는 알림
 }
