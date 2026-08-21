@@ -5,7 +5,6 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,7 +25,7 @@ import com.min.edu.payment.dto.response.CreateTicketOrderResponse;
 import com.min.edu.payment.event.EventTicketReader;
 import com.min.edu.payment.event.EventTicketSnapshot;
 import com.min.edu.payment.event.TicketInventoryGateway;
-import com.min.edu.payment.event.TicketReservationCompletedEvent;
+import com.min.edu.payment.outbox.service.PaymentOutboxWriter;
 import com.min.edu.payment.policy.TicketOrderPolicy;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.TicketOrderIdempotencyRequestRepository;
@@ -53,7 +52,7 @@ public class TicketOrderCreationProcessor {
     private final ExchangeCodeGenerator exchangeCodeGenerator;
     private final TicketOrderPolicy ticketOrderPolicy;
     private final OrderAccessTokenProvider orderAccessTokenProvider;
-    private final ApplicationEventPublisher applicationEventPublisher;
+    private final PaymentOutboxWriter paymentOutboxWriter;
 
     CreateTicketOrderResponse create(
             Long eventId,
@@ -253,11 +252,11 @@ public class TicketOrderCreationProcessor {
             return;
         }
 
-        applicationEventPublisher.publishEvent(new TicketReservationCompletedEvent(
+        paymentOutboxWriter.appendTicketReservationConfirmation(
             paymentOrder.getOrderNo(),
             paymentOrder.getBuyerEmail(),
             event.eventName()
-        ));
+        );
     }
 
     private List<ExchangeCode> createExchangeCodes(
