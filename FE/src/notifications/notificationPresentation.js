@@ -41,6 +41,30 @@ const NOTIFICATION_META = {
     iconClass: "bg-error/10 text-error",
     accentClass: "bg-error",
   },
+  BOOTH_REVIEW_REPLIED: {
+    icon: "forum",
+    label: "리뷰 답글",
+    iconClass: "bg-primary-fixed text-primary",
+    accentClass: "bg-primary-container",
+  },
+  BOOTH_REVIEW_HIDDEN: {
+    icon: "visibility_off",
+    label: "리뷰 비공개 처리",
+    iconClass: "bg-error/10 text-error",
+    accentClass: "bg-error",
+  },
+  BOOTH_REVIEW_DELETED_BY_REPORT: {
+    icon: "delete_forever",
+    label: "리뷰 삭제",
+    iconClass: "bg-error/10 text-error",
+    accentClass: "bg-error",
+  },
+  BOOTH_REVIEW_REPORT_RESULT: {
+    icon: "outlined_flag",
+    label: "신고 처리 결과",
+    iconClass: "bg-surface-container text-on-surface-variant",
+    accentClass: "bg-tertiary",
+  },
 };
 
 const DEFAULT_NOTIFICATION_META = {
@@ -111,6 +135,10 @@ const getNotificationTarget = (notification) => {
       return `/booth-detail?booth=${notification.referenceId}`;
     case "BOOTH_APPLICATION":
       return "/my-applications"; // 부스 신청 승인/반려 알림 → 내 신청 목록으로 이동
+    case "BOOTH_REVIEW":
+      // referenceId는 리뷰 id라 boothId/eventId 없이는 부스 상세로 바로 못 보내서,
+      // BOOTH_APPLICATION과 같은 패턴으로 내 리뷰가 모여있는 마이페이지로 보낸다.
+      return "/mypage";
     default:
       return null;
   }

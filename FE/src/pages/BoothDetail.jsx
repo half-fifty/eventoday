@@ -87,6 +87,10 @@ export default function BoothDetail() {
   const [reviewFormComment, setReviewFormComment] = useState("");
   const [reviewFormPhotos, setReviewFormPhotos] = useState([]); // [{ fileId, previewUrl }]
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // 사진 업로드는 비동기라, 업로드 도중 편집을 취소하거나 다른 부스로 이동하면 늦게 도착한 응답이
+  // 이미 리셋되었거나 다른 부스의 폼에 잘못 append될 수 있다. 폼이 리셋될 때마다 이 값을 올려서,
+  // 업로드 완료 시점에 "그 폼이 아직 그대로인지"를 boothId와 함께 확인한다.
+  const reviewFormSessionRef = useRef(0);
   const [editingReview, setEditingReview] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewFormError, setReviewFormError] = useState("");
@@ -297,6 +301,7 @@ export default function BoothDetail() {
   useEffect(() => {
     // refreshMyReview()가 끝나기 전까지 이전 부스의 후기 편집 상태가 남아있으면, 그 사이 "수정 완료"를
     // 눌렀을 때 이전 부스의 후기 id로 새 부스에 잘못 반영될 수 있어 부스가 바뀌는 즉시 초기화한다.
+    reviewFormSessionRef.current += 1;
     setMyReviewForThisBooth(null);
     setEditingReview(false);
     setReviewFormRating(5);
@@ -309,6 +314,7 @@ export default function BoothDetail() {
 
   const startEditingReview = () => {
     if (!myReviewForThisBooth) return;
+    reviewFormSessionRef.current += 1;
     setReviewFormRating(myReviewForThisBooth.rating);
     setReviewFormComment(myReviewForThisBooth.comment ?? "");
     setReviewFormPhotos(
@@ -319,6 +325,7 @@ export default function BoothDetail() {
   };
 
   const cancelEditingReview = () => {
+    reviewFormSessionRef.current += 1;
     setEditingReview(false);
     setReviewFormPhotos([]);
     setReviewFormError("");
@@ -332,17 +339,24 @@ export default function BoothDetail() {
       setReviewFormError(`사진은 최대 ${REVIEW_PHOTO_MAX}장까지 첨부할 수 있어요.`);
       return;
     }
+    const requestedBoothId = boothId;
+    const session = reviewFormSessionRef.current;
     setUploadingPhoto(true);
     setReviewFormError("");
     try {
       for (const file of files) {
         const uploaded = await uploadFile(file, "PUBLIC");
+        if (currentBoothIdRef.current !== requestedBoothId || reviewFormSessionRef.current !== session) continue;
         setReviewFormPhotos((prev) => [...prev, { fileId: uploaded.fileId, previewUrl: fileDownloadUrl(uploaded.fileId) }]);
       }
     } catch (requestError) {
-      setReviewFormError(requestError.message || "사진 업로드에 실패했습니다.");
+      if (currentBoothIdRef.current === requestedBoothId && reviewFormSessionRef.current === session) {
+        setReviewFormError(requestError.message || "사진 업로드에 실패했습니다.");
+      }
     } finally {
-      setUploadingPhoto(false);
+      if (currentBoothIdRef.current === requestedBoothId && reviewFormSessionRef.current === session) {
+        setUploadingPhoto(false);
+      }
     }
   };
 
@@ -379,6 +393,7 @@ export default function BoothDetail() {
         await createReview(boothId, { rating: reviewFormRating, comment: reviewFormComment, fileIds });
       }
       if (currentBoothIdRef.current !== requestedBoothId) return;
+      reviewFormSessionRef.current += 1;
       setEditingReview(false);
       setReviewFormComment("");
       setReviewFormRating(5);
