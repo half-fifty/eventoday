@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import java.math.BigDecimal;
@@ -12,6 +14,7 @@ import java.time.OffsetDateTime;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -74,6 +77,12 @@ class PaymentConfirmServiceTest {
     @InjectMocks
     private PaymentConfirmService paymentConfirmService;
 
+    @BeforeEach
+    void setUp() {
+        lenient().when(inflightDuplicateGate.tryClaim("ORDER-1"))
+            .thenReturn(PaymentConfirmInflightClaim.acquired("token-1"));
+    }
+
     @Test
     void confirm_succeedsForMemberPaidTicketOrder() {
         ConfirmPaymentRequest request = request();
@@ -111,7 +120,7 @@ class PaymentConfirmServiceTest {
 
         paymentConfirmService.confirm(null, "token", request);
 
-        verify(orderAccessTokenProvider).getOrderNo("token");
+        verify(orderAccessTokenProvider, times(2)).getOrderNo("token");
     }
 
     @Test
@@ -129,7 +138,7 @@ class PaymentConfirmServiceTest {
 
         paymentConfirmService.confirm(10L, "token", request);
 
-        verify(orderAccessTokenProvider).getOrderNo("token");
+        verify(orderAccessTokenProvider, times(2)).getOrderNo("token");
     }
 
     @Test
@@ -574,7 +583,7 @@ class PaymentConfirmServiceTest {
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(pendingTicketOrder()));
         given(inflightDuplicateGate.tryClaim("ORDER-1"))
-            .willReturn(InflightClaimResult.ALREADY_IN_FLIGHT);
+            .willReturn(PaymentConfirmInflightClaim.alreadyInFlight());
 
         assertBusinessException(
             () -> paymentConfirmService.confirm(10L, null, request),
@@ -592,14 +601,67 @@ class PaymentConfirmServiceTest {
             .willReturn(Optional.of(pendingMemberOrder(10L)));
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(pendingTicketOrder()));
-        given(inflightDuplicateGate.tryClaim("ORDER-1")).willReturn(InflightClaimResult.FAIL_OPEN);
+        given(inflightDuplicateGate.tryClaim("ORDER-1")).willReturn(PaymentConfirmInflightClaim.failOpen());
         given(tossPaymentClient.confirm(any())).willReturn(tossResponse);
         given(paymentFinalizer.finalizePayment(request, tossResponse)).willReturn(response());
 
         paymentConfirmService.confirm(10L, null, request);
 
         verify(tossPaymentClient).confirm(any());
-        verify(inflightDuplicateGate, never()).release(any());
+        verify(inflightDuplicateGate, never()).release(any(), any());
+    }
+
+    @Test
+    void confirm_reloadsPaidOrderAfterAcquiredAndSkipsTossConfirm() {
+        ConfirmPaymentRequest request = request();
+        PaymentOrder pendingOrder = pendingMemberOrder(10L);
+        PaymentOrder paidOrder = order(
+            PaymentOrderStatus.PAID,
+            BigDecimal.valueOf(10000),
+            10L
+        );
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(pendingOrder), Optional.of(paidOrder));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()), Optional.of(confirmedTicketOrder()));
+        given(paymentFinalizer.finalizePayment(any(), any())).willReturn(response());
+
+        paymentConfirmService.confirm(10L, null, request);
+
+        verify(tossPaymentClient, never()).confirm(any());
+        verify(paymentFinalizer).finalizePayment(any(), any());
+        verify(inflightDuplicateGate).release("ORDER-1", "token-1");
+    }
+
+    @Test
+    void confirm_reloadsWaitingForDepositOrderAfterAcquiredAndSkipsTossConfirm() {
+        ConfirmPaymentRequest request = request();
+        PaymentOrder pendingOrder = virtualAccountOrder();
+        PaymentOrder waitingOrder = PaymentOrder.builder()
+            .id(1L)
+            .orderNo("ORDER-1")
+            .buyerMemberId(10L)
+            .orderType(PaymentOrderType.EVENT_TICKET)
+            .totalAmount(BigDecimal.valueOf(10000))
+            .requestedPaymentMethod(PaymentMethod.VIRTUAL_ACCOUNT)
+            .status(PaymentOrderStatus.WAITING_FOR_DEPOSIT.name())
+            .expiresAt(OffsetDateTime.now().plusMinutes(10))
+            .createdAt(OffsetDateTime.now())
+            .updatedAt(OffsetDateTime.now())
+            .build();
+
+        given(paymentOrderRepository.findByOrderNo("ORDER-1"))
+            .willReturn(Optional.of(pendingOrder), Optional.of(waitingOrder));
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(pendingTicketOrder()));
+        given(virtualAccountPaymentService.getWaitingForDeposit(waitingOrder, "payment-key"))
+            .willReturn(response());
+
+        paymentConfirmService.confirm(10L, null, request);
+
+        verify(tossPaymentClient, never()).confirm(any());
+        verify(virtualAccountPaymentService).getWaitingForDeposit(waitingOrder, "payment-key");
+        verify(inflightDuplicateGate).release("ORDER-1", "token-1");
     }
 
     @Test

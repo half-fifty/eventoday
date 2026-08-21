@@ -69,19 +69,46 @@ public class PaymentConfirmService {
             );
         }
 
-        InflightClaimResult claim = inflightDuplicateGate.tryClaim(request.getOrderId());
-        if (claim == InflightClaimResult.ALREADY_IN_FLIGHT) {
+        PaymentConfirmInflightClaim claim = inflightDuplicateGate.tryClaim(request.getOrderId());
+        if (claim.result() == InflightClaimResult.ALREADY_IN_FLIGHT) {
             return handleAlreadyInFlight(memberId, orderAccessToken, request);
         }
 
         try {
-            TossConfirmResponse tossResponse = confirmWithToss(request, paymentOrder);
-            return handleProviderPayment(request, paymentOrder, tossResponse);
+            PaymentOrder latestPaymentOrder = reloadAndValidateBeforeToss(
+                memberId,
+                orderAccessToken,
+                request
+            );
+            if (latestPaymentOrder.isPaid()) {
+                return finalizeWithoutToss(request);
+            }
+            if (latestPaymentOrder.isWaitingForDeposit()
+                    && requestedMethod(latestPaymentOrder) == PaymentMethod.VIRTUAL_ACCOUNT) {
+                return virtualAccountPaymentService.getWaitingForDeposit(
+                    latestPaymentOrder,
+                    request.getPaymentKey()
+                );
+            }
+
+            TossConfirmResponse tossResponse = confirmWithToss(request, latestPaymentOrder);
+            return handleProviderPayment(request, latestPaymentOrder, tossResponse);
         } finally {
-            if (claim == InflightClaimResult.ACQUIRED) {
-                inflightDuplicateGate.release(request.getOrderId());
+            if (claim.acquired()) {
+                inflightDuplicateGate.release(request.getOrderId(), claim.token());
             }
         }
+    }
+
+    private PaymentOrder reloadAndValidateBeforeToss(
+            Long memberId,
+            String orderAccessToken,
+            ConfirmPaymentRequest request) {
+        PaymentOrder latestPaymentOrder = paymentOrderRepository
+            .findByOrderNo(request.getOrderId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_ORDER_NOT_FOUND));
+        validateBeforeToss(latestPaymentOrder, memberId, orderAccessToken, request);
+        return latestPaymentOrder;
     }
 
     private void validateBeforeToss(
