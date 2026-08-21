@@ -90,6 +90,7 @@ public enum GlobalErrorCode implements ErrorCode {
     PAYMENT_PROCESSING_CONFLICT(HttpStatus.CONFLICT, "PAYMENT_409_003", "현재 결제를 처리하고 있습니다. 잠시 후 다시 시도해주세요."),
     PAYMENT_DATA_INCONSISTENT(HttpStatus.CONFLICT, "PAYMENT_409_004", "결제 데이터가 일치하지 않습니다."),
     PAYMENT_KEY_ALREADY_USED(HttpStatus.CONFLICT, "PAYMENT_409_005", "이미 사용된 결제 키입니다."),
+    PAYMENT_CONFIRM_IN_PROGRESS(HttpStatus.CONFLICT, "PAYMENT_409_006", "현재 결제 승인을 처리하고 있습니다. 잠시 후 다시 시도해주세요."),
     PAYMENT_METHOD_MISMATCH(HttpStatus.BAD_REQUEST, "PAYMENT_400_004", "결제 수단이 일치하지 않습니다."),
     VIRTUAL_ACCOUNT_REQUIRED(HttpStatus.BAD_GATEWAY, "PAYMENT_502_003", "가상계좌 결제 정보가 부족합니다."),
     VIRTUAL_ACCOUNT_SECRET_MISMATCH(HttpStatus.FORBIDDEN, "PAYMENT_403_002", "가상계좌 결제 요청 검증에 실패했습니다."),
