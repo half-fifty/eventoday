@@ -41,6 +41,21 @@ const getReviewSummary = async (boothId) => {
   return apiRequest(`/booths/${boothId}/reviews/summary`);
 };
 
+// 부스 후기 키워드 검색
+const searchReviews = async (boothId, keyword, params = {}) => {
+  return apiRequest(`/booths/${boothId}/reviews/search${buildQuery({ ...params, keyword })}`);
+};
+
+// 리뷰 신고. reasonCode: SPAM|ABUSE|HARASSMENT|FALSE_INFORMATION|OTHER, reason은 OTHER일 때만 필수
+const reportReview = async (boothId, reviewId, payload) => {
+  return apiRequest(`/booths/${boothId}/reviews/${reviewId}/reports`, json("POST", payload));
+};
+
+// 신고 취소 (본인이 넣은 신고만 철회 가능)
+const cancelReport = async (boothId, reviewId) => {
+  await apiRequest(`/booths/${boothId}/reviews/${reviewId}/reports`, { method: "DELETE" });
+};
+
 export {
   listReviews,
   createReview,
@@ -48,4 +63,7 @@ export {
   deleteReview,
   getMyReviews,
   getReviewSummary,
+  searchReviews,
+  reportReview,
+  cancelReport,
 };
