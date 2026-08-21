@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 
 import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditEventType;
 import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentMethod;
@@ -94,7 +95,8 @@ class VirtualAccountExpirationRepairServiceTest {
             eq(PaymentOrderStatus.EXPIRED.name()),
             eq(PaymentAuditSource.EXPIRATION),
             eq(null),
-            eq(10L),
+            eq(PaymentAuditActorType.SYSTEM),
+            eq(null),
             eq(null),
             eq(now)
         );
@@ -111,7 +113,7 @@ class VirtualAccountExpirationRepairServiceTest {
 
         assertThat(order.getStatus()).isEqualTo(PaymentOrderStatus.PAID.name());
         verify(ticketInventoryGateway, never()).release(any(), any(Integer.class));
-        verify(auditLogWriter, never()).append(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(auditLogWriter, never()).append(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -140,7 +142,8 @@ class VirtualAccountExpirationRepairServiceTest {
             eq(PaymentOrderStatus.EXPIRED.name()),
             eq(PaymentAuditSource.EXPIRATION),
             eq("PROVIDER_EXPIRED"),
-            eq(10L),
+            eq(PaymentAuditActorType.SYSTEM),
+            eq(null),
             eq(null),
             eq(now)
         );

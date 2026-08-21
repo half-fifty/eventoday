@@ -14,6 +14,7 @@ import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditEventType;
 import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentOrder;
@@ -122,6 +123,7 @@ public class RefundFinalizer {
             payment.getStatus(),
             PaymentAuditSource.REFUND,
             null,
+            PaymentAuditActorType.MEMBER,
             requesterMemberId,
             null,
             now
@@ -135,6 +137,7 @@ public class RefundFinalizer {
             refund.getStatus().name(),
             PaymentAuditSource.REFUND,
             null,
+            PaymentAuditActorType.MEMBER,
             requesterMemberId,
             null,
             now

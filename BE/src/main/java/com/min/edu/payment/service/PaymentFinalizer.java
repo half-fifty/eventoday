@@ -11,6 +11,7 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditEventType;
 import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentMethod;
@@ -52,9 +53,11 @@ public class PaymentFinalizer {
 
     @Transactional
     public ConfirmPaymentResponse finalizePayment(
+            Long requesterMemberId,
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse) {
         return finalizePayment(
+            requesterMemberId,
             request,
             tossResponse,
             properties.getFinalizationLockTimeoutMs(),
@@ -67,6 +70,7 @@ public class PaymentFinalizer {
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse) {
         return finalizePayment(
+            null,
             request,
             tossResponse,
             properties.getWebhookFinalizationLockTimeoutMs(),
@@ -79,6 +83,7 @@ public class PaymentFinalizer {
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse) {
         return finalizePayment(
+            null,
             request,
             tossResponse,
             properties.getWebhookFinalizationLockTimeoutMs(),
@@ -91,6 +96,7 @@ public class PaymentFinalizer {
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse) {
         return finalizePayment(
+            null,
             request,
             tossResponse,
             properties.getWebhookFinalizationLockTimeoutMs(),
@@ -99,6 +105,7 @@ public class PaymentFinalizer {
     }
 
     private ConfirmPaymentResponse finalizePayment(
+            Long requesterMemberId,
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse,
             long lockTimeoutMs,
@@ -157,7 +164,8 @@ public class PaymentFinalizer {
             paymentOrder.getStatus(),
             source,
             null,
-            paymentOrder.getBuyerMemberId(),
+            actorType(source),
+            actorId(source, requesterMemberId),
             null,
             now
         );
@@ -338,6 +346,16 @@ public class PaymentFinalizer {
             .createNativeQuery("select set_config('lock_timeout', :timeout, true)")
             .setParameter("timeout", lockTimeoutMs + "ms")
             .getSingleResult();
+    }
+
+    private PaymentAuditActorType actorType(PaymentAuditSource source) {
+        return source == PaymentAuditSource.CONFIRM
+            ? PaymentAuditActorType.MEMBER
+            : PaymentAuditActorType.SYSTEM;
+    }
+
+    private Long actorId(PaymentAuditSource source, Long requesterMemberId) {
+        return source == PaymentAuditSource.CONFIRM ? requesterMemberId : null;
     }
 
     private void publishGuestReservationCompleted(

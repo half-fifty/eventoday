@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentRefund;
 import com.min.edu.payment.dto.request.CreateRefundRequest;
@@ -59,6 +60,7 @@ public class RefundAttemptRecorder {
                     existingRefund.getStatus().name(),
                     PaymentAuditSource.REFUND,
                     "RETRY_AFTER_FAILED",
+                    PaymentAuditActorType.MEMBER,
                     requesterMemberId,
                     null,
                     refundAttemptedAt
@@ -86,6 +88,7 @@ public class RefundAttemptRecorder {
             savedRefund.getStatus().name(),
             PaymentAuditSource.REFUND,
             null,
+            PaymentAuditActorType.MEMBER,
             requesterMemberId,
             null,
             refundAttemptedAt
@@ -111,6 +114,7 @@ public class RefundAttemptRecorder {
             refund.getStatus().name(),
             PaymentAuditSource.REFUND,
             null,
+            PaymentAuditActorType.MEMBER,
             refund.getRequesterMemberId(),
             null,
             refund.getCompletedAt()
@@ -133,7 +137,8 @@ public class RefundAttemptRecorder {
             refund.getStatus().name(),
             PaymentAuditSource.REFUND,
             reasonCode,
-            refund.getRequesterMemberId(),
+            PaymentAuditActorType.SYSTEM,
+            null,
             null,
             OffsetDateTime.now()
         );

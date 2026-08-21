@@ -53,8 +53,9 @@ public class PaymentAuditLog {
     @Column(name = "reason_code", length = 80)
     private String reasonCode;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "actor_type", length = 30)
-    private String actorType;
+    private PaymentAuditActorType actorType;
 
     @Column(name = "actor_id")
     private Long actorId;

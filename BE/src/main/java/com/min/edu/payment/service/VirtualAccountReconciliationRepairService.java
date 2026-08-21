@@ -3,6 +3,7 @@ package com.min.edu.payment.service;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditEventType;
 import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentMethod;
@@ -92,7 +93,8 @@ public class VirtualAccountReconciliationRepairService {
             lockedOrder.getStatus(),
             PaymentAuditSource.RECONCILIATION,
             "UNSUPPORTED_PROVIDER_STATUS_" + providerPayment.status(),
-            lockedOrder.getBuyerMemberId(),
+            PaymentAuditActorType.SYSTEM,
+            null,
             null,
             OffsetDateTime.now()
         );
@@ -140,7 +142,8 @@ public class VirtualAccountReconciliationRepairService {
             lockedOrder.getStatus(),
             PaymentAuditSource.RECONCILIATION,
             "VA_LOCAL_STATE_RECOVERED",
-            lockedOrder.getBuyerMemberId(),
+            PaymentAuditActorType.SYSTEM,
+            null,
             null,
             now
         );

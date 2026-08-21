@@ -96,13 +96,13 @@ class PaymentConfirmServiceTest {
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(ticketOrder));
         given(tossPaymentClient.confirm(any())).willReturn(tossResponse);
-        given(paymentFinalizer.finalizePayment(request, tossResponse))
+        given(paymentFinalizer.finalizePayment(10L, request, tossResponse))
             .willReturn(response);
 
         paymentConfirmService.confirm(10L, null, request);
 
         verify(tossPaymentClient).confirm(any());
-        verify(paymentFinalizer).finalizePayment(request, tossResponse);
+        verify(paymentFinalizer).finalizePayment(10L, request, tossResponse);
     }
 
     @Test
@@ -116,7 +116,7 @@ class PaymentConfirmServiceTest {
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(pendingTicketOrder()));
         given(tossPaymentClient.confirm(any())).willReturn(tossResponse());
-        given(paymentFinalizer.finalizePayment(any(), any())).willReturn(response());
+        given(paymentFinalizer.finalizePayment(any(), any(), any())).willReturn(response());
 
         paymentConfirmService.confirm(null, "token", request);
 
@@ -134,7 +134,7 @@ class PaymentConfirmServiceTest {
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(pendingTicketOrder()));
         given(tossPaymentClient.confirm(any())).willReturn(tossResponse());
-        given(paymentFinalizer.finalizePayment(any(), any())).willReturn(response());
+        given(paymentFinalizer.finalizePayment(any(), any(), any())).willReturn(response());
 
         paymentConfirmService.confirm(10L, "token", request);
 
@@ -216,7 +216,7 @@ class PaymentConfirmServiceTest {
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(pendingTicketOrder()));
         given(tossPaymentClient.confirm(any())).willReturn(tossResponse());
-        given(paymentFinalizer.finalizePayment(any(), any())).willReturn(response());
+        given(paymentFinalizer.finalizePayment(any(), any(), any())).willReturn(response());
 
         paymentConfirmService.confirm(10L, null, request);
 
@@ -328,12 +328,12 @@ class PaymentConfirmServiceTest {
                 "ALREADY_PROCESSED_PAYMENT"
             ));
         given(tossPaymentClient.getPayment("payment-key")).willReturn(tossResponse);
-        given(paymentFinalizer.finalizePayment(request, tossResponse)).willReturn(response());
+        given(paymentFinalizer.finalizePayment(10L, request, tossResponse)).willReturn(response());
 
         paymentConfirmService.confirm(10L, null, request);
 
         verify(tossPaymentClient).getPayment("payment-key");
-        verify(paymentFinalizer).finalizePayment(request, tossResponse);
+        verify(paymentFinalizer).finalizePayment(10L, request, tossResponse);
     }
 
     @Test
@@ -366,7 +366,7 @@ class PaymentConfirmServiceTest {
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(pendingTicketOrder()));
         given(tossPaymentClient.confirm(any())).willReturn(tossResponse());
-        given(paymentFinalizer.finalizePayment(any(), any()))
+        given(paymentFinalizer.finalizePayment(any(), any(), any()))
             .willThrow(new CannotAcquireLockException("lock timeout"));
 
         assertBusinessException(
@@ -382,7 +382,7 @@ class PaymentConfirmServiceTest {
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(pendingTicketOrder()));
         given(tossPaymentClient.confirm(any())).willReturn(tossResponse());
-        given(paymentFinalizer.finalizePayment(any(), any()))
+        given(paymentFinalizer.finalizePayment(any(), any(), any()))
             .willThrow(new DataIntegrityViolationException("other constraint"));
 
         assertThatThrownBy(() -> paymentConfirmService.confirm(10L, null, request()))
@@ -401,7 +401,7 @@ class PaymentConfirmServiceTest {
             .willReturn(Optional.of(paymentOrder));
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(confirmedTicketOrder()));
-        given(paymentFinalizer.finalizePayment(any(), any())).willReturn(response());
+        given(paymentFinalizer.finalizePayment(any(), any(), any())).willReturn(response());
 
         paymentConfirmService.confirm(10L, null, request);
 
@@ -419,12 +419,12 @@ class PaymentConfirmServiceTest {
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(pendingTicketOrder()));
         given(tossPaymentClient.confirm(any())).willReturn(tossResponse);
-        given(paymentFinalizer.finalizePayment(request, tossResponse)).willReturn(response());
+        given(paymentFinalizer.finalizePayment(10L, request, tossResponse)).willReturn(response());
 
         paymentConfirmService.confirm(10L, null, request);
 
-        verify(paymentFinalizer).finalizePayment(request, tossResponse);
-        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
+        verify(paymentFinalizer).finalizePayment(10L, request, tossResponse);
+        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any(), any());
     }
 
     @Test
@@ -438,12 +438,12 @@ class PaymentConfirmServiceTest {
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(pendingTicketOrder()));
         given(tossPaymentClient.confirm(any())).willReturn(tossResponse);
-        given(paymentFinalizer.finalizePayment(request, tossResponse)).willReturn(response());
+        given(paymentFinalizer.finalizePayment(10L, request, tossResponse)).willReturn(response());
 
         paymentConfirmService.confirm(10L, null, request);
 
-        verify(paymentFinalizer).finalizePayment(request, tossResponse);
-        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
+        verify(paymentFinalizer).finalizePayment(10L, request, tossResponse);
+        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any(), any());
     }
 
     @Test
@@ -460,8 +460,8 @@ class PaymentConfirmServiceTest {
             GlobalErrorCode.PAYMENT_METHOD_MISMATCH
         );
 
-        verify(paymentFinalizer, never()).finalizePayment(any(), any());
-        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
+        verify(paymentFinalizer, never()).finalizePayment(any(), any(), any());
+        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any(), any());
     }
 
     @Test
@@ -474,7 +474,7 @@ class PaymentConfirmServiceTest {
             "ORDER-1",
             BigDecimal.valueOf(10000),
             "WAITING_FOR_DEPOSIT",
-            "가상계좌",
+            "VIRTUAL_ACCOUNT",
             OffsetDateTime.now(),
             null
         );
@@ -485,20 +485,16 @@ class PaymentConfirmServiceTest {
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(ticketOrder));
         given(tossPaymentClient.confirm(any())).willReturn(tossResponse);
-        given(virtualAccountPaymentService.saveWaitingForDeposit(
-            paymentOrder,
-            "payment-key",
+        given(virtualAccountPaymentService.saveWaitingForDeposit(10L, paymentOrder, "payment-key",
             tossResponse
         )).willReturn(response);
 
         paymentConfirmService.confirm(10L, null, request);
 
-        verify(virtualAccountPaymentService).saveWaitingForDeposit(
-            paymentOrder,
-            "payment-key",
+        verify(virtualAccountPaymentService).saveWaitingForDeposit(10L, paymentOrder, "payment-key",
             tossResponse
         );
-        verify(paymentFinalizer, never()).finalizePayment(any(), any());
+        verify(paymentFinalizer, never()).finalizePayment(any(), any(), any());
     }
 
     @Test
@@ -512,7 +508,7 @@ class PaymentConfirmServiceTest {
             "ORDER-1",
             BigDecimal.valueOf(10000),
             "WAITING_FOR_DEPOSIT",
-            "카드",
+            "CARD",
             OffsetDateTime.now(),
             null
         ));
@@ -522,7 +518,7 @@ class PaymentConfirmServiceTest {
             GlobalErrorCode.PAYMENT_METHOD_MISMATCH
         );
 
-        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
+        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any(), any());
     }
 
     @Test
@@ -546,8 +542,8 @@ class PaymentConfirmServiceTest {
             GlobalErrorCode.PAYMENT_METHOD_MISMATCH
         );
 
-        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
-        verify(paymentFinalizer, never()).finalizePayment(any(), any());
+        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any(), any());
+        verify(paymentFinalizer, never()).finalizePayment(any(), any(), any());
     }
 
     @Test
@@ -561,7 +557,7 @@ class PaymentConfirmServiceTest {
             "ORDER-1",
             BigDecimal.valueOf(10000),
             "DONE",
-            "가상계좌",
+            "VIRTUAL_ACCOUNT",
             OffsetDateTime.now(),
             OffsetDateTime.now()
         ));
@@ -571,7 +567,7 @@ class PaymentConfirmServiceTest {
             GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID
         );
 
-        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any());
+        verify(virtualAccountPaymentService, never()).saveWaitingForDeposit(any(), any(), any(), any());
     }
 
     @Test
@@ -603,7 +599,7 @@ class PaymentConfirmServiceTest {
             .willReturn(Optional.of(pendingTicketOrder()));
         given(inflightDuplicateGate.tryClaim("ORDER-1")).willReturn(PaymentConfirmInflightClaim.failOpen());
         given(tossPaymentClient.confirm(any())).willReturn(tossResponse);
-        given(paymentFinalizer.finalizePayment(request, tossResponse)).willReturn(response());
+        given(paymentFinalizer.finalizePayment(10L, request, tossResponse)).willReturn(response());
 
         paymentConfirmService.confirm(10L, null, request);
 
@@ -624,12 +620,12 @@ class PaymentConfirmServiceTest {
             .willReturn(Optional.of(pendingOrder), Optional.of(paidOrder));
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(pendingTicketOrder()), Optional.of(confirmedTicketOrder()));
-        given(paymentFinalizer.finalizePayment(any(), any())).willReturn(response());
+        given(paymentFinalizer.finalizePayment(any(), any(), any())).willReturn(response());
 
         paymentConfirmService.confirm(10L, null, request);
 
         verify(tossPaymentClient, never()).confirm(any());
-        verify(paymentFinalizer).finalizePayment(any(), any());
+        verify(paymentFinalizer).finalizePayment(any(), any(), any());
         verify(inflightDuplicateGate).release("ORDER-1", "token-1");
     }
 
@@ -675,12 +671,12 @@ class PaymentConfirmServiceTest {
         given(tossPaymentClient.confirm(any()))
             .willThrow(new TossPaymentClientException(GlobalErrorCode.PAYMENT_GATEWAY_TIMEOUT));
         given(tossPaymentClient.getPayment("payment-key")).willReturn(tossResponse);
-        given(paymentFinalizer.finalizePayment(request, tossResponse)).willReturn(response());
+        given(paymentFinalizer.finalizePayment(10L, request, tossResponse)).willReturn(response());
 
         paymentConfirmService.confirm(10L, null, request);
 
         verify(tossPaymentClient).getPayment("payment-key");
-        verify(paymentFinalizer).finalizePayment(request, tossResponse);
+        verify(paymentFinalizer).finalizePayment(10L, request, tossResponse);
     }
 
     @Test
@@ -697,20 +693,16 @@ class PaymentConfirmServiceTest {
         given(tossPaymentClient.confirm(any()))
             .willThrow(new TossPaymentClientException(GlobalErrorCode.PAYMENT_GATEWAY_TIMEOUT));
         given(tossPaymentClient.getPayment("payment-key")).willReturn(tossResponse);
-        given(virtualAccountPaymentService.saveWaitingForDeposit(
-            paymentOrder,
-            "payment-key",
+        given(virtualAccountPaymentService.saveWaitingForDeposit(10L, paymentOrder, "payment-key",
             tossResponse
         )).willReturn(response);
 
         paymentConfirmService.confirm(10L, null, request);
 
-        verify(virtualAccountPaymentService).saveWaitingForDeposit(
-            paymentOrder,
-            "payment-key",
+        verify(virtualAccountPaymentService).saveWaitingForDeposit(10L, paymentOrder, "payment-key",
             tossResponse
         );
-        verify(paymentFinalizer, never()).finalizePayment(any(), any());
+        verify(paymentFinalizer, never()).finalizePayment(any(), any(), any());
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditEventType;
 import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentOrder;
@@ -75,7 +76,8 @@ public class VirtualAccountExpirationRepairService {
             lockedOrder.getStatus(),
             PaymentAuditSource.EXPIRATION,
             "PROVIDER_" + providerStatus,
-            lockedOrder.getBuyerMemberId(),
+            PaymentAuditActorType.SYSTEM,
+            null,
             null,
             now
         );
@@ -144,7 +146,8 @@ public class VirtualAccountExpirationRepairService {
             lockedOrder.getStatus(),
             PaymentAuditSource.EXPIRATION,
             null,
-            lockedOrder.getBuyerMemberId(),
+            PaymentAuditActorType.SYSTEM,
+            null,
             null,
             now
         );

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditEventType;
 import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentMethod;
@@ -98,7 +99,8 @@ class VirtualAccountReconciliationRepairServiceTest {
             eq(PaymentOrderStatus.WAITING_FOR_DEPOSIT.name()),
             eq(PaymentAuditSource.RECONCILIATION),
             eq("VA_LOCAL_STATE_RECOVERED"),
-            eq(10L),
+            eq(PaymentAuditActorType.SYSTEM),
+            eq(null),
             eq(null),
             any()
         );
@@ -134,7 +136,7 @@ class VirtualAccountReconciliationRepairServiceTest {
         verify(paymentRepository, never()).saveAndFlush(any(Payment.class));
         verify(virtualAccountRepository, never()).save(any());
         verify(paymentFinalizer, never()).finalizePaymentFromReconciliation(any(), any());
-        verify(auditLogWriter, never()).append(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(auditLogWriter, never()).append(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -155,7 +157,8 @@ class VirtualAccountReconciliationRepairServiceTest {
             eq(PaymentOrderStatus.PENDING.name()),
             eq(PaymentAuditSource.RECONCILIATION),
             eq("UNSUPPORTED_PROVIDER_STATUS_CANCELED"),
-            eq(10L),
+            eq(PaymentAuditActorType.SYSTEM),
+            eq(null),
             eq(null),
             any()
         );

@@ -1,6 +1,7 @@
 package com.min.edu.payment.service;
 
 import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditLog;
 import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.repository.PaymentAuditLogRepository;
@@ -11,8 +12,6 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class PaymentAuditLogWriter {
-
-    private static final String MEMBER_ACTOR = "MEMBER";
 
     private final PaymentAuditLogRepository repository;
 
@@ -25,6 +24,7 @@ public class PaymentAuditLogWriter {
             String toStatus,
             PaymentAuditSource source,
             String reasonCode,
+            PaymentAuditActorType actorType,
             Long actorId,
             String requestId,
             OffsetDateTime occurredAt) {
@@ -37,14 +37,10 @@ public class PaymentAuditLogWriter {
             .toStatus(toStatus)
             .source(source)
             .reasonCode(reasonCode)
-            .actorType(actorType(actorId))
+            .actorType(actorType)
             .actorId(actorId)
             .requestId(requestId)
             .occurredAt(occurredAt == null ? OffsetDateTime.now() : occurredAt)
             .build());
-    }
-
-    private String actorType(Long actorId) {
-        return actorId == null ? null : MEMBER_ACTOR;
     }
 }

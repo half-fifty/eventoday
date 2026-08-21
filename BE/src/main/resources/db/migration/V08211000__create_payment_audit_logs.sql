@@ -31,10 +31,16 @@ CREATE INDEX idx_payment_audit_logs_refund_occurred
     ON payment_audit_logs (refund_id, occurred_at DESC, id DESC)
     WHERE refund_id IS NOT NULL;
 
-CREATE INDEX idx_payments_payment_order_id
-    ON payments (payment_order_id);
+CREATE OR REPLACE FUNCTION prevent_payment_audit_logs_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'payment_audit_logs is append-only; % is not allowed', TG_OP;
+END;
+$$;
 
-CREATE INDEX idx_payment_orders_va_pending_created_at
-    ON payment_orders (created_at, id)
-    WHERE requested_payment_method = 'VIRTUAL_ACCOUNT'
-        AND status = 'PENDING';
+CREATE TRIGGER trg_payment_audit_logs_append_only
+    BEFORE UPDATE OR DELETE OR TRUNCATE ON payment_audit_logs
+    FOR EACH STATEMENT
+    EXECUTE FUNCTION prevent_payment_audit_logs_mutation();

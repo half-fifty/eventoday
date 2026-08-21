@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditEventType;
 import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentMethod;
@@ -76,6 +77,7 @@ class VirtualAccountPaymentServiceTest {
             .willAnswer(invocation -> invocation.getArgument(0));
 
         service.saveWaitingForDeposit(
+            10L,
             paymentOrder,
             "payment-key",
             virtualAccountTossResponse()
@@ -96,6 +98,7 @@ class VirtualAccountPaymentServiceTest {
             eq(PaymentOrderStatus.WAITING_FOR_DEPOSIT.name()),
             eq(PaymentAuditSource.CONFIRM),
             eq(null),
+            eq(PaymentAuditActorType.MEMBER),
             eq(10L),
             eq(null),
             any()
@@ -120,7 +123,8 @@ class VirtualAccountPaymentServiceTest {
         given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.saveWaitingForDeposit(
-                paymentOrder,
+            10L,
+            paymentOrder,
                 "payment-key",
                 virtualAccountTossResponseWithoutBankCode()
             ))
@@ -135,7 +139,7 @@ class VirtualAccountPaymentServiceTest {
             "ORDER-1",
             BigDecimal.valueOf(10000),
             "WAITING_FOR_DEPOSIT",
-            "가상계좌",
+            "VIRTUAL_ACCOUNT",
             "secret",
             new TossConfirmResponse.VirtualAccount(
                 "1234567890",
@@ -154,7 +158,7 @@ class VirtualAccountPaymentServiceTest {
             "ORDER-1",
             BigDecimal.valueOf(10000),
             "WAITING_FOR_DEPOSIT",
-            "가상계좌",
+            "VIRTUAL_ACCOUNT",
             "secret",
             new TossConfirmResponse.VirtualAccount(
                 "1234567890",
@@ -201,7 +205,7 @@ class VirtualAccountPaymentServiceTest {
             .paymentOrderId(1L)
             .pgProvider(PaymentProvider.TOSS_PAYMENTS)
             .paymentKey("payment-key")
-            .method("가상계좌")
+            .method("VIRTUAL_ACCOUNT")
             .amount(BigDecimal.valueOf(10000))
             .status(PaymentStatus.WAITING_FOR_DEPOSIT.name())
             .requestedAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))

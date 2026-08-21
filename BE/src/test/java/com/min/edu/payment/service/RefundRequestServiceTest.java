@@ -352,7 +352,7 @@ class RefundRequestServiceTest {
             10L,
             null,
             1L,
-            refundRequestWithAccount("KB 국민")
+            refundRequestWithAccount("KB")
         ))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
