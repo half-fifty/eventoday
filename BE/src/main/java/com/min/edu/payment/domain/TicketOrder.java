@@ -46,6 +46,14 @@ public class TicketOrder {
     @Column(name = "confirmed_at")
     private OffsetDateTime confirmedAt;
 
+    // 결제 확정 시점(PaymentFinalizer)에 COMPLETE_PAYMENT 퍼널 이벤트를 발행하기 위해
+    // 주문 생성 시점의 퍼널 세션 정보를 보관해둔다 (분석용, 없어도 주문 자체엔 영향 없음).
+    @Column(name = "funnel_session_id", length = 80)
+    private String funnelSessionId;
+
+    @Column(name = "funnel_anonymous_id", length = 100)
+    private String funnelAnonymousId;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -59,6 +67,8 @@ public class TicketOrder {
             Integer totalQuantity,
             TicketOrderStatus status,
             OffsetDateTime confirmedAt,
+            String funnelSessionId,
+            String funnelAnonymousId,
             OffsetDateTime now) {
         return TicketOrder.builder()
             .paymentOrderId(paymentOrderId)
@@ -67,6 +77,8 @@ public class TicketOrder {
             .totalQuantity(totalQuantity)
             .status(status.name())
             .confirmedAt(confirmedAt)
+            .funnelSessionId(funnelSessionId)
+            .funnelAnonymousId(funnelAnonymousId)
             .createdAt(now)
             .updatedAt(now)
             .build();

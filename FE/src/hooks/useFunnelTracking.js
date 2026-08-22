@@ -7,7 +7,8 @@ const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 
 // 30분 무활동 시 세션을 교체한다 (event-contract.md 참고). 브라우저 탭이 닫히면
 // sessionStorage도 같이 사라지므로 별도 만료 처리는 필요 없다.
-const resolveSessionId = () => {
+// 티켓 주문 생성 시 결제완료 퍼널 이벤트를 같은 세션에 이어붙이기 위해 외부에도 공개한다.
+export const resolveSessionId = () => {
   const now = Date.now();
   const lastActivity = Number(sessionStorage.getItem(LAST_ACTIVITY_KEY) || 0);
   const expired = now - lastActivity > SESSION_TIMEOUT_MS;

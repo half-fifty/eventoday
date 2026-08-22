@@ -172,6 +172,7 @@ public class PaymentFinalizer {
             ticketOrder.confirm(tossResponse.approvedAt(), now);
             ticketExchangeCodeIssuer.issueIfAbsent(ticketOrder, paymentOrder.getBuyerMemberId(), now);
             publishGuestReservationCompleted(paymentOrder, ticketOrder);
+            publishFunnelCompletePayment(paymentOrder, ticketOrder, now);
             return ConfirmPaymentResponse.of(payment, paymentOrder.getOrderNo(), ticketOrder);
         }
         advertisement.markPaid(now);
@@ -373,6 +374,20 @@ public class PaymentFinalizer {
             paymentOrder.getOrderNo(),
             paymentOrder.getBuyerEmail(),
             eventName
+        );
+    }
+
+    // 게스트/회원 구분 없이 결제완료는 항상 퍼널에 반영한다 (게스트 예약메일 발송과는 독립적).
+    private void publishFunnelCompletePayment(
+            PaymentOrder paymentOrder,
+            TicketOrder ticketOrder,
+            OffsetDateTime now) {
+        paymentOutboxWriter.appendFunnelCompletePayment(
+            ticketOrder.getFunnelSessionId(),
+            ticketOrder.getEventId(),
+            ticketOrder.getFunnelAnonymousId(),
+            paymentOrder.getBuyerMemberId(),
+            now
         );
     }
 }

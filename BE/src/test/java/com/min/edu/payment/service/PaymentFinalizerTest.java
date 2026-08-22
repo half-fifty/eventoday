@@ -195,6 +195,43 @@ class PaymentFinalizerTest {
     }
 
     @Test
+    void finalizePayment_confirmsTicketOrder_publishesFunnelCompletePayment() {
+        PaymentOrder paymentOrder = pendingPaymentOrder();
+        TicketOrder ticketOrder = TicketOrder.builder()
+            .id(2L)
+            .paymentOrderId(1L)
+            .eventId(3L)
+            .unitPrice(BigDecimal.valueOf(10000))
+            .totalQuantity(1)
+            .status(TicketOrderStatus.PENDING_PAYMENT.name())
+            .funnelSessionId("session-1")
+            .funnelAnonymousId("anon-1")
+            .createdAt(OffsetDateTime.now())
+            .updatedAt(OffsetDateTime.now())
+            .build();
+        Payment savedPayment = payment();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(false);
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(ticketOrder));
+        given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
+        given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
+
+        paymentFinalizer.finalizePayment(10L, request(), tossResponse());
+
+        verify(paymentOutboxWriter).appendFunnelCompletePayment(
+            eq("session-1"),
+            eq(3L),
+            eq("anon-1"),
+            eq(10L),
+            any(OffsetDateTime.class)
+        );
+    }
+
+    @Test
     void finalizePayment_doesNotAppendReservationConfirmationOutboxForMemberPayment() {
         PaymentOrder paymentOrder = pendingPaymentOrder();
         TicketOrder ticketOrder = pendingTicketOrder();

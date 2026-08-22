@@ -70,4 +70,41 @@ class PaymentOutboxWriterTest {
 
         verify(repository, never()).insertPending(any(), any(), any(), any(), any());
     }
+
+    @Test
+    void appendFunnelCompletePayment_savesCompletePaymentPayload() {
+        PaymentOutboxWriter writer = new PaymentOutboxWriter(repository, new ObjectMapper());
+        given(repository.insertPending(
+            any(UUID.class),
+            anyString(),
+            anyString(),
+            anyString(),
+            any(OffsetDateTime.class)
+        )).willReturn(1);
+
+        writer.appendFunnelCompletePayment("session-1", 42L, "anon-1", null, OffsetDateTime.now());
+
+        verify(repository).insertPending(
+            any(UUID.class),
+            org.mockito.ArgumentMatchers.eq(PaymentOutboxEventType.PUBLISH_FUNNEL_COMPLETE_PAYMENT.name()),
+            org.mockito.ArgumentMatchers.eq("session-1"),
+            org.mockito.ArgumentMatchers.argThat(payload ->
+                payload.contains("session-1")
+                    && payload.contains("\"eventId\":42")
+                    && payload.contains("anon-1")
+                    && payload.contains("COMPLETE_PAYMENT")
+            ),
+            any(OffsetDateTime.class)
+        );
+    }
+
+    @Test
+    void appendFunnelCompletePayment_skipsWhenSessionIdMissing() {
+        PaymentOutboxWriter writer = new PaymentOutboxWriter(repository, new ObjectMapper());
+
+        writer.appendFunnelCompletePayment(null, 42L, "anon-1", null, OffsetDateTime.now());
+        writer.appendFunnelCompletePayment(" ", 42L, "anon-1", null, OffsetDateTime.now());
+
+        verify(repository, never()).insertPending(any(), any(), any(), any(), any());
+    }
 }

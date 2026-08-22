@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
 
@@ -34,8 +35,10 @@ class FunnelSessionBatchSchedulerTest {
     private FunnelSessionBatchScheduler scheduler;
 
     @Test
-    void runDailyReconstruction_processesEachPublishedEvent_withYesterdayAsTargetDate() {
-        given(eventRepository.findIdsByStatus(EventStatus.PUBLISHED)).willReturn(List.of(1L, 2L));
+    void runDailyReconstruction_processesEachTargetEvent_withYesterdayAsTargetDate() {
+        given(eventRepository.findIdsForFunnelReconstruction(
+                eq(EventStatus.PUBLISHED), eq(EventStatus.ENDED), any(OffsetDateTime.class)))
+            .willReturn(List.of(1L, 2L));
 
         scheduler.runDailyReconstruction();
 
@@ -45,8 +48,24 @@ class FunnelSessionBatchSchedulerTest {
     }
 
     @Test
+    void runDailyReconstruction_queriesWithTargetDateStartOfDayInKst() {
+        given(eventRepository.findIdsForFunnelReconstruction(
+                eq(EventStatus.PUBLISHED), eq(EventStatus.ENDED), any(OffsetDateTime.class)))
+            .willReturn(List.of());
+
+        scheduler.runDailyReconstruction();
+
+        LocalDate expectedDate = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        OffsetDateTime expectedDayStart = expectedDate.atStartOfDay(ZoneId.of("Asia/Seoul")).toOffsetDateTime();
+        verify(eventRepository).findIdsForFunnelReconstruction(
+                EventStatus.PUBLISHED, EventStatus.ENDED, expectedDayStart);
+    }
+
+    @Test
     void runDailyReconstruction_oneEventFails_stillProcessesRemainingEvents() {
-        given(eventRepository.findIdsByStatus(EventStatus.PUBLISHED)).willReturn(List.of(1L, 2L));
+        given(eventRepository.findIdsForFunnelReconstruction(
+                eq(EventStatus.PUBLISHED), eq(EventStatus.ENDED), any(OffsetDateTime.class)))
+            .willReturn(List.of(1L, 2L));
         doThrow(new RuntimeException("배치 실패")).when(funnelSessionReconstructionService)
                 .reconstruct(eq(1L), any());
 
@@ -56,8 +75,10 @@ class FunnelSessionBatchSchedulerTest {
     }
 
     @Test
-    void runDailyReconstruction_noPublishedEvents_doesNothing() {
-        given(eventRepository.findIdsByStatus(EventStatus.PUBLISHED)).willReturn(List.of());
+    void runDailyReconstruction_noTargetEvents_doesNothing() {
+        given(eventRepository.findIdsForFunnelReconstruction(
+                eq(EventStatus.PUBLISHED), eq(EventStatus.ENDED), any(OffsetDateTime.class)))
+            .willReturn(List.of());
 
         scheduler.runDailyReconstruction();
 

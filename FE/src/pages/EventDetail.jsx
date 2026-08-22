@@ -21,7 +21,7 @@ import {
   isTicketOrderAdmissionRejected,
   MAX_ADMISSION_RETRIES,
 } from "../utils/ticketOrderAdmissionRetry.js";
-import useFunnelTracking from "../hooks/useFunnelTracking.js";
+import useFunnelTracking, { resolveSessionId } from "../hooks/useFunnelTracking.js";
 
 const formatDateTime = (value) => value
   ? new Date(value).toLocaleString("ko-KR", { dateStyle: "long", timeStyle: "short" })
@@ -275,6 +275,7 @@ export default function EventDetail() {
       const payload = {
         quantity: ticketQuantity,
         paymentMethod,
+        funnelSessionId: resolveSessionId(),
         ...(isAuthenticated ? {} : {
           buyer: {
             name: buyer.name.trim(),
