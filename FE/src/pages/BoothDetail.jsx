@@ -6,13 +6,25 @@ import { ApiError } from "../api/apiClient.js";
 import { getGuideBoothDetail, addBoothInterest, removeBoothInterest, updateVacancyNotification, getMyInterests } from "../api/boothApi.js";
 import { listReservationSlots, getMyReservation, createReservation, cancelReservation } from "../api/boothReservationApi.js";
 import { getVenueMapMarkersWithCongestion } from "../api/venueMapApi.js";
-import { listReviews, createReview, updateReview, deleteReview, getMyReviews, getReviewSummary } from "../api/boothReviewApi.js";
-import { fileDownloadUrl } from "../api/fileApi.js";
+import {
+  listReviews, createReview, updateReview, deleteReview, getMyReviews, getReviewSummary,
+  searchReviews, reportReview, cancelReport,
+} from "../api/boothReviewApi.js";
+import { fileDownloadUrl, uploadFile } from "../api/fileApi.js";
 import BoothReviewSummaryCard from "../components/BoothReviewSummaryCard.jsx";
 import useAuth from "../hooks/useAuth.js";
 import { congestionLevelMeta } from "../utils/congestion.js";
 
 const REVIEW_PAGE_SIZE = 5;
+const REVIEW_PHOTO_MAX = 5;
+
+const REPORT_REASON_OPTIONS = [
+  { value: "SPAM", label: "광고/도배" },
+  { value: "ABUSE", label: "욕설/혐오 표현" },
+  { value: "HARASSMENT", label: "특정인 비방/괴롭힘" },
+  { value: "FALSE_INFORMATION", label: "허위 정보" },
+  { value: "OTHER", label: "기타" },
+];
 
 const formatSlotTime = (isoValue) => isoValue
   ? new Date(isoValue).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
@@ -63,15 +75,34 @@ export default function BoothDetail() {
   const [reviewsError, setReviewsError] = useState("");
   const [reviewSummary, setReviewSummary] = useState(null);
 
+  // 정렬/검색 — 검색어가 있으면 searchReviews를, 없으면 listReviews(sortBy)를 사용한다.
+  const [reviewSort, setReviewSort] = useState("LATEST");
+  const [reviewKeywordInput, setReviewKeywordInput] = useState("");
+  const [reviewKeyword, setReviewKeyword] = useState("");
+
   // 회원은 부스당 후기를 한 번만 작성할 수 있어, 전체 목록과 별개로 "내 후기"를 조회해
   // 작성 폼과 수정/삭제 UI를 전환하는 데 사용한다.
   const [myReviewForThisBooth, setMyReviewForThisBooth] = useState(null);
   const [reviewFormRating, setReviewFormRating] = useState(5);
   const [reviewFormComment, setReviewFormComment] = useState("");
+  const [reviewFormPhotos, setReviewFormPhotos] = useState([]); // [{ fileId, previewUrl }]
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // 사진 업로드는 비동기라, 업로드 도중 편집을 취소하거나 다른 부스로 이동하면 늦게 도착한 응답이
+  // 이미 리셋되었거나 다른 부스의 폼에 잘못 append될 수 있다. 폼이 리셋될 때마다 이 값을 올려서,
+  // 업로드 완료 시점에 "그 폼이 아직 그대로인지"를 boothId와 함께 확인한다.
+  const reviewFormSessionRef = useRef(0);
   const [editingReview, setEditingReview] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewFormError, setReviewFormError] = useState("");
   const [deletingReview, setDeletingReview] = useState(false);
+
+  // 리뷰 신고 — 신고 폼을 펼친 리뷰 id, 선택한 사유, 신고 처리 중인 리뷰 id를 각각 추적한다.
+  const [reportingReviewId, setReportingReviewId] = useState(null);
+  const [reportReasonCode, setReportReasonCode] = useState("SPAM");
+  const [reportReasonText, setReportReasonText] = useState("");
+  const [reportError, setReportError] = useState("");
+  const [reportSubmittingId, setReportSubmittingId] = useState(null);
+  const [cancelingReportId, setCancelingReportId] = useState(null);
 
   const loadReservationInfo = () => setReloadToken((value) => value + 1);
 
@@ -169,13 +200,18 @@ export default function BoothDetail() {
   // 부스를 빠르게 전환하거나 페이지를 연속으로 넘기면 응답이 요청과 다른 순서로 도착할 수 있어,
   // 매 요청마다 증가하는 id를 매겨 가장 마지막에 시작된 요청의 응답만 반영한다.
   const reviewsRequestIdRef = useRef(0);
-  const loadReviews = (page) => {
+  const loadReviews = (page, overrides = {}) => {
     if (!boothId) return;
+    const sort = overrides.sort ?? reviewSort;
+    const keyword = overrides.keyword !== undefined ? overrides.keyword : reviewKeyword;
     const requestId = ++reviewsRequestIdRef.current;
     const requestedBoothId = boothId;
     setLoadingReviews(true);
     setReviewsError("");
-    listReviews(requestedBoothId, { page, size: REVIEW_PAGE_SIZE })
+    const request = keyword
+      ? searchReviews(requestedBoothId, keyword, { page, size: REVIEW_PAGE_SIZE })
+      : listReviews(requestedBoothId, { page, size: REVIEW_PAGE_SIZE, sortBy: sort });
+    request
       .then((data) => {
         if (reviewsRequestIdRef.current !== requestId || currentBoothIdRef.current !== requestedBoothId) return;
         setReviews((prev) => (page === 0 ? (data?.content ?? []) : [...prev, ...(data?.content ?? [])]));
@@ -191,12 +227,33 @@ export default function BoothDetail() {
       });
   };
 
+  const handleSortChange = (nextSort) => {
+    setReviewSort(nextSort);
+    loadReviews(0, { sort: nextSort });
+  };
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    const keyword = reviewKeywordInput.trim();
+    setReviewKeyword(keyword);
+    loadReviews(0, { keyword });
+  };
+
+  const clearSearch = () => {
+    setReviewKeywordInput("");
+    setReviewKeyword("");
+    loadReviews(0, { keyword: "" });
+  };
+
   useEffect(() => {
     if (!boothId) return;
     setReviews([]);
     setReviewsHasMore(false);
     setReviewSummary(null);
-    loadReviews(0);
+    setReviewSort("LATEST");
+    setReviewKeywordInput("");
+    setReviewKeyword("");
+    loadReviews(0, { sort: "LATEST", keyword: "" });
     loadReviewSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boothId]);
@@ -244,10 +301,12 @@ export default function BoothDetail() {
   useEffect(() => {
     // refreshMyReview()가 끝나기 전까지 이전 부스의 후기 편집 상태가 남아있으면, 그 사이 "수정 완료"를
     // 눌렀을 때 이전 부스의 후기 id로 새 부스에 잘못 반영될 수 있어 부스가 바뀌는 즉시 초기화한다.
+    reviewFormSessionRef.current += 1;
     setMyReviewForThisBooth(null);
     setEditingReview(false);
     setReviewFormRating(5);
     setReviewFormComment("");
+    setReviewFormPhotos([]);
     setReviewFormError("");
     refreshMyReview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -255,15 +314,54 @@ export default function BoothDetail() {
 
   const startEditingReview = () => {
     if (!myReviewForThisBooth) return;
+    reviewFormSessionRef.current += 1;
     setReviewFormRating(myReviewForThisBooth.rating);
     setReviewFormComment(myReviewForThisBooth.comment ?? "");
+    setReviewFormPhotos(
+      (myReviewForThisBooth.photos ?? []).map((p) => ({ fileId: p.fileId, previewUrl: fileDownloadUrl(p.fileId) }))
+    );
     setReviewFormError("");
     setEditingReview(true);
   };
 
   const cancelEditingReview = () => {
+    reviewFormSessionRef.current += 1;
     setEditingReview(false);
+    setReviewFormPhotos([]);
     setReviewFormError("");
+  };
+
+  const handlePhotoSelect = async (e) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    if (reviewFormPhotos.length + files.length > REVIEW_PHOTO_MAX) {
+      setReviewFormError(`사진은 최대 ${REVIEW_PHOTO_MAX}장까지 첨부할 수 있어요.`);
+      return;
+    }
+    const requestedBoothId = boothId;
+    const session = reviewFormSessionRef.current;
+    setUploadingPhoto(true);
+    setReviewFormError("");
+    try {
+      for (const file of files) {
+        const uploaded = await uploadFile(file, "PUBLIC");
+        if (currentBoothIdRef.current !== requestedBoothId || reviewFormSessionRef.current !== session) continue;
+        setReviewFormPhotos((prev) => [...prev, { fileId: uploaded.fileId, previewUrl: fileDownloadUrl(uploaded.fileId) }]);
+      }
+    } catch (requestError) {
+      if (currentBoothIdRef.current === requestedBoothId && reviewFormSessionRef.current === session) {
+        setReviewFormError(requestError.message || "사진 업로드에 실패했습니다.");
+      }
+    } finally {
+      if (currentBoothIdRef.current === requestedBoothId && reviewFormSessionRef.current === session) {
+        setUploadingPhoto(false);
+      }
+    }
+  };
+
+  const removePhoto = (fileId) => {
+    setReviewFormPhotos((prev) => prev.filter((p) => p.fileId !== fileId));
   };
 
   // 후기 작성/수정/삭제는 부스의 평균 별점·후기 수에도 영향을 주므로 상단 요약도 함께 새로고침한다.
@@ -287,16 +385,19 @@ export default function BoothDetail() {
     const requestedBoothId = boothId;
     setSubmittingReview(true);
     setReviewFormError("");
+    const fileIds = reviewFormPhotos.map((p) => p.fileId);
     try {
       if (myReviewForThisBooth) {
-        await updateReview(boothId, myReviewForThisBooth.id, { content: reviewFormComment, rating: reviewFormRating });
+        await updateReview(boothId, myReviewForThisBooth.id, { content: reviewFormComment, rating: reviewFormRating, fileIds });
       } else {
-        await createReview(boothId, { rating: reviewFormRating, comment: reviewFormComment });
+        await createReview(boothId, { rating: reviewFormRating, comment: reviewFormComment, fileIds });
       }
       if (currentBoothIdRef.current !== requestedBoothId) return;
+      reviewFormSessionRef.current += 1;
       setEditingReview(false);
       setReviewFormComment("");
       setReviewFormRating(5);
+      setReviewFormPhotos([]);
       refreshMyReview();
       refreshBoothSummary();
       loadReviews(0);
@@ -326,6 +427,57 @@ export default function BoothDetail() {
       setReviewFormError(requestError.message || "후기 삭제에 실패했습니다.");
     } finally {
       if (currentBoothIdRef.current === requestedBoothId) setDeletingReview(false);
+    }
+  };
+
+  const openReportForm = (reviewId) => {
+    setReportingReviewId(reviewId);
+    setReportReasonCode("SPAM");
+    setReportReasonText("");
+    setReportError("");
+  };
+
+  const closeReportForm = () => {
+    setReportingReviewId(null);
+    setReportError("");
+  };
+
+  const submitReport = async (reviewId) => {
+    if (reportSubmittingId) return;
+    if (reportReasonCode === "OTHER" && !reportReasonText.trim()) {
+      setReportError("기타 사유를 선택한 경우 상세 사유를 입력해주세요.");
+      return;
+    }
+    const requestedBoothId = boothId;
+    setReportSubmittingId(reviewId);
+    setReportError("");
+    try {
+      await reportReview(boothId, reviewId, { reasonCode: reportReasonCode, reason: reportReasonText.trim() || undefined });
+      if (currentBoothIdRef.current !== requestedBoothId) return;
+      setReportingReviewId(null);
+      setReviews((prev) => prev.map((r) => (r.id === reviewId ? { ...r, reportedByMe: true } : r)));
+      loadReviews(0);
+    } catch (requestError) {
+      if (currentBoothIdRef.current !== requestedBoothId) return;
+      setReportError(requestError.message || "신고 접수에 실패했습니다.");
+    } finally {
+      if (currentBoothIdRef.current === requestedBoothId) setReportSubmittingId(null);
+    }
+  };
+
+  const handleCancelReport = async (reviewId) => {
+    if (cancelingReportId) return;
+    const requestedBoothId = boothId;
+    setCancelingReportId(reviewId);
+    try {
+      await cancelReport(boothId, reviewId);
+      if (currentBoothIdRef.current !== requestedBoothId) return;
+      setReviews((prev) => prev.map((r) => (r.id === reviewId ? { ...r, reportedByMe: false } : r)));
+    } catch (requestError) {
+      if (currentBoothIdRef.current !== requestedBoothId) return;
+      setReviewsError(requestError.message || "신고 취소에 실패했습니다.");
+    } finally {
+      if (currentBoothIdRef.current === requestedBoothId) setCancelingReportId(null);
     }
   };
 
@@ -558,6 +710,24 @@ export default function BoothDetail() {
                       {myReviewForThisBooth.comment && (
                         <p className="text-caption text-on-surface-variant">{myReviewForThisBooth.comment}</p>
                       )}
+                      {myReviewForThisBooth.photos?.length > 0 && (
+                        <div className="flex gap-xs mt-sm">
+                          {myReviewForThisBooth.photos.map((p) => (
+                            <img key={p.fileId} src={fileDownloadUrl(p.fileId)} alt="후기 사진" className="w-14 h-14 rounded-lg object-cover border border-hairline" />
+                          ))}
+                        </div>
+                      )}
+                      {myReviewForThisBooth.hidden && (
+                        <p className="text-[11px] text-error mt-sm">
+                          부스 담당자 조치로 비공개 처리된 후기라 다른 방문객에게는 보이지 않아요.
+                        </p>
+                      )}
+                      {myReviewForThisBooth.reply && (
+                        <div className="mt-sm bg-white rounded-lg p-sm border border-hairline">
+                          <span className="text-[11px] font-bold text-primary">부스 담당자 답글</span>
+                          <p className="text-caption text-on-surface-variant mt-0.5">{myReviewForThisBooth.reply.content}</p>
+                        </div>
+                      )}
                       {reviewFormError && <p className="text-caption text-error mt-sm">{reviewFormError}</p>}
                     </div>
                   ) : (
@@ -577,11 +747,35 @@ export default function BoothDetail() {
                         maxLength={300}
                         className="w-full rounded-lg border border-hairline px-sm py-2 text-caption outline-none focus:border-primary-focus resize-none"
                       />
+                      <div className="flex flex-wrap gap-xs">
+                        {reviewFormPhotos.map((p) => (
+                          <div key={p.fileId} className="relative w-14 h-14">
+                            <img src={p.previewUrl} alt="첨부 사진" className="w-14 h-14 rounded-lg object-cover border border-hairline" />
+                            <button
+                              type="button"
+                              onClick={() => removePhoto(p.fileId)}
+                              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center"
+                            >
+                              <Icon name="close" className="text-[12px]" />
+                            </button>
+                          </div>
+                        ))}
+                        {reviewFormPhotos.length < REVIEW_PHOTO_MAX && (
+                          <label className="w-14 h-14 rounded-lg border border-dashed border-hairline flex items-center justify-center cursor-pointer text-ink-muted">
+                            {uploadingPhoto ? (
+                              <span className="text-[10px]">업로드 중</span>
+                            ) : (
+                              <Icon name="add_a_photo" className="text-[18px]" />
+                            )}
+                            <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} disabled={uploadingPhoto} />
+                          </label>
+                        )}
+                      </div>
                       {reviewFormError && <p className="text-caption text-error">{reviewFormError}</p>}
                       <div className="flex gap-sm">
                         <button
                           onClick={submitReview}
-                          disabled={submittingReview}
+                          disabled={submittingReview || uploadingPhoto}
                           className="h-[36px] px-lg rounded-full bg-primary text-white text-caption font-body-strong disabled:opacity-40"
                         >
                           {submittingReview ? "등록 중..." : editingReview ? "수정 완료" : "후기 등록"}
@@ -595,6 +789,34 @@ export default function BoothDetail() {
                     </div>
                   )}
 
+                  <form onSubmit={handleSearchSubmit} className="flex items-center gap-sm mb-sm">
+                    <div className="flex-1 flex items-center gap-1 rounded-full border border-hairline px-sm h-[34px]">
+                      <Icon name="search" className="text-[16px] text-ink-muted" />
+                      <input
+                        value={reviewKeywordInput}
+                        onChange={(e) => setReviewKeywordInput(e.target.value)}
+                        placeholder="후기 검색"
+                        className="flex-1 text-caption outline-none bg-transparent"
+                      />
+                      {reviewKeyword && (
+                        <button type="button" onClick={clearSearch} className="text-ink-muted">
+                          <Icon name="close" className="text-[14px]" />
+                        </button>
+                      )}
+                    </div>
+                    <select
+                      value={reviewSort}
+                      onChange={(e) => handleSortChange(e.target.value)}
+                      disabled={!!reviewKeyword}
+                      title={reviewKeyword ? "검색 결과는 관련도순으로 표시돼요" : undefined}
+                      className="h-[34px] rounded-full border border-hairline px-sm text-caption bg-white disabled:opacity-40"
+                    >
+                      <option value="LATEST">최신순</option>
+                      <option value="RATING_DESC">별점 높은순</option>
+                      <option value="RATING_ASC">별점 낮은순</option>
+                    </select>
+                  </form>
+
                   {loadingReviews && reviews.length === 0 && <p className="text-caption text-ink-muted">후기를 불러오는 중입니다.</p>}
                   {reviewsError && <p className="text-caption text-error">{reviewsError}</p>}
                   {!loadingReviews && !reviewsError && reviews.length === 0 && (
@@ -607,7 +829,7 @@ export default function BoothDetail() {
                           <div className="flex items-center justify-between mb-1">
                             <div className="flex items-center gap-sm">
                               <span className="text-caption font-body-strong">{review.memberName}</span>
-                              {myReviewForThisBooth?.id === review.id && (
+                              {review.mine && (
                                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-container/10 text-primary-focus">내 후기</span>
                               )}
                             </div>
@@ -621,6 +843,72 @@ export default function BoothDetail() {
                             ))}
                           </div>
                           {review.comment && <p className="text-caption text-on-surface-variant">{review.comment}</p>}
+                          {review.photos?.length > 0 && (
+                            <div className="flex gap-xs mt-sm">
+                              {review.photos.map((p) => (
+                                <img key={p.fileId} src={fileDownloadUrl(p.fileId)} alt="후기 사진" className="w-14 h-14 rounded-lg object-cover border border-hairline" />
+                              ))}
+                            </div>
+                          )}
+                          {review.reply && (
+                            <div className="mt-sm bg-surface-container-low rounded-lg p-sm">
+                              <span className="text-[11px] font-bold text-primary">부스 담당자 답글</span>
+                              <p className="text-caption text-on-surface-variant mt-0.5">{review.reply.content}</p>
+                            </div>
+                          )}
+
+                          {!review.mine && isAuthenticated && (
+                            <div className="mt-1">
+                              {review.reportedByMe ? (
+                                <button
+                                  onClick={() => handleCancelReport(review.id)}
+                                  disabled={cancelingReportId === review.id}
+                                  className="text-[11px] text-ink-muted underline disabled:opacity-40"
+                                >
+                                  {cancelingReportId === review.id ? "취소 중..." : "신고 취소하기 (신고완료)"}
+                                </button>
+                              ) : reportingReviewId === review.id ? (
+                                <div className="mt-sm bg-surface-container-low rounded-lg p-sm space-y-sm">
+                                  <select
+                                    value={reportReasonCode}
+                                    onChange={(e) => setReportReasonCode(e.target.value)}
+                                    className="w-full h-[32px] rounded-lg border border-hairline px-sm text-caption bg-white"
+                                  >
+                                    {REPORT_REASON_OPTIONS.map((opt) => (
+                                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                  </select>
+                                  {reportReasonCode === "OTHER" && (
+                                    <textarea
+                                      value={reportReasonText}
+                                      onChange={(e) => setReportReasonText(e.target.value)}
+                                      placeholder="상세 사유를 입력해주세요"
+                                      rows={2}
+                                      maxLength={200}
+                                      className="w-full rounded-lg border border-hairline px-sm py-1.5 text-caption outline-none resize-none"
+                                    />
+                                  )}
+                                  {reportError && <p className="text-[11px] text-error">{reportError}</p>}
+                                  <div className="flex gap-sm">
+                                    <button
+                                      onClick={() => submitReport(review.id)}
+                                      disabled={reportSubmittingId === review.id}
+                                      className="h-[28px] px-md rounded-full bg-error text-white text-[11px] font-body-strong disabled:opacity-40"
+                                    >
+                                      {reportSubmittingId === review.id ? "신고 중..." : "신고하기"}
+                                    </button>
+                                    <button onClick={closeReportForm} className="h-[28px] px-md rounded-full border border-hairline text-[11px] font-body-strong">
+                                      취소
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button onClick={() => openReportForm(review.id)} className="text-[11px] text-ink-muted underline">
+                                  신고
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

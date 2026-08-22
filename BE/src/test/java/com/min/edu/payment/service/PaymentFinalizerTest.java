@@ -7,17 +7,16 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 
-import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.min.edu.common.exception.BusinessException;
@@ -26,6 +25,9 @@ import com.min.edu.event.domain.Event;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
+import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderStatus;
@@ -37,7 +39,7 @@ import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.domain.TicketOrderStatus;
 import com.min.edu.payment.dto.request.ConfirmPaymentRequest;
 import com.min.edu.payment.dto.response.ConfirmPaymentResponse;
-import com.min.edu.payment.event.TicketReservationCompletedEvent;
+import com.min.edu.payment.outbox.service.PaymentOutboxWriter;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.PaymentVirtualAccountRepository;
@@ -81,7 +83,10 @@ class PaymentFinalizerTest {
     private EventRepository eventRepository;
 
     @Mock
-    private ApplicationEventPublisher applicationEventPublisher;
+    private PaymentAuditLogWriter auditLogWriter;
+
+    @Mock
+    private PaymentOutboxWriter paymentOutboxWriter;
 
     private PaymentFinalizer paymentFinalizer;
 
@@ -100,7 +105,8 @@ class PaymentFinalizerTest {
             ticketExchangeCodeIssuer,
             advertisementRepository,
             eventRepository,
-            applicationEventPublisher
+            auditLogWriter,
+            paymentOutboxWriter
         );
 
         given(entityManager.createNativeQuery(any(String.class))).willReturn(query);
@@ -124,7 +130,7 @@ class PaymentFinalizerTest {
         given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
 
         ConfirmPaymentResponse response =
-            paymentFinalizer.finalizePayment(request(), tossResponse());
+            paymentFinalizer.finalizePayment(10L, request(), tossResponse());
 
         assertThat(response.getPaymentId()).isEqualTo(5L);
         assertThat(paymentOrder.getStatus()).isEqualTo(PaymentOrderStatus.PAID.name());
@@ -132,11 +138,25 @@ class PaymentFinalizerTest {
         assertThat(ticketOrder.getConfirmedAt()).isEqualTo(tossResponse().approvedAt());
         assertThat(ticketOrder.getUpdatedAt()).isAfter(tossResponse().approvedAt());
         verify(ticketExchangeCodeIssuer).issueIfAbsent(any(), any(), any());
+        verify(auditLogWriter).append(
+            eq(1L),
+            eq(5L),
+            eq(null),
+            eq(PaymentAuditEventType.PAYMENT_PAID),
+            eq(PaymentOrderStatus.PENDING.name()),
+            eq(PaymentOrderStatus.PAID.name()),
+            eq(PaymentAuditSource.CONFIRM),
+            eq(null),
+            eq(PaymentAuditActorType.MEMBER),
+            eq(10L),
+            eq(null),
+            any()
+        );
         verify(query).setParameter("timeout", "300ms");
     }
 
     @Test
-    void finalizePayment_publishesGuestReservationCompletedEventForNewGuestPayment() {
+    void finalizePayment_appendsGuestReservationConfirmationOutboxForNewGuestPayment() {
         PaymentOrder paymentOrder = pendingGuestPaymentOrder();
         TicketOrder ticketOrder = pendingTicketOrder();
         Payment savedPayment = payment();
@@ -151,18 +171,31 @@ class PaymentFinalizerTest {
         given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
         given(eventRepository.findById(3L)).willReturn(Optional.of(event()));
 
-        paymentFinalizer.finalizePayment(request(), tossResponse());
+        paymentFinalizer.finalizePayment(null, request(), tossResponse());
 
-        ArgumentCaptor<TicketReservationCompletedEvent> captor =
-            ArgumentCaptor.forClass(TicketReservationCompletedEvent.class);
-        verify(applicationEventPublisher).publishEvent(captor.capture());
-        assertThat(captor.getValue().orderNo()).isEqualTo("ORDER-1");
-        assertThat(captor.getValue().buyerEmail()).isEqualTo("guest@example.com");
-        assertThat(captor.getValue().eventName()).isEqualTo("테스트 행사");
+        verify(paymentOutboxWriter).appendTicketReservationConfirmation(
+            "ORDER-1",
+            "guest@example.com",
+            "test-event"
+        );
+        verify(auditLogWriter).append(
+            eq(1L),
+            eq(5L),
+            eq(null),
+            eq(PaymentAuditEventType.PAYMENT_PAID),
+            eq(PaymentOrderStatus.PENDING.name()),
+            eq(PaymentOrderStatus.PAID.name()),
+            eq(PaymentAuditSource.CONFIRM),
+            eq(null),
+            eq(PaymentAuditActorType.GUEST),
+            eq(null),
+            eq(null),
+            any()
+        );
     }
 
     @Test
-    void finalizePayment_doesNotPublishReservationCompletedEventForMemberPayment() {
+    void finalizePayment_doesNotAppendReservationConfirmationOutboxForMemberPayment() {
         PaymentOrder paymentOrder = pendingPaymentOrder();
         TicketOrder ticketOrder = pendingTicketOrder();
         Payment savedPayment = payment();
@@ -176,9 +209,9 @@ class PaymentFinalizerTest {
         given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
         given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
 
-        paymentFinalizer.finalizePayment(request(), tossResponse());
+        paymentFinalizer.finalizePayment(10L, request(), tossResponse());
 
-        verify(applicationEventPublisher, never()).publishEvent(any());
+        verify(paymentOutboxWriter, never()).appendTicketReservationConfirmation(any(), any(), any());
     }
 
     @Test
@@ -197,7 +230,7 @@ class PaymentFinalizerTest {
         given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
 
         ConfirmPaymentResponse response =
-            paymentFinalizer.finalizePayment(request(), tossResponse());
+            paymentFinalizer.finalizePayment(10L, request(), tossResponse());
 
         assertThat(response.getPaymentId()).isEqualTo(5L);
         assertThat(paymentOrder.getStatus()).isEqualTo(PaymentOrderStatus.PAID.name());
@@ -222,6 +255,86 @@ class PaymentFinalizerTest {
         paymentFinalizer.finalizePaymentFromWebhook(request(), tossResponse());
 
         verify(query).setParameter("timeout", "150ms");
+        verify(auditLogWriter).append(
+            eq(1L),
+            eq(5L),
+            eq(null),
+            eq(PaymentAuditEventType.PAYMENT_PAID),
+            eq(PaymentOrderStatus.PENDING.name()),
+            eq(PaymentOrderStatus.PAID.name()),
+            eq(PaymentAuditSource.WEBHOOK),
+            eq(null),
+            eq(PaymentAuditActorType.SYSTEM),
+            eq(null),
+            eq(null),
+            any()
+        );
+    }
+
+    @Test
+    void finalizePaymentFromReconciliation_recordsSystemActor() {
+        PaymentOrder paymentOrder = pendingPaymentOrder();
+        TicketOrder ticketOrder = pendingTicketOrder();
+        Payment savedPayment = payment();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(false);
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(ticketOrder));
+        given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
+        given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
+
+        paymentFinalizer.finalizePaymentFromReconciliation(request(), tossResponse());
+
+        verify(auditLogWriter).append(
+            eq(1L),
+            eq(5L),
+            eq(null),
+            eq(PaymentAuditEventType.PAYMENT_PAID),
+            eq(PaymentOrderStatus.PENDING.name()),
+            eq(PaymentOrderStatus.PAID.name()),
+            eq(PaymentAuditSource.RECONCILIATION),
+            eq(null),
+            eq(PaymentAuditActorType.SYSTEM),
+            eq(null),
+            eq(null),
+            any()
+        );
+    }
+
+    @Test
+    void finalizePaymentFromExpiration_recordsSystemActor() {
+        PaymentOrder paymentOrder = pendingPaymentOrder();
+        TicketOrder ticketOrder = pendingTicketOrder();
+        Payment savedPayment = payment();
+
+        given(paymentOrderRepository.findByOrderNoForUpdate("ORDER-1"))
+            .willReturn(Optional.of(paymentOrder));
+        given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
+            .willReturn(false);
+        given(ticketOrderRepository.findByPaymentOrderId(1L))
+            .willReturn(Optional.of(ticketOrder));
+        given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
+        given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(savedPayment);
+
+        paymentFinalizer.finalizePaymentFromExpiration(request(), tossResponse());
+
+        verify(auditLogWriter).append(
+            eq(1L),
+            eq(5L),
+            eq(null),
+            eq(PaymentAuditEventType.PAYMENT_PAID),
+            eq(PaymentOrderStatus.PENDING.name()),
+            eq(PaymentOrderStatus.PAID.name()),
+            eq(PaymentAuditSource.EXPIRATION),
+            eq(null),
+            eq(PaymentAuditActorType.SYSTEM),
+            eq(null),
+            eq(null),
+            any()
+        );
     }
 
     @Test
@@ -239,10 +352,11 @@ class PaymentFinalizerTest {
         given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.of(payment));
 
         ConfirmPaymentResponse response =
-            paymentFinalizer.finalizePayment(request(), tossResponse());
+            paymentFinalizer.finalizePayment(10L, request(), tossResponse());
 
         assertThat(response.getPaymentId()).isEqualTo(5L);
-        verify(applicationEventPublisher, never()).publishEvent(any());
+        verify(paymentOutboxWriter, never()).appendTicketReservationConfirmation(any(), any(), any());
+        verifyNoInteractions(auditLogWriter);
     }
 
     @Test
@@ -269,7 +383,7 @@ class PaymentFinalizerTest {
             .willReturn(Optional.of(ticketOrder));
         given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.of(payment));
 
-        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(request(), tossResponse()))
+        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(10L, request(), tossResponse()))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.PAYMENT_ALREADY_PROCESSED);
@@ -284,7 +398,7 @@ class PaymentFinalizerTest {
         given(paymentRepository.existsByPaymentKeyAndPaymentOrderIdNot("payment-key", 1L))
             .willReturn(true);
 
-        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(request(), tossResponse()))
+        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(10L, request(), tossResponse()))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.PAYMENT_KEY_ALREADY_USED);
@@ -302,9 +416,7 @@ class PaymentFinalizerTest {
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(ticketOrder));
 
-        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(
-                request(),
-                new TossConfirmResponse(
+        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(10L, request(), new TossConfirmResponse(
                     "payment-key",
                     "ORDER-1",
                     BigDecimal.valueOf(10000),
@@ -334,9 +446,7 @@ class PaymentFinalizerTest {
         given(ticketOrderRepository.findByPaymentOrderId(1L))
             .willReturn(Optional.of(ticketOrder));
 
-        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(
-                request(),
-                new TossConfirmResponse(
+        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(10L, request(), new TossConfirmResponse(
                     "other-payment-key",
                     "ORDER-1",
                     BigDecimal.valueOf(10000),
@@ -367,7 +477,7 @@ class PaymentFinalizerTest {
         given(paymentRepository.findByPaymentOrderId(1L)).willReturn(Optional.empty());
         given(paymentRepository.saveAndFlush(any(Payment.class))).willReturn(payment());
 
-        paymentFinalizer.finalizePayment(request(), tossResponse());
+        paymentFinalizer.finalizePayment(10L, request(), tossResponse());
 
         assertThat(paymentOrder.getStatus()).isEqualTo(PaymentOrderStatus.PAID.name());
         assertThat(advertisement.getStatus()).isEqualTo(AdvertisementStatus.PAID);
@@ -384,7 +494,7 @@ class PaymentFinalizerTest {
             .willReturn(false);
         given(advertisementRepository.findByPaymentOrderId(1L)).willReturn(Optional.of(advertisement));
 
-        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(request(), tossResponse()))
+        assertThatThrownBy(() -> paymentFinalizer.finalizePayment(10L, request(), tossResponse()))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.PAYMENT_INVALID_STATE);
@@ -586,7 +696,7 @@ class PaymentFinalizerTest {
             .applicantOrganizationId(4L)
             .paymentOrderId(1L)
             .bannerFileId(8L)
-            .adText("행사 광고")
+            .adText("event ad")
             .startAt(OffsetDateTime.now().plusDays(1))
             .endAt(OffsetDateTime.now().plusDays(10))
             .status(status)
@@ -621,7 +731,7 @@ class PaymentFinalizerTest {
         return Event.builder()
             .id(3L)
             .organizerOrganizationId(4L)
-            .name("테스트 행사")
+            .name("test-event")
             .build();
     }
 }

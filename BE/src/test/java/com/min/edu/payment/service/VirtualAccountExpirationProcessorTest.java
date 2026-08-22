@@ -2,14 +2,12 @@ package com.min.edu.payment.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import com.min.edu.admission.repository.ExchangeCodeRepository;
+import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
@@ -18,18 +16,14 @@ import com.min.edu.payment.domain.PaymentOrderType;
 import com.min.edu.payment.domain.PaymentProvider;
 import com.min.edu.payment.domain.PaymentStatus;
 import com.min.edu.payment.domain.PaymentVirtualAccount;
-import com.min.edu.payment.domain.TicketOrder;
-import com.min.edu.payment.domain.TicketOrderStatus;
-import com.min.edu.payment.event.TicketInventoryGateway;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.PaymentVirtualAccountRepository;
-import com.min.edu.payment.repository.TicketOrderRepository;
 import com.min.edu.payment.toss.TossPaymentClient;
+import com.min.edu.payment.toss.TossPaymentClientException;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
-import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,69 +43,128 @@ class VirtualAccountExpirationProcessorTest {
     private PaymentOrderRepository paymentOrderRepository;
 
     @Mock
-    private TicketOrderRepository ticketOrderRepository;
-
-    @Mock
-    private ExchangeCodeRepository exchangeCodeRepository;
-
-    @Mock
-    private TicketInventoryGateway ticketInventoryGateway;
-
-    @Mock
     private TossPaymentClient tossPaymentClient;
 
     @Mock
-    private PaymentFinalizer paymentFinalizer;
+    private VirtualAccountExpirationRepairService repairService;
+
+    @Mock
+    private VirtualAccountReconciliationRepairService reconciliationRepairService;
 
     @Test
     void process_returnsWithoutExpiringWhenLatestPaymentAfterOrderLockIsPaid() {
         VirtualAccountExpirationProcessor processor = processor();
         OffsetDateTime now = OffsetDateTime.parse("2026-08-03T10:31:00+09:00");
 
-        given(virtualAccountRepository.findById(7L))
-            .willReturn(Optional.of(virtualAccount()));
-        given(paymentOrderRepository.findByVirtualAccountIdForUpdate(7L))
-            .willReturn(Optional.of(waitingOrder()));
-        given(paymentRepository.findByPaymentOrderIdForUpdate(1L))
-            .willReturn(Optional.of(payment(PaymentStatus.PAID)));
+        given(virtualAccountRepository.findById(7L)).willReturn(Optional.of(virtualAccount()));
+        given(paymentRepository.findById(5L)).willReturn(Optional.of(payment(PaymentStatus.PAID)));
 
         processor.process(7L, now);
 
-        verify(ticketOrderRepository, never()).findByPaymentOrderId(any());
         verify(tossPaymentClient, never()).getPayment(any());
-        verify(ticketInventoryGateway, never()).release(anyLong(), anyInt());
+        verify(repairService, never()).process(anyLong(), any(), any());
     }
 
     @Test
-    void process_expiresAndReleasesInventoryOnlyWhenLatestPaymentIsWaiting() {
+    void process_looksUpProviderOutsideRepairAndDelegatesWhenPaymentIsWaiting() {
         VirtualAccountExpirationProcessor processor = processor();
         OffsetDateTime now = OffsetDateTime.parse("2026-08-03T10:31:00+09:00");
-        PaymentOrder order = waitingOrder();
         Payment waitingPayment = payment(PaymentStatus.WAITING_FOR_DEPOSIT);
-        TicketOrder ticketOrder = pendingTicketOrder();
         PaymentVirtualAccount virtualAccount = virtualAccount();
+        TossConfirmResponse tossPayment = tossPayment("WAITING_FOR_DEPOSIT");
 
-        given(virtualAccountRepository.findById(7L))
-            .willReturn(Optional.of(virtualAccount));
-        given(paymentOrderRepository.findByVirtualAccountIdForUpdate(7L))
-            .willReturn(Optional.of(order));
-        given(paymentRepository.findByPaymentOrderIdForUpdate(1L))
-            .willReturn(Optional.of(waitingPayment));
-        given(ticketOrderRepository.findByPaymentOrderId(1L))
-            .willReturn(Optional.of(ticketOrder));
-        given(tossPaymentClient.getPayment("payment-key"))
-            .willReturn(tossPayment("WAITING_FOR_DEPOSIT"));
-        given(exchangeCodeRepository.findAllByTicketOrderIdOrderByIdAsc(2L))
-            .willReturn(List.of());
-        given(ticketInventoryGateway.release(3L, 2)).willReturn(true);
+        given(virtualAccountRepository.findById(7L)).willReturn(Optional.of(virtualAccount));
+        given(paymentRepository.findById(5L)).willReturn(Optional.of(waitingPayment));
+        given(tossPaymentClient.getPayment("payment-key")).willReturn(tossPayment);
 
         processor.process(7L, now);
 
-        assertThat(order.getStatus()).isEqualTo(PaymentOrderStatus.EXPIRED.name());
-        assertThat(waitingPayment.getStatus()).isEqualTo(PaymentStatus.EXPIRED.name());
-        assertThat(ticketOrder.getStatus()).isEqualTo(TicketOrderStatus.EXPIRED.name());
-        assertThat(virtualAccount.getTossStatus()).isEqualTo("EXPIRED");
-        verify(ticketInventoryGateway, times(1)).release(3L, 2);
+        verify(repairService).process(7L, now, tossPayment);
+        verify(paymentOrderRepository, never()).findByVirtualAccountIdForUpdate(anyLong());
+    }
+
+    @Test
+    void processPendingOrder_delegatesDoneProviderPaymentToReconciliationRepair() {
+        VirtualAccountExpirationProcessor processor = processor();
+        OffsetDateTime now = OffsetDateTime.parse("2026-08-03T10:31:00+09:00");
+        PaymentOrder pendingOrder = pendingOrder();
+        TossConfirmResponse tossPayment = tossPayment("DONE");
+
+        given(paymentOrderRepository.findById(1L)).willReturn(Optional.of(pendingOrder));
+        given(tossPaymentClient.getPaymentByOrderId("ORDER-1")).willReturn(tossPayment);
+
+        processor.processPendingOrder(1L, now);
+
+        verify(reconciliationRepairService).repairPendingOrder("ORDER-1", tossPayment);
+        verify(repairService, never()).expirePendingOrder(anyLong(), any(), any());
+    }
+
+    @Test
+    void processPendingOrder_delegatesWaitingProviderPaymentToReconciliationRepair() {
+        VirtualAccountExpirationProcessor processor = processor();
+        OffsetDateTime now = OffsetDateTime.parse("2026-08-03T10:31:00+09:00");
+        PaymentOrder pendingOrder = pendingOrder();
+        TossConfirmResponse tossPayment = tossPayment("WAITING_FOR_DEPOSIT");
+
+        given(paymentOrderRepository.findById(1L)).willReturn(Optional.of(pendingOrder));
+        given(tossPaymentClient.getPaymentByOrderId("ORDER-1")).willReturn(tossPayment);
+
+        processor.processPendingOrder(1L, now);
+
+        verify(reconciliationRepairService).repairPendingOrder("ORDER-1", tossPayment);
+        verify(repairService, never()).expirePendingOrder(anyLong(), any(), any());
+    }
+
+    @Test
+    void processPendingOrder_keepsPendingWhenProviderLookupIsAmbiguous() {
+        VirtualAccountExpirationProcessor processor = processor();
+        OffsetDateTime now = OffsetDateTime.parse("2026-08-03T10:31:00+09:00");
+        PaymentOrder pendingOrder = pendingOrder();
+
+        given(paymentOrderRepository.findById(1L)).willReturn(Optional.of(pendingOrder));
+        given(tossPaymentClient.getPaymentByOrderId("ORDER-1"))
+            .willThrow(new TossPaymentClientException(GlobalErrorCode.PAYMENT_GATEWAY_TIMEOUT));
+
+        processor.processPendingOrder(1L, now);
+
+        assertThat(pendingOrder.getStatus()).isEqualTo(PaymentOrderStatus.PENDING.name());
+        verify(reconciliationRepairService, never()).repairPendingOrder(any(), any());
+        verify(repairService, never()).expirePendingOrder(anyLong(), any(), any());
+    }
+
+    @Test
+    void processPendingOrder_keepsPendingWhenProviderLookupReturnsInvalidOrNotFoundMappedError() {
+        VirtualAccountExpirationProcessor processor = processor();
+        OffsetDateTime now = OffsetDateTime.parse("2026-08-03T10:31:00+09:00");
+        PaymentOrder pendingOrder = pendingOrder();
+
+        given(paymentOrderRepository.findById(1L)).willReturn(Optional.of(pendingOrder));
+        given(tossPaymentClient.getPaymentByOrderId("ORDER-1"))
+            .willThrow(new TossPaymentClientException(
+                GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID
+            ));
+
+        processor.processPendingOrder(1L, now);
+
+        assertThat(pendingOrder.getStatus()).isEqualTo(PaymentOrderStatus.PENDING.name());
+        verify(reconciliationRepairService, never()).repairPendingOrder(any(), any());
+        verify(repairService, never()).expirePendingOrder(anyLong(), any(), any());
+    }
+
+    @Test
+    void processPendingOrder_expiresOnlyForExplicitProviderExpiredStatus() {
+        VirtualAccountExpirationProcessor processor = processor();
+        OffsetDateTime now = OffsetDateTime.parse("2026-08-03T10:31:00+09:00");
+        PaymentOrder pendingOrder = pendingOrder();
+        TossConfirmResponse tossPayment = tossPayment("EXPIRED");
+
+        given(paymentOrderRepository.findById(1L)).willReturn(Optional.of(pendingOrder));
+        given(tossPaymentClient.getPaymentByOrderId("ORDER-1")).willReturn(tossPayment);
+
+        processor.processPendingOrder(1L, now);
+
+        verify(repairService).expirePendingOrder(1L, now, "EXPIRED");
+        verify(reconciliationRepairService, never()).repairPendingOrder(any(), any());
     }
 
     private VirtualAccountExpirationProcessor processor() {
@@ -119,11 +172,9 @@ class VirtualAccountExpirationProcessorTest {
             virtualAccountRepository,
             paymentRepository,
             paymentOrderRepository,
-            ticketOrderRepository,
-            exchangeCodeRepository,
-            ticketInventoryGateway,
             tossPaymentClient,
-            paymentFinalizer
+            repairService,
+            reconciliationRepairService
         );
     }
 
@@ -142,7 +193,7 @@ class VirtualAccountExpirationProcessorTest {
             .build();
     }
 
-    private PaymentOrder waitingOrder() {
+    private PaymentOrder pendingOrder() {
         return PaymentOrder.builder()
             .id(1L)
             .orderNo("ORDER-1")
@@ -150,7 +201,7 @@ class VirtualAccountExpirationProcessorTest {
             .orderType(PaymentOrderType.EVENT_TICKET)
             .totalAmount(BigDecimal.valueOf(10000))
             .requestedPaymentMethod(PaymentMethod.VIRTUAL_ACCOUNT)
-            .status(PaymentOrderStatus.WAITING_FOR_DEPOSIT.name())
+            .status(PaymentOrderStatus.PENDING.name())
             .expiresAt(OffsetDateTime.parse("2026-08-03T10:30:00+09:00"))
             .createdAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))
             .updatedAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))
@@ -170,19 +221,6 @@ class VirtualAccountExpirationProcessorTest {
             .approvedAt(status == PaymentStatus.PAID
                 ? OffsetDateTime.parse("2026-08-03T10:01:00+09:00")
                 : null)
-            .updatedAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))
-            .build();
-    }
-
-    private TicketOrder pendingTicketOrder() {
-        return TicketOrder.builder()
-            .id(2L)
-            .paymentOrderId(1L)
-            .eventId(3L)
-            .unitPrice(BigDecimal.valueOf(5000))
-            .totalQuantity(2)
-            .status(TicketOrderStatus.PENDING_PAYMENT.name())
-            .createdAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))
             .updatedAt(OffsetDateTime.parse("2026-08-03T10:00:00+09:00"))
             .build();
     }

@@ -146,7 +146,7 @@ public class BoothReviewController {
     }
 
     /**
-     * 부스 리뷰 신고 — 같은 리뷰를 두 번 신고할 수 없고, 누적 3건이면 자동 숨김 처리된다.
+     * 부스 리뷰 신고 — 같은 리뷰를 두 번 신고할 수 없고, 누적 3건이면 리뷰가 삭제된다.
      */
     @PostMapping("/{reviewId}/reports")
     public ResponseEntity<Void> reportReview(
@@ -165,7 +165,24 @@ public class BoothReviewController {
     }
 
     /**
-     * 운영자(부스 담당자)용 "신고된 리뷰" 대시보드 — 자동 숨김 임계치(3건)에 못 미친 신고 1~2건짜리
+     * 부스 리뷰 신고 취소 — 본인이 넣은 신고만 철회할 수 있다.
+     */
+    @DeleteMapping("/{reviewId}/reports")
+    public ResponseEntity<Void> cancelReport(
+            @PathVariable Long boothId,
+            @PathVariable Long reviewId,
+            @AuthenticationPrincipal AuthenticatedMemberDto principal) {
+
+        if (principal == null) {
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+        }
+
+        reviewModerationService.cancelReport(boothId, reviewId, principal.getMemberId());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * 운영자(부스 담당자)용 "신고된 리뷰" 대시보드 — 자동 삭제 임계치(3건)에 못 미친 신고 1~2건짜리
      * 리뷰도 여기서 미리 확인하고 필요하면 선제적으로 hide 처리할 수 있다. 신고 많은 순으로 반환된다.
      */
     @GetMapping("/reports")

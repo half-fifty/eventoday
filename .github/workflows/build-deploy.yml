@@ -61,6 +61,7 @@ jobs:
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CONTENT_AI_API_KEY: ${{ secrets.CONTENT_AI_API_KEY }}
 
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
@@ -89,6 +90,7 @@ jobs:
             SMTP_USERNAME
             SMTP_PASSWORD
             GEMINI_API_KEY
+            CONTENT_AI_API_KEY
 
             VITE_API_BASE_URL
             VITE_KAKAO_MAP_JS_KEY
@@ -212,6 +214,7 @@ jobs:
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CONTENT_AI_API_KEY: ${{ secrets.CONTENT_AI_API_KEY }}
 
         run: |
           set -euo pipefail
@@ -235,6 +238,7 @@ jobs:
             printf 'SMTP_USERNAME=%s\n' "${SMTP_USERNAME}"
             printf 'SMTP_PASSWORD=%s\n' "${SMTP_PASSWORD}"
             printf 'GEMINI_API_KEY=%s\n' "${GEMINI_API_KEY}"
+            printf 'CONTENT_AI_API_KEY=%s\n' "${CONTENT_AI_API_KEY}"
 
           } | sudo kubectl create secret generic eventoday-secret \
             --namespace eventoday \
