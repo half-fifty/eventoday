@@ -55,6 +55,8 @@ spec:
               value: "https://eventoday.duckdns.org"
             - name: COOKIE_SECURE
               value: "true"
+            - name: ELASTICSEARCH_URIS
+              value: "http://eventoday-elasticsearch:9200"
           envFrom:
             - secretRef:
                 name: eventoday-secret
