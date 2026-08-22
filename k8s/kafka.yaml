@@ -121,6 +121,10 @@ metadata:
 spec:
   selector:
     app: eventoday-kafka
+  # KRaft 컨트롤러가 자기 자신(KAFKA_CONTROLLER_QUORUM_VOTERS)에게 이 Service 이름으로
+  # 접속해서 쿼럼을 완성해야 Ready가 되는데, 기본값(Ready 파드만 라우팅)이면 "Ready가 안 돼서
+  # 자기 자신에게도 못 붙는" 순환 데드락에 빠진다. Ready 여부와 무관하게 라우팅되게 한다.
+  publishNotReadyAddresses: true
   ports:
     - name: plaintext
       port: 9092
