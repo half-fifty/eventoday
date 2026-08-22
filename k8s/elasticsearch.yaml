@@ -31,9 +31,20 @@ spec:
       labels:
         app: eventoday-elasticsearch
     spec:
+      # 공식 이미지는 기본적으로 non-root(elasticsearch, uid 1000)로 동작한다.
+      # PVC 볼륨을 그 uid가 쓸 수 있도록 fsGroup을 맞춰준다.
+      securityContext:
+        fsGroup: 1000
       containers:
         - name: elasticsearch
           image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 9200
             - containerPort: 9300
