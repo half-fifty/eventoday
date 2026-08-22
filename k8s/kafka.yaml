@@ -1,0 +1,127 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: eventoday-kafka-data
+  namespace: eventoday
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eventoday-kafka
+  namespace: eventoday
+  labels:
+    app: eventoday-kafka
+spec:
+  replicas: 1
+  strategy:
+    # 단일 브로커 + ReadWriteOnce PVC라 새 파드가 기존 파드와 동시에 볼륨을 잡을 수 없다.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: eventoday-kafka
+  template:
+    metadata:
+      labels:
+        app: eventoday-kafka
+    spec:
+      # 공식 apache/kafka 이미지는 기본적으로 non-root(appuser)로 동작한다.
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: kafka
+          image: apache/kafka:4.1.2
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - containerPort: 9092
+          env:
+            - name: KAFKA_NODE_ID
+              value: "1"
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker,controller"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+            - name: KAFKA_LISTENERS
+              value: "CONTROLLER://:29093,PLAINTEXT://:9092"
+            # 다른 파드가 이 Service의 DNS 이름으로 접속하므로, 그 이름을 그대로 advertise한다.
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://eventoday-kafka:9092"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "PLAINTEXT"
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "1@eventoday-kafka:29093"
+            # 로컬 docker-compose와 동일한 값 (팀 내부 고정 클러스터 ID, 비밀값 아님)
+            - name: CLUSTER_ID
+              value: "4L6g3nShT-eMCtK--X86sw"
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+              value: "0"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR
+              value: "1"
+            - name: KAFKA_LOG_DIRS
+              value: "/tmp/kraft-combined-logs"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /tmp/kraft-combined-logs
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"
+            failureThreshold: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            periodSeconds: 15
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: eventoday-kafka-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eventoday-kafka
+  namespace: eventoday
+spec:
+  selector:
+    app: eventoday-kafka
+  ports:
+    - name: plaintext
+      port: 9092
+      targetPort: 9092
