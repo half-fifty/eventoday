@@ -23,6 +23,7 @@ public enum GlobalErrorCode implements ErrorCode {
     EXCHANGE_CODE_GUEST_NOT_REDEEMABLE(HttpStatus.FORBIDDEN, "ADMISSION_403_002", "게스트 교환 코드는 이 API에서 사용할 수 없습니다."),
     ADMISSION_TICKET_ALREADY_EXISTS(HttpStatus.CONFLICT, "ADMISSION_409_013", "이미 입장 티켓이 발급된 교환 코드입니다."),
     ADMISSION_TICKET_QR_NOT_AVAILABLE(HttpStatus.CONFLICT, "ADMISSION_409_014", "현재 상태에서는 입장 QR을 조회할 수 없습니다."),
+    ADMISSION_DATA_INCONSISTENT(HttpStatus.CONFLICT, "ADMISSION_409_019", "입장 데이터가 일치하지 않습니다."),
     ADMISSION_QR_TOKEN_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "ADMISSION_500_002", "입장 QR 토큰 생성에 실패했습니다."),
     ADMISSION_QR_IMAGE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "ADMISSION_500_003", "입장 QR 이미지 생성에 실패했습니다."),
 
