@@ -267,6 +267,58 @@ class ExchangeCodeRedemptionServiceTest {
     }
 
     @Test
+    void redeem_completedReplayReturnsExistingAdmissionTicketWithoutNewQrToken() {
+        ExchangeCode exchangeCode = ticketCode(ExchangeCodeStatus.REDEEMED, 10L, null);
+        AdmissionTicket existingTicket = admissionTicket(11L, 7L, 10L, "existing-qr-token",
+            AdmissionTicketStatus.USED);
+        given(exchangeCodeRepository.findByCodeForUpdate("CODE-1")).willReturn(Optional.of(exchangeCode));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event(EventStatus.PUBLISHED, -1)));
+        given(admissionTicketRepository.findByExchangeCodeId(7L)).willReturn(Optional.of(existingTicket));
+
+        ExchangeCodeRedemptionDtos.RedemptionResponse response =
+            service.redeem(request("CODE-1"), actor(10L));
+
+        assertThat(response.exchangeCodeId()).isEqualTo(7L);
+        assertThat(response.exchangeCodeStatus()).isEqualTo(ExchangeCodeStatus.REDEEMED);
+        assertThat(response.admissionTicketId()).isEqualTo(11L);
+        assertThat(response.admissionTicketStatus()).isEqualTo(AdmissionTicketStatus.USED);
+        assertThat(response.qrAvailable()).isFalse();
+        verify(admissionQrTokenGenerator, never()).generate();
+        verify(admissionTicketRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void redeem_completedReplayRejectsDifferentMemberBeforeReturningTicket() {
+        ExchangeCode exchangeCode = ticketCode(ExchangeCodeStatus.REDEEMED, 99L, null);
+        given(exchangeCodeRepository.findByCodeForUpdate("CODE-1")).willReturn(Optional.of(exchangeCode));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event(EventStatus.PUBLISHED, 1)));
+
+        assertThatThrownBy(() -> service.redeem(request("CODE-1"), actor(10L)))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_HOLDER_MISMATCH);
+
+        verify(admissionTicketRepository, never()).findByExchangeCodeId(any());
+        verify(admissionQrTokenGenerator, never()).generate();
+    }
+
+    @Test
+    void redeem_completedReplayFailsWhenTicketMissingWithoutCreatingNewTicket() {
+        ExchangeCode exchangeCode = ticketCode(ExchangeCodeStatus.REDEEMED, 10L, null);
+        given(exchangeCodeRepository.findByCodeForUpdate("CODE-1")).willReturn(Optional.of(exchangeCode));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event(EventStatus.PUBLISHED, 1)));
+        given(admissionTicketRepository.findByExchangeCodeId(7L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.redeem(request("CODE-1"), actor(10L)))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.ADMISSION_DATA_INCONSISTENT);
+
+        verify(admissionQrTokenGenerator, never()).generate();
+        verify(admissionTicketRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
     void redeemGuestOrderExchangeCode_createsAdmissionTicketWithNullMemberId() {
         ExchangeCode exchangeCode = ticketCode(ExchangeCodeStatus.ISSUED, null, null);
         AdmissionTicket savedTicket = AdmissionTicket.builder()
@@ -296,6 +348,45 @@ class ExchangeCodeRedemptionServiceTest {
         verify(admissionTicketRepository).saveAndFlush(ticketCaptor.capture());
         assertThat(ticketCaptor.getValue().getMemberId()).isNull();
         assertThat(ticketCaptor.getValue().getExchangeCodeId()).isEqualTo(7L);
+    }
+
+    @Test
+    void redeemGuestOrderExchangeCode_completedReplayReturnsExistingTicketInOrderScope() {
+        ExchangeCode exchangeCode = ticketCode(ExchangeCodeStatus.REDEEMED, null, null);
+        AdmissionTicket existingTicket = admissionTicket(21L, 7L, null, "guest-qr-token",
+            AdmissionTicketStatus.USED);
+        given(guestOrderAccessService.validateGuestTicketOrderAccess("ORDER-1", "guest-token"))
+            .willReturn(new GuestTicketOrderAccess(3L, 1L, "ORDER-1"));
+        given(exchangeCodeRepository.findByIdForUpdate(7L)).willReturn(Optional.of(exchangeCode));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event(EventStatus.PUBLISHED, -1)));
+        given(admissionTicketRepository.findByExchangeCodeId(7L)).willReturn(Optional.of(existingTicket));
+
+        ExchangeCodeRedemptionDtos.RedemptionResponse response =
+            service.redeemGuestOrderExchangeCode("ORDER-1", "guest-token", 7L);
+
+        assertThat(response.admissionTicketId()).isEqualTo(21L);
+        assertThat(response.admissionTicketStatus()).isEqualTo(AdmissionTicketStatus.USED);
+        assertThat(response.qrAvailable()).isFalse();
+        verify(admissionQrTokenGenerator, never()).generate();
+        verify(admissionTicketRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void redeemGuestOrderExchangeCode_completedReplayRejectsOtherOrderBeforeReturningTicket() {
+        ExchangeCode exchangeCode = exchangeCode(7L, 1L, null, 99L, null,
+            ExchangeCodeStatus.REDEEMED, null);
+        given(guestOrderAccessService.validateGuestTicketOrderAccess("ORDER-1", "guest-token"))
+            .willReturn(new GuestTicketOrderAccess(3L, 1L, "ORDER-1"));
+        given(exchangeCodeRepository.findByIdForUpdate(7L)).willReturn(Optional.of(exchangeCode));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event(EventStatus.PUBLISHED, 1)));
+
+        assertThatThrownBy(() -> service.redeemGuestOrderExchangeCode("ORDER-1", "guest-token", 7L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.ORDER_ACCESS_DENIED);
+
+        verify(admissionTicketRepository, never()).findByExchangeCodeId(any());
+        verify(admissionQrTokenGenerator, never()).generate();
     }
 
     @Test
@@ -362,6 +453,24 @@ class ExchangeCodeRedemptionServiceTest {
             Long holderMemberId,
             OffsetDateTime expiresAt) {
         return exchangeCode(7L, 1L, 5L, null, holderMemberId, status, expiresAt);
+    }
+
+    private AdmissionTicket admissionTicket(
+            Long id,
+            Long exchangeCodeId,
+            Long memberId,
+            String qrToken,
+            AdmissionTicketStatus status) {
+        OffsetDateTime now = OffsetDateTime.now();
+        return AdmissionTicket.builder()
+            .id(id)
+            .exchangeCodeId(exchangeCodeId)
+            .memberId(memberId)
+            .qrToken(qrToken)
+            .status(status)
+            .issuedAt(now.minusMinutes(5))
+            .usedAt(status == AdmissionTicketStatus.USED ? now : null)
+            .build();
     }
 
     private ExchangeCode exchangeCode(

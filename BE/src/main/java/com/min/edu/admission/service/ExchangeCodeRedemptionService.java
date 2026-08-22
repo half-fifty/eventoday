@@ -1,6 +1,7 @@
 package com.min.edu.admission.service;
 
 import com.min.edu.admission.domain.AdmissionTicket;
+import com.min.edu.admission.domain.AdmissionTicketStatus;
 import com.min.edu.admission.domain.ExchangeCode;
 import com.min.edu.admission.domain.ExchangeCodeStatus;
 import com.min.edu.admission.dto.ExchangeCodeDtos;
@@ -75,6 +76,10 @@ public class ExchangeCodeRedemptionService {
         ExchangeCode exchangeCode = exchangeCodeRepository.findByCodeForUpdate(request.code())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.EXCHANGE_CODE_NOT_FOUND));
         Event event = findEvent(exchangeCode.getEventId());
+        if (exchangeCode.getStatus() == ExchangeCodeStatus.REDEEMED) {
+            validateMemberReplayAccessible(exchangeCode, actor.getMemberId());
+            return completedReplay(exchangeCode, event);
+        }
         validateRedeemable(exchangeCode, event, actor.getMemberId(), now);
         validateNoAdmissionTicket(exchangeCode.getId());
 
@@ -96,6 +101,10 @@ public class ExchangeCodeRedemptionService {
         ExchangeCode exchangeCode = exchangeCodeRepository.findByIdForUpdate(exchangeCodeId)
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.EXCHANGE_CODE_NOT_FOUND));
         Event event = findEvent(exchangeCode.getEventId());
+        if (exchangeCode.getStatus() == ExchangeCodeStatus.REDEEMED) {
+            validateGuestReplayAccessible(exchangeCode, access);
+            return completedReplay(exchangeCode, event);
+        }
         validateGuestRedeemable(exchangeCode, access, event, now);
         validateNoAdmissionTicket(exchangeCode.getId());
 
@@ -169,6 +178,44 @@ public class ExchangeCodeRedemptionService {
         }
     }
 
+    private void validateMemberReplayAccessible(ExchangeCode exchangeCode, Long actorMemberId) {
+        if (isTicketOrder(exchangeCode)) {
+            if (exchangeCode.getHolderMemberId() == null) {
+                throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_GUEST_NOT_REDEEMABLE);
+            }
+            if (!exchangeCode.getHolderMemberId().equals(actorMemberId)) {
+                throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_HOLDER_MISMATCH);
+            }
+            return;
+        }
+
+        if (!isExternalRequest(exchangeCode)
+                || exchangeCode.getHolderMemberId() == null
+                || !exchangeCode.getHolderMemberId().equals(actorMemberId)) {
+            throw new BusinessException(GlobalErrorCode.EXCHANGE_CODE_HOLDER_MISMATCH);
+        }
+    }
+
+    private void validateGuestReplayAccessible(
+            ExchangeCode exchangeCode,
+            GuestTicketOrderAccess access) {
+        if (!isTicketOrder(exchangeCode)
+                || !access.ticketOrderId().equals(exchangeCode.getTicketOrderId())
+                || exchangeCode.getHolderMemberId() != null) {
+            throw new BusinessException(GlobalErrorCode.ORDER_ACCESS_DENIED);
+        }
+    }
+
+    private ExchangeCodeRedemptionDtos.RedemptionResponse completedReplay(
+            ExchangeCode exchangeCode,
+            Event event) {
+        AdmissionTicket admissionTicket = admissionTicketRepository
+            .findByExchangeCodeId(exchangeCode.getId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.ADMISSION_DATA_INCONSISTENT));
+
+        return response(exchangeCode, event, admissionTicket);
+    }
+
     private ExchangeCodeRedemptionDtos.RedemptionResponse issueAdmissionTicket(
             ExchangeCode exchangeCode,
             Event event,
@@ -185,6 +232,13 @@ public class ExchangeCodeRedemptionService {
             )
         );
 
+        return response(exchangeCode, event, admissionTicket);
+    }
+
+    private ExchangeCodeRedemptionDtos.RedemptionResponse response(
+            ExchangeCode exchangeCode,
+            Event event,
+            AdmissionTicket admissionTicket) {
         return new ExchangeCodeRedemptionDtos.RedemptionResponse(
             exchangeCode.getId(),
             exchangeCode.getStatus(),
@@ -193,7 +247,8 @@ public class ExchangeCodeRedemptionService {
             event.getName(),
             admissionTicket.getStatus(),
             admissionTicket.getIssuedAt(),
-            admissionTicket.getQrToken() != null
+            admissionTicket.getStatus() == AdmissionTicketStatus.ISSUED
+                && admissionTicket.getQrToken() != null
         );
     }
 
