@@ -53,16 +53,22 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /usr/share/elasticsearch/data
+          # httpGet 프로브는 응답 본문을 안 보고 HTTP 상태코드만 본다. /_cluster/health는
+          # 클러스터가 red여도 200을 반환할 수 있어서, 응답 본문의 status 필드까지 확인한다.
           startupProbe:
-            httpGet:
-              path: /_cluster/health
-              port: 9200
+            exec:
+              command:
+                - sh
+                - -c
+                - "curl -sf http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"
             failureThreshold: 30
             periodSeconds: 10
           readinessProbe:
-            httpGet:
-              path: /_cluster/health
-              port: 9200
+            exec:
+              command:
+                - sh
+                - -c
+                - "curl -sf http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"
             periodSeconds: 10
           livenessProbe:
             tcpSocket:
