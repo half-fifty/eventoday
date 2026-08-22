@@ -16,6 +16,7 @@ import {
 } from "../api/boothApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
 import useAuth from "../hooks/useAuth.js";
+import useFunnelTracking from "../hooks/useFunnelTracking.js";
 import { congestionLevelMeta, congestionLevelFromCount } from "../utils/congestion.js";
 
 const formatEventPeriod = (event) => {
@@ -40,6 +41,7 @@ export default function EventOngoing() {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const { eventId } = useParams();
   const selectedEventId = eventId || "";
+  useFunnelTracking(eventId, "VIEW_BOOTH_LIST");
   const [eventDetail, setEventDetail] = useState(null);
   const [loadingEventDetail, setLoadingEventDetail] = useState(false);
   const [eventDetailError, setEventDetailError] = useState("");

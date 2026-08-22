@@ -41,7 +41,8 @@ public class FunnelSession {
     @Column(name = "id")
     private Long id;
 
-    @Column(name = "session_id", nullable = false, length = 36)
+    // 원본 세션 UUID(36자) + ":" + event_id 조합으로 저장되므로 UUID 길이보다 여유를 둔다.
+    @Column(name = "session_id", nullable = false, length = 80)
     private String sessionId;
 
     @Column(name = "event_id", nullable = false)

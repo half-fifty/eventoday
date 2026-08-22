@@ -14,6 +14,8 @@ import org.springframework.data.repository.query.Param;
 public interface EventRepository extends JpaRepository<Event, Long>, JpaSpecificationExecutor<Event> {
     boolean existsByIdAndOrganizerOrganizationId(Long id, Long organizerOrganizationId);
     boolean existsByIdAndStatus(Long id, EventStatus status);
+    @Query("SELECT e.id FROM Event e WHERE e.status = :status")
+    List<Long> findIdsByStatus(@Param("status") EventStatus status);
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Event e set e.status = :ended, e.updatedAt = :now "
             + "where e.status in :statuses and e.endAt <= :now")
