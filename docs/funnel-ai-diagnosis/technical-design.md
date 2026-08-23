@@ -109,7 +109,7 @@ erDiagram
         string event_id "행사 ID"
         string anonymous_id
         string user_id "nullable, 로그인시"
-        string session_id FK
+        string session_id "FK 아님. FUNNEL_SESSION과는 (session_id, event_id) 조합으로만 연결됨 — 아래 참고"
         string action_type
         datetime occurred_at "클라이언트 참고용, 집계 기준 아님"
         datetime received_at "서버 기록, 세션귀속일/배치컷오프 기준"
@@ -123,7 +123,7 @@ erDiagram
         datetime last_seen_at
     }
     FUNNEL_SESSION {
-        string session_id PK
+        string session_id PK "= {FUNNEL_ACTION.session_id}:{event_id} 합성값. FUNNEL_ACTION.session_id와 문자열이 다름"
         string event_id "행사 ID"
         string visitor_key
         string max_step_reached
@@ -148,11 +148,17 @@ erDiagram
     }
 
     VISITOR_PROFILE ||--o{ FUNNEL_SESSION : "식별"
-    FUNNEL_SESSION ||--o{ FUNNEL_ACTION : "포함(배치가 사후 계산)"
+    FUNNEL_SESSION ||--o{ FUNNEL_ACTION : "포함 (FK 아님, event_id+session_id 조합으로 배치가 사후에 묶음)"
     FUNNEL_DIAGNOSIS_REPORT }o..o{ FUNNEL_SESSION : "집계 참조 (FK 아님, 스냅샷)"
 ```
 
 `FUNNEL_ACTION`은 Elasticsearch 인덱스, 나머지 셋은 PostgreSQL 테이블이다 (위 "저장소 배치" 참고).
+
+`FUNNEL_SESSION.session_id`는 `FUNNEL_ACTION.session_id`와 문자열이 다른 합성 키다 (위 "세션(session_id)
+생성/관리" 참고 — 원본 `session_id`가 여러 행사에 걸쳐 재사용될 수 있어 `event_id`를 합쳐 저장한다). 두 테이블을
+연결할 때는 `FUNNEL_ACTION.session_id`와 `FUNNEL_SESSION.session_id`를 직접 비교하지 말고, 항상
+`event_id`와 원본 `session_id` 두 값을 함께 사용해 조회해야 한다 — 배치(`FunnelSessionReconstructionService`)
+쓰기·조회 코드 모두 이 방식을 따른다.
 `FUNNEL_DIAGNOSIS_REPORT`는 `(event_id, report_date)` 단위로 하루에 한 건씩 생성된다.
 
 ## 아키텍처 흐름

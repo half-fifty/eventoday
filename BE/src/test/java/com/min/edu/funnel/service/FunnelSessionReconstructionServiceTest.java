@@ -23,6 +23,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.ScrollPosition;
+import org.springframework.data.domain.Window;
 
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.exception.BusinessException;
@@ -80,9 +82,17 @@ class FunnelSessionReconstructionServiceTest {
                 Map.of()));
     }
 
+    // 실제 ES 저장소는 session_id 정렬 기반 keyset scroll(Window)로 페이지 단위 응답을 준다
+    // (FunnelActionRepository 참고). 테스트에서는 단일 페이지(hasNext=false)로 전체 액션을 담아
+    // 돌려주는 것으로 충분하다 — 스트리밍 집계 로직 자체는 페이지 수와 무관하게 동작한다.
+    private void mockActions(Long eventId, List<FunnelAction> actions) {
+        given(funnelActionRepository.findFirst500ByEventIdAndReceivedAtBetweenOrderBySessionIdAscActionIdAsc(
+                eq(eventId), any(), any(), any()))
+                .willReturn(Window.from(actions, index -> ScrollPosition.offset(index)));
+    }
+
     private FunnelSession runAndCaptureSavedSession(List<FunnelAction> actions) {
-        given(funnelActionRepository.findByEventIdAndReceivedAtBetween(eq(EVENT_ID), any(), any()))
-                .willReturn(actions);
+        mockActions(EVENT_ID, actions);
         given(visitorProfileRepository.findByVisitorKey(org.mockito.ArgumentMatchers.anyString()))
                 .willReturn(Optional.empty());
 
@@ -170,8 +180,7 @@ class FunnelSessionReconstructionServiceTest {
     void reconstruct_noExistingVisitorProfile_marksNewVisitorAndCreatesProfile() {
         OffsetDateTime t0 = OffsetDateTime.parse("2026-08-17T10:00:00+09:00");
         List<FunnelAction> actions = List.of(action("session-7", "VIEW_EVENT_DETAIL", t0));
-        given(funnelActionRepository.findByEventIdAndReceivedAtBetween(eq(EVENT_ID), any(), any()))
-                .willReturn(actions);
+        mockActions(EVENT_ID, actions);
         given(visitorProfileRepository.findByVisitorKey("anon:anon-1")).willReturn(Optional.empty());
 
         service.reconstruct(EVENT_ID, TARGET_DATE);
@@ -188,8 +197,7 @@ class FunnelSessionReconstructionServiceTest {
         VisitorProfile existingProfile = VisitorProfile.create(
                 "anon:anon-1", "anon-1", null, OffsetDateTime.parse("2026-08-01T00:00:00+09:00"));
         List<FunnelAction> actions = List.of(action("session-8", "VIEW_EVENT_DETAIL", t0));
-        given(funnelActionRepository.findByEventIdAndReceivedAtBetween(eq(EVENT_ID), any(), any()))
-                .willReturn(actions);
+        mockActions(EVENT_ID, actions);
         given(visitorProfileRepository.findByVisitorKey("anon:anon-1")).willReturn(Optional.of(existingProfile));
 
         service.reconstruct(EVENT_ID, TARGET_DATE);
@@ -206,8 +214,7 @@ class FunnelSessionReconstructionServiceTest {
         OffsetDateTime t0 = OffsetDateTime.parse("2026-08-17T10:00:00+09:00");
         List<FunnelAction> actions = List.of(action("session-9", "VIEW_EVENT_DETAIL", t0));
         FunnelSession mockSession = mock(FunnelSession.class);
-        given(funnelActionRepository.findByEventIdAndReceivedAtBetween(eq(EVENT_ID), any(), any()))
-                .willReturn(actions);
+        mockActions(EVENT_ID, actions);
         given(funnelSessionRepository.findBySessionId("session-9:" + EVENT_ID))
                 .willReturn(Optional.of(mockSession));
 
@@ -228,8 +235,7 @@ class FunnelSessionReconstructionServiceTest {
                 "session-10:" + EVENT_ID, EVENT_ID, "anon:anon-1", FunnelStep.OPEN_PURCHASE_MODAL,
                 true, false, false, false, yesterday, yesterday, yesterday);
         List<FunnelAction> actions = List.of(action("session-10", "COMPLETE_PAYMENT", t0));
-        given(funnelActionRepository.findByEventIdAndReceivedAtBetween(eq(EVENT_ID), any(), any()))
-                .willReturn(actions);
+        mockActions(EVENT_ID, actions);
         given(funnelSessionRepository.findBySessionId("session-10:" + EVENT_ID))
                 .willReturn(Optional.of(existingFromYesterday));
 
@@ -254,10 +260,8 @@ class FunnelSessionReconstructionServiceTest {
                 UUID.randomUUID().toString(), sharedSessionId, otherEventId, "anon-1", null,
                 "VIEW_EVENT_DETAIL", t0, t0, Map.of()));
 
-        given(funnelActionRepository.findByEventIdAndReceivedAtBetween(eq(EVENT_ID), any(), any()))
-                .willReturn(List.of(action(sharedSessionId, "VIEW_EVENT_DETAIL", t0)));
-        given(funnelActionRepository.findByEventIdAndReceivedAtBetween(eq(otherEventId), any(), any()))
-                .willReturn(List.of(actionForOtherEvent));
+        mockActions(EVENT_ID, List.of(action(sharedSessionId, "VIEW_EVENT_DETAIL", t0)));
+        mockActions(otherEventId, List.of(actionForOtherEvent));
 
         service.reconstruct(EVENT_ID, TARGET_DATE);
         service.reconstruct(otherEventId, TARGET_DATE);
@@ -278,8 +282,7 @@ class FunnelSessionReconstructionServiceTest {
         OffsetDateTime t0 = OffsetDateTime.parse("2026-08-17T10:00:00+09:00");
         List<FunnelAction> actions =
                 List.of(action("session-10", "VIEW_EVENT_DETAIL", t0, "anon-1", 7L));
-        given(funnelActionRepository.findByEventIdAndReceivedAtBetween(eq(EVENT_ID), any(), any()))
-                .willReturn(actions);
+        mockActions(EVENT_ID, actions);
         given(visitorProfileRepository.findByVisitorKey("member:7")).willReturn(Optional.empty());
 
         service.reconstruct(EVENT_ID, TARGET_DATE);
@@ -290,10 +293,37 @@ class FunnelSessionReconstructionServiceTest {
     }
 
     @Test
+    void reconstruct_sessionSplitAcrossScrollPages_mergesActionsFromBothPages() {
+        // ES scroll이 페이지 크기 제한으로 같은 session_id의 액션을 두 페이지에 나눠 돌려주더라도
+        // sessionId 정렬 덕분에 연속으로 도착하므로, 두 페이지에 걸친 액션이 하나의 세션으로 합쳐져야 한다.
+        OffsetDateTime t0 = OffsetDateTime.parse("2026-08-17T10:00:00+09:00");
+        FunnelAction firstPageAction = action("session-12", "VIEW_EVENT_DETAIL", t0);
+        FunnelAction secondPageAction = action("session-12", "COMPLETE_PAYMENT", t0.plusMinutes(1));
+        Window<FunnelAction> firstPage =
+                Window.from(List.of(firstPageAction), index -> ScrollPosition.offset(index), true);
+        Window<FunnelAction> secondPage =
+                Window.from(List.of(secondPageAction), index -> ScrollPosition.offset(index), false);
+        given(funnelActionRepository.findFirst500ByEventIdAndReceivedAtBetweenOrderBySessionIdAscActionIdAsc(
+                eq(EVENT_ID), any(), any(), any()))
+                .willReturn(firstPage, secondPage);
+        given(visitorProfileRepository.findByVisitorKey(org.mockito.ArgumentMatchers.anyString()))
+                .willReturn(Optional.empty());
+
+        service.reconstruct(EVENT_ID, TARGET_DATE);
+
+        ArgumentCaptor<FunnelSession> captor = ArgumentCaptor.forClass(FunnelSession.class);
+        verify(funnelSessionRepository).save(captor.capture());
+        assertThat(captor.getValue().getSessionId()).isEqualTo("session-12:" + EVENT_ID);
+        assertThat(captor.getValue().getMaxStepReached()).isEqualTo(FunnelStep.COMPLETE_PAYMENT);
+        assertThat(captor.getValue().isDropped()).isFalse();
+    }
+
+    @Test
     void reconstructForAdmin_nullActor_throwsForbidden() {
         assertThatThrownBy(() -> service.reconstructForAdmin(EVENT_ID, TARGET_DATE, null))
                 .isInstanceOf(BusinessException.class);
-        verify(funnelActionRepository, never()).findByEventIdAndReceivedAtBetween(any(), any(), any());
+        verify(funnelActionRepository, never())
+                .findFirst500ByEventIdAndReceivedAtBetweenOrderBySessionIdAscActionIdAsc(any(), any(), any(), any());
     }
 
     @Test
@@ -302,7 +332,8 @@ class FunnelSessionReconstructionServiceTest {
 
         assertThatThrownBy(() -> service.reconstructForAdmin(EVENT_ID, TARGET_DATE, generalUser))
                 .isInstanceOf(BusinessException.class);
-        verify(funnelActionRepository, never()).findByEventIdAndReceivedAtBetween(any(), any(), any());
+        verify(funnelActionRepository, never())
+                .findFirst500ByEventIdAndReceivedAtBetweenOrderBySessionIdAscActionIdAsc(any(), any(), any(), any());
     }
 
     @Test
@@ -310,8 +341,7 @@ class FunnelSessionReconstructionServiceTest {
         AuthenticatedMemberDto admin = new AuthenticatedMemberDto(1L, PlatformRole.PLATFORM_ADMIN);
         OffsetDateTime t0 = OffsetDateTime.parse("2026-08-17T10:00:00+09:00");
         List<FunnelAction> actions = List.of(action("session-11", "VIEW_EVENT_DETAIL", t0));
-        given(funnelActionRepository.findByEventIdAndReceivedAtBetween(eq(EVENT_ID), any(), any()))
-                .willReturn(actions);
+        mockActions(EVENT_ID, actions);
         given(visitorProfileRepository.findByVisitorKey("anon:anon-1")).willReturn(Optional.empty());
 
         service.reconstructForAdmin(EVENT_ID, TARGET_DATE, admin);

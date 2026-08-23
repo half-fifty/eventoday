@@ -3,13 +3,15 @@ package com.min.edu.funnel.service;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.ScrollPosition;
+import org.springframework.data.support.WindowIterator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,25 +59,55 @@ public class FunnelSessionReconstructionService {
         }
     }
 
-    // 배치 진입점: 행사의 하루치 원본 액션을 ES에서 읽어와 session_id로 묶고, 시작 시각 순으로 세션을 처리한다.
+    // 배치 진입점: 행사의 하루치 원본 액션을 ES에서 스트리밍으로 읽어와 session_id별로 요약한 뒤,
+    // 시작 시각 순으로 세션을 처리한다 (VisitorProfile 신규/재방문 판정이 처리 순서에 의존하므로
+    // 정렬이 필요하다 — recordVisitorProfile 참고).
     @Transactional
     public void reconstruct(Long eventId, LocalDate targetDate) {
         OffsetDateTime dayStart = targetDate.atStartOfDay(KST).toOffsetDateTime();
         OffsetDateTime dayEnd = targetDate.plusDays(1).atStartOfDay(KST).toOffsetDateTime();
 
-        List<FunnelAction> actions =
-                funnelActionRepository.findByEventIdAndReceivedAtBetween(eventId, dayStart, dayEnd);
+        List<SessionSummary> summaries = summarizeSessionsStreaming(eventId, dayStart, dayEnd);
 
-        Map<String, List<FunnelAction>> actionsBySession = actions.stream()
-                .collect(Collectors.groupingBy(FunnelAction::getSessionId));
-
-        actionsBySession.values().stream()
-                .sorted(Comparator.comparing(this::earliestReceivedAt))
-                .forEach(this::reconstructSession);
+        summaries.stream()
+                .sorted(Comparator.comparing(SessionSummary::startedAt))
+                .forEach(this::applySummary);
     }
 
-    // 세션 하나를 판정해서 FunnelSession으로 저장하거나, 이미 있으면 기존 요약에 병합한다.
-    private void reconstructSession(List<FunnelAction> sessionActions) {
+    // sessionId 정렬 기반 keyset scroll(Window)로 하루치 액션을 페이지 단위로 읽는다. 같은
+    // session_id는 정렬 덕분에 페이지 경계를 넘어도 연속으로 도착하므로, session_id가 바뀌는
+    // 시점에 지금까지 모은 액션을 SessionSummary(가벼운 요약)로 축약하고 원본 액션은 버린다.
+    // 힙에는 한 페이지 분량의 액션 + 진행 중인 세션 하나의 액션만 남고, 대규모 행사에서도
+    // 하루치 원본 FunnelAction 전체를 동시에 들고 있지 않는다.
+    private List<SessionSummary> summarizeSessionsStreaming(
+            Long eventId, OffsetDateTime dayStart, OffsetDateTime dayEnd) {
+        List<SessionSummary> summaries = new ArrayList<>();
+        List<FunnelAction> currentSessionActions = new ArrayList<>();
+        String currentSessionId = null;
+
+        WindowIterator<FunnelAction> actions = WindowIterator
+                .of((ScrollPosition position) -> funnelActionRepository
+                        .findFirst500ByEventIdAndReceivedAtBetweenOrderBySessionIdAscActionIdAsc(
+                                eventId, dayStart, dayEnd, position))
+                .startingAt(ScrollPosition.keyset());
+
+        while (actions.hasNext()) {
+            FunnelAction action = actions.next();
+            if (currentSessionId != null && !currentSessionId.equals(action.getSessionId())) {
+                summaries.add(summarize(currentSessionActions));
+                currentSessionActions = new ArrayList<>();
+            }
+            currentSessionId = action.getSessionId();
+            currentSessionActions.add(action);
+        }
+        if (!currentSessionActions.isEmpty()) {
+            summaries.add(summarize(currentSessionActions));
+        }
+        return summaries;
+    }
+
+    // 세션 하나(같은 session_id의 액션 목록)를 요약값으로 축약한다. DB를 건드리지 않는 순수 계산.
+    private SessionSummary summarize(List<FunnelAction> sessionActions) {
         FunnelAction first = sessionActions.get(0);
         // 원본 session_id는 30분 안에 여러 행사를 오가면 그대로 재사용될 수 있다(같은 브라우징 흐름).
         // event_id를 합쳐서 저장해야 FunnelSession.session_id 유니크 제약과 부딪히지 않고,
@@ -96,33 +128,62 @@ public class FunnelSessionReconstructionService {
                 .max(OffsetDateTime::compareTo)
                 .orElse(startedAt);
 
-        Optional<FunnelSession> existing = funnelSessionRepository.findBySessionId(storedSessionId);
+        return new SessionSummary(
+                storedSessionId,
+                first.getEventId(),
+                resolveVisitorKey(first),
+                first.getAnonymousId(),
+                first.getUserId(),
+                maxStepReached,
+                boothExplored,
+                stepSkipped,
+                startedAt,
+                lastActionAt);
+    }
+
+    // 요약된 세션 하나를 FunnelSession으로 저장하거나, 이미 있으면 기존 요약에 병합한다.
+    private void applySummary(SessionSummary summary) {
+        Optional<FunnelSession> existing = funnelSessionRepository.findBySessionId(summary.storedSessionId());
         if (existing.isPresent()) {
             // 자정을 걸친 세션이나 결제 확정 지연으로 다음 날 배치가 나머지 액션을 발견한 경우 —
             // 건너뛰면 늦게 도착한 COMPLETE_PAYMENT가 영구히 누락된다. 관리 상태 엔티티라
             // 트랜잭션 커밋 시 더티 체킹으로 반영되므로 별도 save 호출이 필요 없다.
-            existing.get().mergeLaterActions(maxStepReached, boothExplored, stepSkipped, lastActionAt,
-                    OffsetDateTime.now());
+            existing.get().mergeLaterActions(summary.maxStepReached(), summary.boothExplored(),
+                    summary.stepSkipped(), summary.lastActionAt(), OffsetDateTime.now());
             return;
         }
 
-        boolean dropped = maxStepReached != FunnelStep.COMPLETE_PAYMENT;
-        String visitorKey = resolveVisitorKey(first);
-        boolean returningVisitor =
-                recordVisitorProfile(visitorKey, first.getAnonymousId(), first.getUserId(), startedAt);
+        boolean dropped = summary.maxStepReached() != FunnelStep.COMPLETE_PAYMENT;
+        boolean returningVisitor = recordVisitorProfile(
+                summary.visitorKey(), summary.anonymousId(), summary.userId(), summary.startedAt());
 
         funnelSessionRepository.save(FunnelSession.create(
-                storedSessionId,
-                first.getEventId(),
-                visitorKey,
-                maxStepReached,
+                summary.storedSessionId(),
+                summary.eventId(),
+                summary.visitorKey(),
+                summary.maxStepReached(),
                 dropped,
                 returningVisitor,
-                boothExplored,
-                stepSkipped,
-                startedAt,
-                lastActionAt,
+                summary.boothExplored(),
+                summary.stepSkipped(),
+                summary.startedAt(),
+                summary.lastActionAt(),
                 OffsetDateTime.now()));
+    }
+
+    // 세션 하나를 원본 액션 목록에서 축약한 결과. reconstruct 스트리밍 단계와 실제 저장 단계를 분리해,
+    // 저장 단계에서는 세션당 이 가벼운 레코드만 메모리에 남긴다.
+    private record SessionSummary(
+            String storedSessionId,
+            Long eventId,
+            String visitorKey,
+            String anonymousId,
+            Long userId,
+            FunnelStep maxStepReached,
+            boolean boothExplored,
+            boolean stepSkipped,
+            OffsetDateTime startedAt,
+            OffsetDateTime lastActionAt) {
     }
 
     // 이 세션이 도달한 최대 단계를 판정한다 (높은 단계부터 체크).
