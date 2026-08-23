@@ -103,6 +103,8 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /tmp/kraft-combined-logs
+          # kafka-topics.sh는 JVM CLI라 뜨는 데만 1초 넘게 걸린다. 기본 timeoutSeconds(1s)로는
+          # 브로커가 멀쩡해도 매번 타임아웃난다 (직접 겪음) — 넉넉하게 늘려준다.
           startupProbe:
             exec:
               command:
@@ -111,6 +113,7 @@ spec:
                 - "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"
             failureThreshold: 30
             periodSeconds: 10
+            timeoutSeconds: 10
           readinessProbe:
             exec:
               command:
@@ -118,6 +121,7 @@ spec:
                 - -c
                 - "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"
             periodSeconds: 10
+            timeoutSeconds: 10
           livenessProbe:
             tcpSocket:
               port: 9092
