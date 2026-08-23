@@ -136,6 +136,8 @@ public class TicketOrderCreationProcessor {
                 request.getQuantity(),
                 TicketOrderStatus.PENDING_PAYMENT,
                 null,
+                request.getFunnelSessionId(),
+                request.getAnonymousId(),
                 now
             )
         );
@@ -183,6 +185,8 @@ public class TicketOrderCreationProcessor {
                 request.getQuantity(),
                 TicketOrderStatus.CONFIRMED,
                 now,
+                request.getFunnelSessionId(),
+                request.getAnonymousId(),
                 now
             )
         );
@@ -197,6 +201,14 @@ public class TicketOrderCreationProcessor {
         );
         completeIdempotency(idempotencyKey, paymentOrder, ticketOrder, now);
         publishGuestReservationCompleted(paymentOrder, event);
+        paymentOutboxWriter.appendFunnelCompletePayment(
+            ticketOrder.getId(),
+            ticketOrder.getFunnelSessionId(),
+            eventId,
+            ticketOrder.getFunnelAnonymousId(),
+            buyerMemberId,
+            now
+        );
 
         return CreateTicketOrderResponse.free(
             paymentOrder,

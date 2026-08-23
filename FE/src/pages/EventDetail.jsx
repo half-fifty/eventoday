@@ -21,6 +21,7 @@ import {
   isTicketOrderAdmissionRejected,
   MAX_ADMISSION_RETRIES,
 } from "../utils/ticketOrderAdmissionRetry.js";
+import useFunnelTracking, { resolveSessionId } from "../hooks/useFunnelTracking.js";
 
 const formatDateTime = (value) => value
   ? new Date(value).toLocaleString("ko-KR", { dateStyle: "long", timeStyle: "short" })
@@ -73,6 +74,7 @@ const isTicketSalesEnded = (event, now = Date.now()) => {
 export default function EventDetail() {
   const { eventId } = useParams();
   const { isAuthenticated } = useAuth();
+  const trackFunnelAction = useFunnelTracking(eventId, "VIEW_EVENT_DETAIL");
   const [event, setEvent] = useState(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [loading, setLoading] = useState(true);
@@ -273,6 +275,7 @@ export default function EventDetail() {
       const payload = {
         quantity: ticketQuantity,
         paymentMethod,
+        funnelSessionId: resolveSessionId(),
         ...(isAuthenticated ? {} : {
           buyer: {
             name: buyer.name.trim(),
@@ -379,6 +382,7 @@ export default function EventDetail() {
     setPurchaseInfo("");
     setTicketOrderIdempotencyKey(crypto.randomUUID());
     setPurchaseOpen(true);
+    trackFunnelAction("OPEN_PURCHASE_MODAL");
   };
 
   const now = currentTime;

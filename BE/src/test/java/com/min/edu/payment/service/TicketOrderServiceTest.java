@@ -256,6 +256,28 @@ class TicketOrderServiceTest {
     }
 
     @Test
+    void create_createsFreeOrder_publishesFunnelCompletePayment() {
+        givenDefaultOrderDependencies(freeEvent());
+        given(exchangeCodeGenerator.generate()).willReturn("A1B2-C3D4-E5F6");
+        when(exchangeCodeRepository.save(any(ExchangeCode.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        CreateTicketOrderRequest request = new CreateTicketOrderRequest(
+            1, new GuestBuyerRequest("guest", "guest@example.com", "010-1234-5678"),
+            null, "session-1", "anon-1");
+
+        ticketOrderService.create(1L, null, request);
+
+        verify(paymentOutboxWriter).appendFunnelCompletePayment(
+            eq((Long) null),
+            eq("session-1"),
+            eq(1L),
+            eq("anon-1"),
+            eq((Long) null),
+            any(OffsetDateTime.class)
+        );
+    }
+
+    @Test
     void create_usesServerEventPriceForTotalAmount() {
         givenDefaultOrderDependencies(paidEvent());
 

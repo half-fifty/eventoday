@@ -19,4 +19,12 @@ const toDatetimeLocal = (isoValue) => {
   return new Date(localMs).toISOString().slice(0, 16);
 };
 
-export { toIsoOffset, toDatetimeLocal };
+// Date -> "YYYY-MM-DD" (로컬 기준). toISOString()은 UTC라 KST 00:00~08:59에는 하루 전 날짜가 나온다.
+const toLocalDateString = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+export { toIsoOffset, toDatetimeLocal, toLocalDateString };
