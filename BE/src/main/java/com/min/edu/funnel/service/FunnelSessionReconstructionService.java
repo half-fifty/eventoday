@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.ScrollPosition;
+import org.springframework.data.domain.Window;
 import org.springframework.data.support.WindowIterator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -86,9 +87,15 @@ public class FunnelSessionReconstructionService {
         String currentSessionId = null;
 
         WindowIterator<FunnelAction> actions = WindowIterator
-                .of((ScrollPosition position) -> funnelActionRepository
-                        .findFirst500ByEventIdAndReceivedAtBetweenOrderBySessionIdAscActionIdAsc(
-                                eventId, dayStart, dayEnd, position))
+                .of((ScrollPosition position) -> {
+                    // 해당 날짜에 액션이 하나도 없으면(예: 당일 재구성) Spring Data ES가 빈
+                    // Window 대신 null을 돌려줄 때가 있다 — WindowIterator는 이를 방어하지
+                    // 않고 NPE를 던지므로 여기서 빈 Window로 대체한다.
+                    Window<FunnelAction> window = funnelActionRepository
+                            .findFirst500ByEventIdAndReceivedAtBetweenOrderBySessionIdAscActionIdAsc(
+                                    eventId, dayStart, dayEnd, position);
+                    return window != null ? window : Window.from(List.of(), index -> ScrollPosition.offset(index));
+                })
                 .startingAt(ScrollPosition.keyset());
 
         while (actions.hasNext()) {
