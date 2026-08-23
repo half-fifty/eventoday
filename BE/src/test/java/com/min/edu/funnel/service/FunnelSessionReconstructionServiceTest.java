@@ -202,18 +202,42 @@ class FunnelSessionReconstructionServiceTest {
     }
 
     @Test
-    void reconstruct_sessionAlreadyProcessed_skipsReprocessing() {
+    void reconstruct_sessionAlreadyProcessed_mergesIntoExistingInsteadOfCreatingNew() {
         OffsetDateTime t0 = OffsetDateTime.parse("2026-08-17T10:00:00+09:00");
         List<FunnelAction> actions = List.of(action("session-9", "VIEW_EVENT_DETAIL", t0));
+        FunnelSession mockSession = mock(FunnelSession.class);
         given(funnelActionRepository.findByEventIdAndReceivedAtBetween(eq(EVENT_ID), any(), any()))
                 .willReturn(actions);
         given(funnelSessionRepository.findBySessionId("session-9:" + EVENT_ID))
-                .willReturn(Optional.of(mock(FunnelSession.class)));
+                .willReturn(Optional.of(mockSession));
 
         service.reconstruct(EVENT_ID, TARGET_DATE);
 
+        verify(mockSession).mergeLaterActions(
+                eq(FunnelStep.VIEW_EVENT_DETAIL), eq(false), eq(false), eq(t0), any());
         verify(funnelSessionRepository, never()).save(any());
         verify(visitorProfileRepository, never()).findByVisitorKey(any());
+    }
+
+    @Test
+    void reconstruct_lateCompletePaymentAfterSessionAlreadyExists_advancesMaxStepInsteadOfBeingLost() {
+        OffsetDateTime yesterday = OffsetDateTime.parse("2026-08-16T23:55:00+09:00");
+        OffsetDateTime t0 = OffsetDateTime.parse("2026-08-17T00:10:00+09:00");
+        // 자정을 걸친 세션 — 어제 배치에서 이미 OPEN_PURCHASE_MODAL까지 이탈로 집계된 상태.
+        FunnelSession existingFromYesterday = FunnelSession.create(
+                "session-10:" + EVENT_ID, EVENT_ID, "anon:anon-1", FunnelStep.OPEN_PURCHASE_MODAL,
+                true, false, false, false, yesterday, yesterday, yesterday);
+        List<FunnelAction> actions = List.of(action("session-10", "COMPLETE_PAYMENT", t0));
+        given(funnelActionRepository.findByEventIdAndReceivedAtBetween(eq(EVENT_ID), any(), any()))
+                .willReturn(actions);
+        given(funnelSessionRepository.findBySessionId("session-10:" + EVENT_ID))
+                .willReturn(Optional.of(existingFromYesterday));
+
+        service.reconstruct(EVENT_ID, TARGET_DATE);
+
+        assertThat(existingFromYesterday.getMaxStepReached()).isEqualTo(FunnelStep.COMPLETE_PAYMENT);
+        assertThat(existingFromYesterday.isDropped()).isFalse();
+        verify(funnelSessionRepository, never()).save(any());
     }
 
     @Test

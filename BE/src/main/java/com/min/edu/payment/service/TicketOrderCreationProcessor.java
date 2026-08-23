@@ -202,6 +202,7 @@ public class TicketOrderCreationProcessor {
         completeIdempotency(idempotencyKey, paymentOrder, ticketOrder, now);
         publishGuestReservationCompleted(paymentOrder, event);
         paymentOutboxWriter.appendFunnelCompletePayment(
+            ticketOrder.getId(),
             ticketOrder.getFunnelSessionId(),
             eventId,
             ticketOrder.getFunnelAnonymousId(),

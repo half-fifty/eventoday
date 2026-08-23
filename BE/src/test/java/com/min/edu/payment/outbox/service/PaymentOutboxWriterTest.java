@@ -82,12 +82,12 @@ class PaymentOutboxWriterTest {
             any(OffsetDateTime.class)
         )).willReturn(1);
 
-        writer.appendFunnelCompletePayment("session-1", 42L, "anon-1", null, OffsetDateTime.now());
+        writer.appendFunnelCompletePayment(99L, "session-1", 42L, "anon-1", null, OffsetDateTime.now());
 
         verify(repository).insertPending(
             any(UUID.class),
             org.mockito.ArgumentMatchers.eq(PaymentOutboxEventType.PUBLISH_FUNNEL_COMPLETE_PAYMENT.name()),
-            org.mockito.ArgumentMatchers.eq("session-1"),
+            org.mockito.ArgumentMatchers.eq("99"),
             org.mockito.ArgumentMatchers.argThat(payload ->
                 payload.contains("session-1")
                     && payload.contains("\"eventId\":42")
@@ -99,11 +99,29 @@ class PaymentOutboxWriterTest {
     }
 
     @Test
+    void appendFunnelCompletePayment_differentOrdersInSameSession_useDistinctAggregateIds() {
+        PaymentOutboxWriter writer = new PaymentOutboxWriter(repository, new ObjectMapper());
+        given(repository.insertPending(
+            any(UUID.class), anyString(), anyString(), anyString(), any(OffsetDateTime.class)
+        )).willReturn(1);
+
+        // 같은 브라우징 세션에서 서로 다른 두 행사를 구매한 경우, aggregate_id가 funnelSessionId면
+        // (event_type, aggregate_id) unique 제약에 걸려 두 번째 주문이 조용히 무시된다.
+        writer.appendFunnelCompletePayment(1L, "session-1", 42L, "anon-1", null, OffsetDateTime.now());
+        writer.appendFunnelCompletePayment(2L, "session-1", 43L, "anon-1", null, OffsetDateTime.now());
+
+        verify(repository).insertPending(
+            any(), any(), org.mockito.ArgumentMatchers.eq("1"), any(), any());
+        verify(repository).insertPending(
+            any(), any(), org.mockito.ArgumentMatchers.eq("2"), any(), any());
+    }
+
+    @Test
     void appendFunnelCompletePayment_skipsWhenSessionIdMissing() {
         PaymentOutboxWriter writer = new PaymentOutboxWriter(repository, new ObjectMapper());
 
-        writer.appendFunnelCompletePayment(null, 42L, "anon-1", null, OffsetDateTime.now());
-        writer.appendFunnelCompletePayment(" ", 42L, "anon-1", null, OffsetDateTime.now());
+        writer.appendFunnelCompletePayment(1L, null, 42L, "anon-1", null, OffsetDateTime.now());
+        writer.appendFunnelCompletePayment(1L, " ", 42L, "anon-1", null, OffsetDateTime.now());
 
         verify(repository, never()).insertPending(any(), any(), any(), any(), any());
     }

@@ -106,4 +106,27 @@ public class FunnelSession {
                 .updatedAt(now)
                 .build();
     }
+
+    /**
+     * 같은 세션에서 이후 배치가 새로 발견한 액션(자정을 걸친 세션, 결제 확정 지연 등)을
+     * 기존 요약에 반영한다. maxStepReached는 후퇴하지 않고, boothExplored/stepSkipped는
+     * 누적(OR)하며, lastActionAt은 더 늦은 시각으로만 갱신한다.
+     */
+    public void mergeLaterActions(
+            FunnelStep maxStepReachedFromNewActions,
+            boolean boothExploredFromNewActions,
+            boolean stepSkippedFromNewActions,
+            OffsetDateTime lastActionAtFromNewActions,
+            OffsetDateTime now) {
+        if (maxStepReachedFromNewActions.ordinal() > this.maxStepReached.ordinal()) {
+            this.maxStepReached = maxStepReachedFromNewActions;
+        }
+        this.dropped = this.maxStepReached != FunnelStep.COMPLETE_PAYMENT;
+        this.boothExplored = this.boothExplored || boothExploredFromNewActions;
+        this.stepSkipped = this.stepSkipped || stepSkippedFromNewActions;
+        if (lastActionAtFromNewActions.isAfter(this.lastActionAt)) {
+            this.lastActionAt = lastActionAtFromNewActions;
+        }
+        this.updatedAt = now;
+    }
 }

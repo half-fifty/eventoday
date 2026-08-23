@@ -268,6 +268,7 @@ class TicketOrderServiceTest {
         ticketOrderService.create(1L, null, request);
 
         verify(paymentOutboxWriter).appendFunnelCompletePayment(
+            eq((Long) null),
             eq("session-1"),
             eq(1L),
             eq("anon-1"),

@@ -383,6 +383,7 @@ public class PaymentFinalizer {
             TicketOrder ticketOrder,
             OffsetDateTime now) {
         paymentOutboxWriter.appendFunnelCompletePayment(
+            ticketOrder.getId(),
             ticketOrder.getFunnelSessionId(),
             ticketOrder.getEventId(),
             ticketOrder.getFunnelAnonymousId(),

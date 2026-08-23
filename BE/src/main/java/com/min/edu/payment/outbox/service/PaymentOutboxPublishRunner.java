@@ -1,5 +1,7 @@
 package com.min.edu.payment.outbox.service;
 
+import java.time.Duration;
+
 import org.springframework.stereotype.Component;
 
 import com.min.edu.common.mail.EmailSender;
@@ -16,6 +18,8 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 @RequiredArgsConstructor
 public class PaymentOutboxPublishRunner {
+
+    private static final Duration FUNNEL_EVENT_SEND_TIMEOUT = Duration.ofSeconds(5);
 
     private final PaymentOutboxClaimService claimService;
     private final PaymentOutboxLeaseService leaseService;
@@ -73,10 +77,11 @@ public class PaymentOutboxPublishRunner {
         emailSender.send(emailFactory.create(payload));
     }
 
-    // 발행 자체(Kafka 전송)는 FunnelActionProducer가 비동기 콜백으로 성공/실패를 처리하므로
-    // 여기서는 예외를 던지지 않는다 — outbox는 "produce 호출까지 성공"을 기준으로 완료 처리한다.
+    // 브로커 ack을 기다렸다가 실패/타임아웃이면 예외를 던져 markSendFailure로 재시도되게 한다
+    // (fire-and-forget인 FunnelActionProducer.send와 달리, outbox는 실제 발행 성공을 기준으로
+    // 완료 처리해야 이벤트 유실을 막을 수 있다).
     private void publishFunnelEvent(PaymentOutboxEvent event) throws Exception {
         FunnelActionEventDto eventDto = objectMapper.readValue(event.getPayload(), FunnelActionEventDto.class);
-        funnelActionProducer.send(eventDto);
+        funnelActionProducer.sendAndWait(eventDto, FUNNEL_EVENT_SEND_TIMEOUT);
     }
 }

@@ -6,6 +6,7 @@ import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -29,7 +30,8 @@ import lombok.RequiredArgsConstructor;
 /**
  * 일일 배치가 Elasticsearch의 원본 FunnelAction을 session_id 기준으로 묶어
  * FunnelSession(+VisitorProfile)을 사후 계산한다 (technical-design.md 참고).
- * 이미 처리된 session_id는 건너뛰어, 배치를 다시 돌려도 중복 생성되지 않는다.
+ * 이미 처리된 session_id를 다시 만나면(같은 날짜 재실행, 또는 자정을 걸친 세션/결제 확정
+ * 지연으로 다음 날 배치가 나머지 액션을 발견한 경우) 새로 만들지 않고 기존 요약에 병합한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -72,7 +74,7 @@ public class FunnelSessionReconstructionService {
                 .forEach(this::reconstructSession);
     }
 
-    // 세션 하나를 판정해서 FunnelSession으로 저장한다. 이미 처리된 세션이면 건너뛴다(멱등).
+    // 세션 하나를 판정해서 FunnelSession으로 저장하거나, 이미 있으면 기존 요약에 병합한다.
     private void reconstructSession(List<FunnelAction> sessionActions) {
         FunnelAction first = sessionActions.get(0);
         // 원본 session_id는 30분 안에 여러 행사를 오가면 그대로 재사용될 수 있다(같은 브라우징 흐름).
@@ -80,16 +82,11 @@ public class FunnelSessionReconstructionService {
         // 행사별로 독립된 세션 레코드가 만들어진다.
         String storedSessionId = first.getSessionId() + ":" + first.getEventId();
 
-        if (funnelSessionRepository.findBySessionId(storedSessionId).isPresent()) {
-            return;
-        }
-
         Set<String> actionTypes = sessionActions.stream()
                 .map(FunnelAction::getActionType)
                 .collect(Collectors.toSet());
 
         FunnelStep maxStepReached = resolveMaxStep(actionTypes);
-        boolean dropped = maxStepReached != FunnelStep.COMPLETE_PAYMENT;
         boolean boothExplored = actionTypes.contains(BOOTH_LIST_ACTION_TYPE);
         boolean stepSkipped = resolveStepSkipped(actionTypes);
 
@@ -99,6 +96,17 @@ public class FunnelSessionReconstructionService {
                 .max(OffsetDateTime::compareTo)
                 .orElse(startedAt);
 
+        Optional<FunnelSession> existing = funnelSessionRepository.findBySessionId(storedSessionId);
+        if (existing.isPresent()) {
+            // 자정을 걸친 세션이나 결제 확정 지연으로 다음 날 배치가 나머지 액션을 발견한 경우 —
+            // 건너뛰면 늦게 도착한 COMPLETE_PAYMENT가 영구히 누락된다. 관리 상태 엔티티라
+            // 트랜잭션 커밋 시 더티 체킹으로 반영되므로 별도 save 호출이 필요 없다.
+            existing.get().mergeLaterActions(maxStepReached, boothExplored, stepSkipped, lastActionAt,
+                    OffsetDateTime.now());
+            return;
+        }
+
+        boolean dropped = maxStepReached != FunnelStep.COMPLETE_PAYMENT;
         String visitorKey = resolveVisitorKey(first);
         boolean returningVisitor =
                 recordVisitorProfile(visitorKey, first.getAnonymousId(), first.getUserId(), startedAt);

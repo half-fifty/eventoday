@@ -223,6 +223,7 @@ class PaymentFinalizerTest {
         paymentFinalizer.finalizePayment(10L, request(), tossResponse());
 
         verify(paymentOutboxWriter).appendFunnelCompletePayment(
+            eq(2L),
             eq("session-1"),
             eq(3L),
             eq("anon-1"),

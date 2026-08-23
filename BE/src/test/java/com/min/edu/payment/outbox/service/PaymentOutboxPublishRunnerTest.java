@@ -1,12 +1,16 @@
 package com.min.edu.payment.outbox.service;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Optional;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -84,14 +88,27 @@ class PaymentOutboxPublishRunnerTest {
     }
 
     @Test
-    void publish_funnelEventType_sendsToFunnelActionProducer() {
+    void publish_funnelEventType_waitsForBrokerAckThenMarksPublished() throws Exception {
         given(claimService.claim(2L, "owner-1")).willReturn(Optional.of(funnelEvent()));
         given(leaseService.renew(2L, "owner-1")).willReturn(true);
 
         runner.publish(2L, "owner-1");
 
-        verify(funnelActionProducer).send(any(FunnelActionEventDto.class));
+        verify(funnelActionProducer).sendAndWait(any(FunnelActionEventDto.class), any(Duration.class));
         verify(resultService).markPublished(2L, "owner-1");
+    }
+
+    @Test
+    void publish_funnelEventKafkaSendFails_marksRetryInsteadOfPublished() throws Exception {
+        given(claimService.claim(2L, "owner-1")).willReturn(Optional.of(funnelEvent()));
+        given(leaseService.renew(2L, "owner-1")).willReturn(true);
+        willThrow(new TimeoutException("ack 없음"))
+            .given(funnelActionProducer).sendAndWait(any(FunnelActionEventDto.class), any(Duration.class));
+
+        runner.publish(2L, "owner-1");
+
+        verify(resultService).markSendFailure(eq(2L), eq("owner-1"), any(TimeoutException.class));
+        verify(resultService, never()).markPublished(any(), any());
     }
 
     private PaymentOutboxEvent event() {
