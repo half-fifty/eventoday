@@ -44,6 +44,12 @@ public class BoothReviewResponse {
 
     private boolean reportedByMe;  // 조회하는 회원이 이미 이 리뷰를 신고했는지 (비로그인/본인 리뷰는 항상 false)
 
+    private long helpfulCount;  // "도움이 돼요" 누적 수
+
+    private boolean helpfulByMe;  // 조회하는 회원이 이미 "도움이 돼요"를 눌렀는지 (비로그인/본인 리뷰는 항상 false)
+
+    private boolean trustedReview;  // helpfulCount가 임계치 이상이면 true ("믿을 수 있는 리뷰" 뱃지 표시용)
+
     private boolean mine;  // 조회하는 회원 본인이 작성한 리뷰인지 - 공개 목록은 memberId를 안 내려주므로
                             // 프론트가 "내 리뷰"를 판별(예: 신고 버튼 숨김)하려면 이 값을 써야 한다
 

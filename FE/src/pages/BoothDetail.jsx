@@ -8,7 +8,7 @@ import { listReservationSlots, getMyReservation, createReservation, cancelReserv
 import { getVenueMapMarkersWithCongestion } from "../api/venueMapApi.js";
 import {
   listReviews, createReview, updateReview, deleteReview, getMyReviews, getReviewSummary,
-  searchReviews, reportReview, cancelReport,
+  searchReviews, reportReview, cancelReport, markHelpful, unmarkHelpful,
 } from "../api/boothReviewApi.js";
 import { fileDownloadUrl, uploadFile } from "../api/fileApi.js";
 import BoothReviewSummaryCard from "../components/BoothReviewSummaryCard.jsx";
@@ -103,6 +103,9 @@ export default function BoothDetail() {
   const [reportError, setReportError] = useState("");
   const [reportSubmittingId, setReportSubmittingId] = useState(null);
   const [cancelingReportId, setCancelingReportId] = useState(null);
+
+  // "도움이 돼요" 등록/취소 처리 중인 리뷰 id
+  const [helpfulSubmittingId, setHelpfulSubmittingId] = useState(null);
 
   const loadReservationInfo = () => setReloadToken((value) => value + 1);
 
@@ -481,6 +484,42 @@ export default function BoothDetail() {
     }
   };
 
+  const handleMarkHelpful = async (reviewId) => {
+    if (helpfulSubmittingId) return;
+    const requestedBoothId = boothId;
+    setHelpfulSubmittingId(reviewId);
+    try {
+      await markHelpful(boothId, reviewId);
+      if (currentBoothIdRef.current !== requestedBoothId) return;
+      setReviews((prev) => prev.map((r) => (r.id === reviewId
+        ? { ...r, helpfulByMe: true, helpfulCount: r.helpfulCount + 1, trustedReview: r.trustedReview || r.helpfulCount + 1 >= 3 }
+        : r)));
+    } catch (requestError) {
+      if (currentBoothIdRef.current !== requestedBoothId) return;
+      setReviewsError(requestError.message || "도움이 돼요 등록에 실패했습니다.");
+    } finally {
+      if (currentBoothIdRef.current === requestedBoothId) setHelpfulSubmittingId(null);
+    }
+  };
+
+  const handleUnmarkHelpful = async (reviewId) => {
+    if (helpfulSubmittingId) return;
+    const requestedBoothId = boothId;
+    setHelpfulSubmittingId(reviewId);
+    try {
+      await unmarkHelpful(boothId, reviewId);
+      if (currentBoothIdRef.current !== requestedBoothId) return;
+      setReviews((prev) => prev.map((r) => (r.id === reviewId
+        ? { ...r, helpfulByMe: false, helpfulCount: Math.max(0, r.helpfulCount - 1), trustedReview: r.helpfulCount - 1 >= 3 }
+        : r)));
+    } catch (requestError) {
+      if (currentBoothIdRef.current !== requestedBoothId) return;
+      setReviewsError(requestError.message || "도움이 돼요 취소에 실패했습니다.");
+    } finally {
+      if (currentBoothIdRef.current === requestedBoothId) setHelpfulSubmittingId(null);
+    }
+  };
+
   const toggleInterest = async () => {
     if (!booth || togglingInterest) return;
     const requestedBoothId = boothId;
@@ -814,6 +853,7 @@ export default function BoothDetail() {
                       <option value="LATEST">최신순</option>
                       <option value="RATING_DESC">별점 높은순</option>
                       <option value="RATING_ASC">별점 낮은순</option>
+                      <option value="HELPFUL_DESC">도움순</option>
                     </select>
                   </form>
 
@@ -831,6 +871,9 @@ export default function BoothDetail() {
                               <span className="text-caption font-body-strong">{review.memberName}</span>
                               {review.mine && (
                                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-container/10 text-primary-focus">내 후기</span>
+                              )}
+                              {review.trustedReview && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">믿을 수 있는 리뷰</span>
                               )}
                             </div>
                             <span className="text-[11px] text-ink-muted">
@@ -856,6 +899,26 @@ export default function BoothDetail() {
                               <p className="text-caption text-on-surface-variant mt-0.5">{review.reply.content}</p>
                             </div>
                           )}
+
+                          <div className="mt-1 flex items-center gap-sm">
+                            {!review.mine && isAuthenticated ? (
+                              <button
+                                onClick={() => (review.helpfulByMe ? handleUnmarkHelpful(review.id) : handleMarkHelpful(review.id))}
+                                disabled={helpfulSubmittingId === review.id}
+                                className={`text-[11px] flex items-center gap-0.5 disabled:opacity-40 ${review.helpfulByMe ? "text-primary font-body-strong" : "text-ink-muted"}`}
+                              >
+                                <Icon name="thumb_up" fill={review.helpfulByMe} className="text-[13px]" />
+                                도움이 돼요{review.helpfulCount > 0 ? ` ${review.helpfulCount}` : ""}
+                              </button>
+                            ) : (
+                              review.helpfulCount > 0 && (
+                                <span className="text-[11px] text-ink-muted flex items-center gap-0.5">
+                                  <Icon name="thumb_up" className="text-[13px]" />
+                                  도움이 돼요 {review.helpfulCount}
+                                </span>
+                              )
+                            )}
+                          </div>
 
                           {!review.mine && isAuthenticated && (
                             <div className="mt-1">
