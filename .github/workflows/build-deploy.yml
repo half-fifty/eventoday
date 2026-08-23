@@ -283,6 +283,33 @@ jobs:
           exit 1
 
       # ----------------------------------------------------------------
+      # 진단용: 위 단계가 실패했을 때만(Ready 안 된 파드가 있을 때) 원인을 로그에 남긴다.
+      # ----------------------------------------------------------------
+      - name: Dump not-ready pod diagnostics
+        if: failure()
+        run: |
+          set +e
+
+          echo "=== kubectl get pods -n eventoday -o wide ==="
+          sudo kubectl get pods -n eventoday -o wide
+
+          NOT_READY_PODS=$(sudo kubectl get pods -n eventoday \
+            -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[0].ready}{"\n"}{end}' \
+            | awk '$2 != "true" {print $1}')
+
+          for pod in ${NOT_READY_PODS}; do
+            echo
+            echo "=== describe ${pod} ==="
+            sudo kubectl describe pod "${pod}" -n eventoday
+            echo
+            echo "=== logs ${pod} (current) ==="
+            sudo kubectl logs "${pod}" -n eventoday --tail=300
+            echo
+            echo "=== logs ${pod} (previous, if restarted) ==="
+            sudo kubectl logs "${pod}" -n eventoday --tail=300 --previous || true
+          done
+
+      # ----------------------------------------------------------------
       # 실제 Deployment에 원하는 이미지가 적용됐는지 검증
       # ----------------------------------------------------------------
       - name: Verify deployed images
