@@ -58,6 +58,10 @@ public class SecurityConfig {
                                 "/auth/business/login"
                         ).permitAll()
                         .requestMatchers("/auth/me").authenticated()
+                        // AI 호출은 외부 API 비용이 발생한다. 서비스 레이어에서 관리자 여부를 다시 검증하지만,
+                        // 비로그인 요청이 서비스까지 도달하지 않도록 인증 단계에서 먼저 막는다.
+                        .requestMatchers("/v1/admin/ai/**").authenticated()
+                        .requestMatchers("/v1/events/*/ai/**").authenticated()
                         .requestMatchers("/admin/organization-signups/**").authenticated()
                         .requestMatchers("/notifications/**").authenticated()
                         // PUBLIC 파일(공개 평면도 이미지 등)은 비로그인 사용자도 내려받을 수 있어야 한다.

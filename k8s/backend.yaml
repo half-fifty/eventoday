@@ -19,7 +19,7 @@ spec:
         - name: ghcr-pull-secret
       containers:
         - name: eventoday-be
-          image: ghcr.io/half-fifty/eventoday-be:5d08a404e44328587516eecffe62233b951cc8d5
+          image: ghcr.io/half-fifty/eventoday-be:dea3ff5474dc9cfa0a0e67dafb47f23bb0c35a7c
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -55,6 +55,10 @@ spec:
               value: "https://eventoday.duckdns.org"
             - name: COOKIE_SECURE
               value: "true"
+            - name: ELASTICSEARCH_URIS
+              value: "http://eventoday-elasticsearch:9200"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "eventoday-kafka:9092"
           envFrom:
             - secretRef:
                 name: eventoday-secret

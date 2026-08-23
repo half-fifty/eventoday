@@ -3,7 +3,6 @@ package com.min.edu.payment.service;
 import java.time.OffsetDateTime;
 
 import org.springframework.stereotype.Component;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.min.edu.common.exception.BusinessException;
@@ -11,6 +10,9 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
+import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderType;
@@ -19,7 +21,7 @@ import com.min.edu.payment.domain.PaymentVirtualAccount;
 import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.dto.request.ConfirmPaymentRequest;
 import com.min.edu.payment.dto.response.ConfirmPaymentResponse;
-import com.min.edu.payment.event.TicketReservationCompletedEvent;
+import com.min.edu.payment.outbox.service.PaymentOutboxWriter;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.PaymentVirtualAccountRepository;
@@ -45,16 +47,20 @@ public class PaymentFinalizer {
     private final TicketExchangeCodeIssuer ticketExchangeCodeIssuer;
     private final AdvertisementRepository advertisementRepository;
     private final EventRepository eventRepository;
-    private final ApplicationEventPublisher applicationEventPublisher;
+    private final PaymentAuditLogWriter auditLogWriter;
+    private final PaymentOutboxWriter paymentOutboxWriter;
 
     @Transactional
     public ConfirmPaymentResponse finalizePayment(
+            Long requesterMemberId,
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse) {
         return finalizePayment(
+            requesterMemberId,
             request,
             tossResponse,
-            properties.getFinalizationLockTimeoutMs()
+            properties.getFinalizationLockTimeoutMs(),
+            PaymentAuditSource.CONFIRM
         );
     }
 
@@ -63,16 +69,46 @@ public class PaymentFinalizer {
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse) {
         return finalizePayment(
+            null,
             request,
             tossResponse,
-            properties.getWebhookFinalizationLockTimeoutMs()
+            properties.getWebhookFinalizationLockTimeoutMs(),
+            PaymentAuditSource.WEBHOOK
+        );
+    }
+
+    @Transactional
+    public ConfirmPaymentResponse finalizePaymentFromReconciliation(
+            ConfirmPaymentRequest request,
+            TossConfirmResponse tossResponse) {
+        return finalizePayment(
+            null,
+            request,
+            tossResponse,
+            properties.getWebhookFinalizationLockTimeoutMs(),
+            PaymentAuditSource.RECONCILIATION
+        );
+    }
+
+    @Transactional
+    public ConfirmPaymentResponse finalizePaymentFromExpiration(
+            ConfirmPaymentRequest request,
+            TossConfirmResponse tossResponse) {
+        return finalizePayment(
+            null,
+            request,
+            tossResponse,
+            properties.getWebhookFinalizationLockTimeoutMs(),
+            PaymentAuditSource.EXPIRATION
         );
     }
 
     private ConfirmPaymentResponse finalizePayment(
+            Long requesterMemberId,
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse,
-            long lockTimeoutMs) {
+            long lockTimeoutMs,
+            PaymentAuditSource source) {
         setLocalLockTimeout(lockTimeoutMs);
 
         PaymentOrder paymentOrder = paymentOrderRepository
@@ -108,6 +144,7 @@ public class PaymentFinalizer {
             .orElse(null);
 
         OffsetDateTime now = OffsetDateTime.now();
+        String fromStatus = paymentOrder.getStatus();
         Payment payment = completePayment(
             existingPayment,
             paymentOrder,
@@ -117,10 +154,25 @@ public class PaymentFinalizer {
         );
 
         markPaymentOrderPaid(paymentOrder, now);
+        auditLogWriter.append(
+            paymentOrder.getId(),
+            payment.getId(),
+            null,
+            PaymentAuditEventType.PAYMENT_PAID,
+            fromStatus,
+            paymentOrder.getStatus(),
+            source,
+            null,
+            actorType(source, requesterMemberId),
+            actorId(source, requesterMemberId),
+            null,
+            now
+        );
         if (ticketOrder != null) {
             ticketOrder.confirm(tossResponse.approvedAt(), now);
             ticketExchangeCodeIssuer.issueIfAbsent(ticketOrder, paymentOrder.getBuyerMemberId(), now);
             publishGuestReservationCompleted(paymentOrder, ticketOrder);
+            publishFunnelCompletePayment(paymentOrder, ticketOrder, now);
             return ConfirmPaymentResponse.of(payment, paymentOrder.getOrderNo(), ticketOrder);
         }
         advertisement.markPaid(now);
@@ -296,6 +348,16 @@ public class PaymentFinalizer {
             .getSingleResult();
     }
 
+    private PaymentAuditActorType actorType(PaymentAuditSource source, Long requesterMemberId) {
+        return source == PaymentAuditSource.CONFIRM
+            ? PaymentAuditActorType.fromRequester(requesterMemberId)
+            : PaymentAuditActorType.SYSTEM;
+    }
+
+    private Long actorId(PaymentAuditSource source, Long requesterMemberId) {
+        return source == PaymentAuditSource.CONFIRM ? requesterMemberId : null;
+    }
+
     private void publishGuestReservationCompleted(
             PaymentOrder paymentOrder,
             TicketOrder ticketOrder) {
@@ -308,10 +370,25 @@ public class PaymentFinalizer {
         String eventName = eventRepository.findById(ticketOrder.getEventId())
             .map(event -> event.getName())
             .orElse("");
-        applicationEventPublisher.publishEvent(new TicketReservationCompletedEvent(
+        paymentOutboxWriter.appendTicketReservationConfirmation(
             paymentOrder.getOrderNo(),
             paymentOrder.getBuyerEmail(),
             eventName
-        ));
+        );
+    }
+
+    // 게스트/회원 구분 없이 결제완료는 항상 퍼널에 반영한다 (게스트 예약메일 발송과는 독립적).
+    private void publishFunnelCompletePayment(
+            PaymentOrder paymentOrder,
+            TicketOrder ticketOrder,
+            OffsetDateTime now) {
+        paymentOutboxWriter.appendFunnelCompletePayment(
+            ticketOrder.getId(),
+            ticketOrder.getFunnelSessionId(),
+            ticketOrder.getEventId(),
+            ticketOrder.getFunnelAnonymousId(),
+            paymentOrder.getBuyerMemberId(),
+            now
+        );
     }
 }

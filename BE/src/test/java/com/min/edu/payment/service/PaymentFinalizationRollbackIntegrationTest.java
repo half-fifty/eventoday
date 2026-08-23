@@ -105,6 +105,12 @@ class PaymentFinalizationRollbackIntegrationTest {
             .isEqualTo(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT);
 
         assertThat(paymentRepository.findByPaymentOrderId(paymentOrder.getId())).isEmpty();
+        Integer auditLogCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM payment_audit_logs WHERE payment_order_id = ?",
+            Integer.class,
+            paymentOrder.getId()
+        );
+        assertThat(auditLogCount).isZero();
         PaymentOrder reloadedPaymentOrder = paymentOrderRepository
             .findById(paymentOrder.getId())
             .orElseThrow();

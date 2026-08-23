@@ -41,7 +41,8 @@ public class FunnelSession {
     @Column(name = "id")
     private Long id;
 
-    @Column(name = "session_id", nullable = false, length = 36)
+    // 원본 세션 UUID(36자) + ":" + event_id 조합으로 저장되므로 UUID 길이보다 여유를 둔다.
+    @Column(name = "session_id", nullable = false, length = 80)
     private String sessionId;
 
     @Column(name = "event_id", nullable = false)
@@ -104,5 +105,28 @@ public class FunnelSession {
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
+    }
+
+    /**
+     * 같은 세션에서 이후 배치가 새로 발견한 액션(자정을 걸친 세션, 결제 확정 지연 등)을
+     * 기존 요약에 반영한다. maxStepReached는 후퇴하지 않고, boothExplored/stepSkipped는
+     * 누적(OR)하며, lastActionAt은 더 늦은 시각으로만 갱신한다.
+     */
+    public void mergeLaterActions(
+            FunnelStep maxStepReachedFromNewActions,
+            boolean boothExploredFromNewActions,
+            boolean stepSkippedFromNewActions,
+            OffsetDateTime lastActionAtFromNewActions,
+            OffsetDateTime now) {
+        if (maxStepReachedFromNewActions.ordinal() > this.maxStepReached.ordinal()) {
+            this.maxStepReached = maxStepReachedFromNewActions;
+        }
+        this.dropped = this.maxStepReached != FunnelStep.COMPLETE_PAYMENT;
+        this.boothExplored = this.boothExplored || boothExploredFromNewActions;
+        this.stepSkipped = this.stepSkipped || stepSkippedFromNewActions;
+        if (lastActionAtFromNewActions.isAfter(this.lastActionAt)) {
+            this.lastActionAt = lastActionAtFromNewActions;
+        }
+        this.updatedAt = now;
     }
 }

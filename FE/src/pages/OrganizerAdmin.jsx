@@ -18,6 +18,7 @@ import { OrganizerExchangeCodeRequestPanel } from "../components/ExchangeCodeReq
 import FloorplanManagementPanel from "../components/FloorplanManagementPanel.jsx";
 import Icon from "../components/Icon.jsx";
 import OrganizerApplicationPanel from "../components/OrganizerApplicationPanel.jsx";
+import OrganizerFunnelPanel from "../components/OrganizerFunnelPanel.jsx";
 import RecruitmentManagementPanel from "../components/RecruitmentManagementPanel.jsx";
 import TopNav from "../components/TopNav.jsx";
 import useAuth from "../hooks/useAuth.js";
@@ -30,6 +31,7 @@ const navItems = [
   { key: "floorplan", label: "평면도 관리", icon: "map" },
   { key: "content", label: "공지·자료 관리", icon: "article" },
   { key: "exchange-codes", label: "외부 예매 티켓 연동", icon: "key" },
+  { key: "funnel", label: "퍼널 분석", icon: "insights" },
   { key: "approval", label: "행사 등록 승인 요청", icon: "verified" },
 ];
 
@@ -778,6 +780,9 @@ export default function OrganizerAdmin() {
               {page === "floorplan" && <FloorplanManagementPanel eventId={selectedEventId} />}
               {page === "content" && <ContentManagementPanel eventId={selectedEventId} />}
               {page === "exchange-codes" && <OrganizerExchangeCodeRequestPanel eventId={selectedEventId} />}
+              {page === "funnel" && (
+                <OrganizerFunnelPanel organizationId={organizationId} eventId={selectedEventId} />
+              )}
 
               {page === "approval" && (
                 <section className="space-y-lg">

@@ -179,6 +179,8 @@ class TicketOrderIdempotencyClaimConcurrencyTest {
             1,
             TicketOrderStatus.PENDING_PAYMENT,
             null,
+            null,
+            null,
             now
         );
     }

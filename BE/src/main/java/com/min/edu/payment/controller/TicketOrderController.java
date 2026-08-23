@@ -10,10 +10,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.response.ApiResponse;
+import com.min.edu.funnel.support.AnonymousIdCookieFactory;
 import com.min.edu.payment.dto.request.CreateTicketOrderRequest;
 import com.min.edu.payment.dto.response.CreateTicketOrderResponse;
 import com.min.edu.payment.service.TicketOrderService;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -23,13 +25,17 @@ import lombok.RequiredArgsConstructor;
 public class TicketOrderController {
 
     private final TicketOrderService ticketOrderService;
+    private final AnonymousIdCookieFactory anonymousIdCookieFactory;
 
     @PostMapping("/{eventId}/ticket-orders")
     public ApiResponse<CreateTicketOrderResponse> createTicketOrder(
             @PathVariable Long eventId,
             @AuthenticationPrincipal AuthenticatedMemberDto principal,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @Valid @RequestBody CreateTicketOrderRequest request) {
+            @Valid @RequestBody CreateTicketOrderRequest request,
+            HttpServletRequest httpServletRequest) {
+        request.setAnonymousId(anonymousIdCookieFactory.resolve(httpServletRequest));
+
         CreateTicketOrderResponse response = ticketOrderService.create(
             idempotencyKey,
             eventId,

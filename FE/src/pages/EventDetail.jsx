@@ -11,6 +11,7 @@ import Footer from "../components/Footer.jsx";
 import Icon from "../components/Icon.jsx";
 import TopNav from "../components/TopNav.jsx";
 import FileDownloadLink from "../components/FileDownloadLink.jsx";
+import RichTextViewer from "../components/RichTextViewer.jsx";
 import VenueMapPins from "../components/VenueMapPins.jsx";
 import BoothPinPopup from "../components/BoothPinPopup.jsx";
 import BoothRecommendationMessage from "../components/BoothRecommendationMessage.jsx";
@@ -20,6 +21,7 @@ import {
   isTicketOrderAdmissionRejected,
   MAX_ADMISSION_RETRIES,
 } from "../utils/ticketOrderAdmissionRetry.js";
+import useFunnelTracking, { resolveSessionId } from "../hooks/useFunnelTracking.js";
 
 const formatDateTime = (value) => value
   ? new Date(value).toLocaleString("ko-KR", { dateStyle: "long", timeStyle: "short" })
@@ -72,6 +74,7 @@ const isTicketSalesEnded = (event, now = Date.now()) => {
 export default function EventDetail() {
   const { eventId } = useParams();
   const { isAuthenticated } = useAuth();
+  const trackFunnelAction = useFunnelTracking(eventId, "VIEW_EVENT_DETAIL");
   const [event, setEvent] = useState(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [loading, setLoading] = useState(true);
@@ -272,6 +275,7 @@ export default function EventDetail() {
       const payload = {
         quantity: ticketQuantity,
         paymentMethod,
+        funnelSessionId: resolveSessionId(),
         ...(isAuthenticated ? {} : {
           buyer: {
             name: buyer.name.trim(),
@@ -378,6 +382,7 @@ export default function EventDetail() {
     setPurchaseInfo("");
     setTicketOrderIdempotencyKey(crypto.randomUUID());
     setPurchaseOpen(true);
+    trackFunnelAction("OPEN_PURCHASE_MODAL");
   };
 
   const now = currentTime;
@@ -434,7 +439,13 @@ export default function EventDetail() {
                         </button>
                         {expandedContentId === content.contentId && (
                           <div className="px-lg pb-lg space-y-sm">
-                            {content.content && <p className="text-caption whitespace-pre-line bg-surface-pearl rounded-lg p-md">{content.content}</p>}
+                            {/* 본문은 리치 텍스트 HTML이다. 리치 텍스트 도입 전에 저장된 평문은
+                                RichTextViewer가 태그 유무를 보고 줄바꿈을 유지해 렌더링한다. */}
+                            {content.content && (
+                              <div className="bg-surface-pearl rounded-lg p-md">
+                                <RichTextViewer html={content.content} />
+                              </div>
+                            )}
                             {/* fileName·fileSize: BE Summary에 포함된 원본 파일명·크기 (다운로드 파일명으로 사용) */}
                             {/* downloadUrl: 콘텐츠 첨부는 PRIVATE으로 저장되어 내부 다운로드 API로는
                                 업로더 본인만 접근할 수 있다. audience 검증을 통과한 응답에 실려 오는

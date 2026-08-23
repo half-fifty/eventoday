@@ -23,6 +23,7 @@ public enum GlobalErrorCode implements ErrorCode {
     EXCHANGE_CODE_GUEST_NOT_REDEEMABLE(HttpStatus.FORBIDDEN, "ADMISSION_403_002", "게스트 교환 코드는 이 API에서 사용할 수 없습니다."),
     ADMISSION_TICKET_ALREADY_EXISTS(HttpStatus.CONFLICT, "ADMISSION_409_013", "이미 입장 티켓이 발급된 교환 코드입니다."),
     ADMISSION_TICKET_QR_NOT_AVAILABLE(HttpStatus.CONFLICT, "ADMISSION_409_014", "현재 상태에서는 입장 QR을 조회할 수 없습니다."),
+    ADMISSION_DATA_INCONSISTENT(HttpStatus.CONFLICT, "ADMISSION_409_019", "입장 데이터가 일치하지 않습니다."),
     ADMISSION_QR_TOKEN_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "ADMISSION_500_002", "입장 QR 토큰 생성에 실패했습니다."),
     ADMISSION_QR_IMAGE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "ADMISSION_500_003", "입장 QR 이미지 생성에 실패했습니다."),
 
@@ -90,6 +91,7 @@ public enum GlobalErrorCode implements ErrorCode {
     PAYMENT_PROCESSING_CONFLICT(HttpStatus.CONFLICT, "PAYMENT_409_003", "현재 결제를 처리하고 있습니다. 잠시 후 다시 시도해주세요."),
     PAYMENT_DATA_INCONSISTENT(HttpStatus.CONFLICT, "PAYMENT_409_004", "결제 데이터가 일치하지 않습니다."),
     PAYMENT_KEY_ALREADY_USED(HttpStatus.CONFLICT, "PAYMENT_409_005", "이미 사용된 결제 키입니다."),
+    PAYMENT_CONFIRM_IN_PROGRESS(HttpStatus.CONFLICT, "PAYMENT_409_006", "현재 결제 승인을 처리하고 있습니다. 잠시 후 다시 시도해주세요."),
     PAYMENT_METHOD_MISMATCH(HttpStatus.BAD_REQUEST, "PAYMENT_400_004", "결제 수단이 일치하지 않습니다."),
     VIRTUAL_ACCOUNT_REQUIRED(HttpStatus.BAD_GATEWAY, "PAYMENT_502_003", "가상계좌 결제 정보가 부족합니다."),
     VIRTUAL_ACCOUNT_SECRET_MISMATCH(HttpStatus.FORBIDDEN, "PAYMENT_403_002", "가상계좌 결제 요청 검증에 실패했습니다."),
@@ -156,9 +158,16 @@ public enum GlobalErrorCode implements ErrorCode {
     BOOTH_REVIEW_COMMENT_BLOCKED(HttpStatus.BAD_REQUEST, "BOOTH_400_006", "부적절한 표현이 포함되어 있어 등록할 수 없습니다."),
     BOOTH_REVIEW_COMMENT_FLAGGED_BY_AI(HttpStatus.BAD_REQUEST, "BOOTH_400_007", "커뮤니티 가이드라인에 위배되는 내용으로 판단되어 등록할 수 없습니다."),
     BOOTH_REVIEW_ALREADY_REPORTED(HttpStatus.CONFLICT, "BOOTH_409_008", "이미 신고한 리뷰입니다."),
+    BOOTH_REVIEW_REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "BOOTH_404_003", "신고 내역을 찾을 수 없습니다."),
+    BOOTH_REVIEW_SELF_HELPFUL_NOT_ALLOWED(HttpStatus.FORBIDDEN, "BOOTH_403_004", "본인이 작성한 리뷰에는 '도움이 돼요'를 누를 수 없습니다."),
+    BOOTH_REVIEW_ALREADY_HELPFUL(HttpStatus.CONFLICT, "BOOTH_409_010", "이미 도움이 돼요를 누른 리뷰입니다."),
+    BOOTH_REVIEW_HELPFUL_NOT_FOUND(HttpStatus.NOT_FOUND, "BOOTH_404_004", "도움이 돼요 내역을 찾을 수 없습니다."),
     BOOTH_RESERVATION_SLOT_NOT_OPEN(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_010", "예약을 받지 않는 시간대입니다."),
     BOOTH_RESERVATION_SLOT_FULL(HttpStatus.CONFLICT, "BOOTH_409_009", "선택하신 시간대의 자리가 모두 찼습니다."),
-    VENUE_MAP_AUTO_LAYOUT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "BOOTH_503_002", "평면도 자동 배치 제안 서비스를 이용할 수 없습니다.");
+    VENUE_MAP_AUTO_LAYOUT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "BOOTH_503_002", "평면도 자동 배치 제안 서비스를 이용할 수 없습니다."),
+    // 공지·자료 AI 작성 보조 (부스 리뷰 요약과 별개로 관리한다)
+    CONTENT_AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "CONTENT_503_001", "AI 작성 기능을 사용할 수 없습니다. 잠시 후 다시 시도해주세요."),
+    CONTENT_AI_INVALID_RESPONSE(HttpStatus.SERVICE_UNAVAILABLE, "CONTENT_503_002", "AI 응답을 이해하지 못했습니다. 다시 시도해주세요.");
 
 
 

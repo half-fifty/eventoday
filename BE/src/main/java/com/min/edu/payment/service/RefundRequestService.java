@@ -87,6 +87,10 @@ public class RefundRequestService {
             if (shouldMarkRefundFailed(exception)) {
                 refundAttemptRecorder.markFailed(preparedRefund.getId());
             } else {
+                refundAttemptRecorder.markAmbiguous(
+                    preparedRefund.getId(),
+                    ambiguousReasonCode(exception)
+                );
                 logUncertainTossCancelResult(preparedRefund.getId(), payment, exception);
             }
             throw exception;
@@ -313,6 +317,16 @@ public class RefundRequestService {
         GlobalErrorCode errorCode = businessException.getErrorCode();
         return errorCode == GlobalErrorCode.REFUND_REJECTED
             || errorCode == GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID;
+    }
+
+    private String ambiguousReasonCode(RuntimeException exception) {
+        if (exception instanceof BusinessException businessException) {
+            return businessException.getErrorCode().name();
+        }
+        if (exception instanceof TossPaymentClientException tossException) {
+            return tossException.getErrorCode().name();
+        }
+        return exception.getClass().getSimpleName();
     }
 
     private void logUncertainTossCancelResult(

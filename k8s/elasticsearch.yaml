@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: eventoday-elasticsearch-data
+  namespace: eventoday
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eventoday-elasticsearch
+  namespace: eventoday
+  labels:
+    app: eventoday-elasticsearch
+spec:
+  replicas: 1
+  strategy:
+    # 단일 노드 + ReadWriteOnce PVC라 새 파드가 기존 파드와 동시에 볼륨을 잡을 수 없다.
+    # 기존 파드를 먼저 내린 뒤 새 파드를 띄운다 (배포 중 짧은 다운타임 발생, 분석용 스토어라 허용).
+    type: Recreate
+  selector:
+    matchLabels:
+      app: eventoday-elasticsearch
+  template:
+    metadata:
+      labels:
+        app: eventoday-elasticsearch
+    spec:
+      # 공식 이미지는 기본적으로 non-root(elasticsearch, uid 1000)로 동작한다.
+      # PVC 볼륨을 그 uid가 쓸 수 있도록 fsGroup을 맞춰준다.
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - containerPort: 9200
+            - containerPort: 9300
+          env:
+            - name: discovery.type
+              value: "single-node"
+            - name: xpack.security.enabled
+              value: "false"
+            - name: ES_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              memory: 1536Mi
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+          # httpGet 프로브는 응답 본문을 안 보고 HTTP 상태코드만 본다. /_cluster/health는
+          # 클러스터가 red여도 200을 반환할 수 있어서, 응답 본문의 status 필드까지 확인한다.
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "curl -sf http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"
+            failureThreshold: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "curl -sf http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 9200
+            periodSeconds: 15
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: eventoday-elasticsearch-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eventoday-elasticsearch
+  namespace: eventoday
+spec:
+  selector:
+    app: eventoday-elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200
+    - name: transport
+      port: 9300
+      targetPort: 9300

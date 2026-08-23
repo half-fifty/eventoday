@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import FileDownloadLink from "./FileDownloadLink.jsx";
 import Icon from "./Icon.jsx";
+import RichTextEditor from "./RichTextEditor.jsx";
+import ContentAiAssistant from "./ContentAiAssistant.jsx";
 import { ApiError } from "../api/apiClient.js";
+import { contentAiApi } from "../api/contentAiApi.js";
 import { createContent, deleteContent, listContents, updateContent } from "../api/contentApi.js";
 import useModalFocusTrap from "../hooks/useModalFocusTrap.js";
 
@@ -35,6 +38,14 @@ const EMPTY_FORM = {
 const formatDateTime = (value) =>
   value ? new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "-";
 
+// 목록 미리보기용 — 본문이 HTML이라 태그를 걷어내고 글자만 남긴다.
+// DOMParser는 문서를 파싱만 하고 스크립트를 실행하지 않는다.
+const toPreviewText = (html) => {
+  if (!html) return "";
+  const text = new DOMParser().parseFromString(html, "text/html").body.textContent || "";
+  return text.replace(/\s+/g, " ").trim();
+};
+
 // 서버 정렬(pinned DESC, publishedAt DESC)과 동일한 기준
 const sortContents = (list) =>
   (list || []).slice().sort((a, b) => {
@@ -65,6 +76,9 @@ export default function ContentManagementPanel({ eventId }) {
   // 삭제
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  // AI 작성 보조 — 결과를 적용하기 전까지 form을 건드리지 않는다
+  const [aiOpen, setAiOpen] = useState(false);
 
   // 목록 조회 세대 카운터.
   // 조회 응답이 도착했을 때 값이 바뀌어 있으면(탭 전환·행사 변경·등록/수정/삭제 후 재조회)
@@ -186,6 +200,30 @@ export default function ContentManagementPanel({ eventId }) {
       setSubmitting(false);
     }
   };
+
+  // AI 호출 — 현재 탭(공지/자료)과 공개 대상·자료 분류를 함께 보내야 맥락에 맞는 글이 나온다.
+  // eventId가 경로에 들어가므로 서버가 이 행사의 개최자인지 검증한다.
+  const generateWithAi = useCallback(
+    (payload, signal) =>
+      contentAiApi.generateEventContent(eventId, {
+        ...payload,
+        contentType: tab,
+        audience: form.audience,
+        resourceType: tab === "RESOURCE" ? (form.resourceType || null) : null,
+      }, signal),
+    [eventId, tab, form.audience, form.resourceType],
+  );
+
+  // AI 결과 적용 — 덮어쓰기 확인은 ContentAiAssistant 안에서 끝내고 여기로는 확정된 결과만 온다.
+  // 값이 없는 필드는 기존 입력을 그대로 둔다 (제목 추천은 본문을 건드리지 않는다).
+  const applyAiResult = useCallback((result) => {
+    setForm((prev) => ({
+      ...prev,
+      title: result.title || prev.title,
+      content: result.content ?? prev.content,
+    }));
+    setAiOpen(false);
+  }, []);
 
   const handleDelete = async () => {
     // 중복 클릭 시 DELETE가 두 번 나가 두 번째가 404로 실패하는 것을 막는다
@@ -310,13 +348,25 @@ export default function ContentManagementPanel({ eventId }) {
             </div>
 
             <div>
-              <label htmlFor="content-body" className="mb-1 block text-caption text-ink-muted">내용</label>
-              <textarea
-                id="content-body"
-                className="min-h-[120px] w-full resize-y rounded-lg border border-hairline bg-white px-md py-sm text-caption focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              <div className="mb-1 flex items-center justify-between gap-sm">
+                <span className="text-caption text-ink-muted">내용</span>
+                {/* AI는 작성 보조일 뿐이라 등록 버튼과 떨어뜨려 배치한다 */}
+                <button
+                  type="button"
+                  onClick={() => setAiOpen(true)}
+                  disabled={submitting}
+                  className="inline-flex items-center gap-xxs rounded-full border border-primary/40 px-md py-xs text-caption text-primary hover:bg-primary/5 transition-colors disabled:opacity-40"
+                >
+                  <Icon name="auto_awesome" className="text-[15px]" />
+                  AI로 작성하기
+                </button>
+              </div>
+              {/* 서식·이미지·표가 들어간 공지·자료를 작성할 수 있도록 리치 텍스트 에디터를 사용한다.
+                  입력값은 HTML이며 저장 시 서버(HtmlSanitizer)가 허용 태그만 남긴다. */}
+              <RichTextEditor
                 value={form.content}
-                onChange={(e) => setForm((p) => ({ ...p, content: e.target.value }))}
-                placeholder="내용을 입력하세요"
+                onChange={(html) => setForm((p) => ({ ...p, content: html }))}
+                disabled={submitting}
               />
             </div>
 
@@ -445,7 +495,7 @@ export default function ContentManagementPanel({ eventId }) {
 
                 <p className="truncate font-body-strong text-[14px]">{item.title}</p>
                 {item.content && (
-                  <p className="mt-1 line-clamp-2 whitespace-pre-line text-caption text-ink-muted">{item.content}</p>
+                  <p className="mt-1 line-clamp-2 text-caption text-ink-muted">{toPreviewText(item.content)}</p>
                 )}
 
                 {/* CONTENT-006/007: 첨부파일 다운로드.
@@ -481,6 +531,16 @@ export default function ContentManagementPanel({ eventId }) {
           ))}
         </div>
       )}
+
+      {/* AI 작성 보조 — 결과 적용 전까지 폼을 건드리지 않는다 */}
+      <ContentAiAssistant
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        onApply={applyAiResult}
+        onGenerate={generateWithAi}
+        currentTitle={form.title}
+        currentContent={form.content}
+      />
 
       {/* 삭제 확인 모달 (CONTENT-API-005) */}
       {deleteTarget && (

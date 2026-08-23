@@ -30,6 +30,14 @@ public interface PaymentOrderRepository extends JpaRepository<PaymentOrder, Long
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
+        SELECT p
+        FROM PaymentOrder p
+        WHERE p.id = :id
+        """)
+    Optional<PaymentOrder> findByIdForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
         SELECT po
         FROM PaymentOrder po
         JOIN Payment p ON p.paymentOrderId = po.id
@@ -50,6 +58,24 @@ public interface PaymentOrderRepository extends JpaRepository<PaymentOrder, Long
         """)
     List<PaymentOrder> findExpiredPendingVirtualAccountOrders(
         @Param("now") OffsetDateTime now,
+        Pageable pageable
+    );
+
+    @Query("""
+        SELECT po
+        FROM PaymentOrder po
+        WHERE po.requestedPaymentMethod = com.min.edu.payment.domain.PaymentMethod.VIRTUAL_ACCOUNT
+            AND po.status = 'PENDING'
+            AND po.createdAt <= :threshold
+            AND NOT EXISTS (
+                SELECT 1
+                FROM Payment p
+                WHERE p.paymentOrderId = po.id
+            )
+        ORDER BY po.createdAt ASC, po.id ASC
+        """)
+    List<PaymentOrder> findSuspiciousPendingVirtualAccountOrders(
+        @Param("threshold") OffsetDateTime threshold,
         Pageable pageable
     );
 }

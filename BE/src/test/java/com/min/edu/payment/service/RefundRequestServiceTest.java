@@ -352,7 +352,7 @@ class RefundRequestServiceTest {
             10L,
             null,
             1L,
-            refundRequestWithAccount("KB 국민")
+            refundRequestWithAccount("KB")
         ))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
@@ -535,6 +535,10 @@ class RefundRequestServiceTest {
             .isEqualTo(GlobalErrorCode.PAYMENT_GATEWAY_TIMEOUT);
 
         verify(refundAttemptRecorder, never()).markFailed(preparedRefund.getId());
+        verify(refundAttemptRecorder).markAmbiguous(
+            preparedRefund.getId(),
+            GlobalErrorCode.PAYMENT_GATEWAY_TIMEOUT.name()
+        );
         verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
     }
 
@@ -558,6 +562,10 @@ class RefundRequestServiceTest {
             .isEqualTo(GlobalErrorCode.PAYMENT_GATEWAY_ERROR);
 
         verify(refundAttemptRecorder, never()).markFailed(preparedRefund.getId());
+        verify(refundAttemptRecorder).markAmbiguous(
+            preparedRefund.getId(),
+            GlobalErrorCode.PAYMENT_GATEWAY_ERROR.name()
+        );
         verify(refundFinalizer, never()).finalizeRefund(any(), any(), any(), any(), any());
     }
 

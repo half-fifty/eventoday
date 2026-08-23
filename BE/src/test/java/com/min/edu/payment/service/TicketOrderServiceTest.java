@@ -20,7 +20,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
 import com.min.edu.admission.domain.ExchangeCode;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
@@ -39,7 +38,7 @@ import com.min.edu.payment.dto.response.CreateTicketOrderResponse;
 import com.min.edu.payment.event.EventTicketReader;
 import com.min.edu.payment.event.EventTicketSnapshot;
 import com.min.edu.payment.event.TicketInventoryGateway;
-import com.min.edu.payment.event.TicketReservationCompletedEvent;
+import com.min.edu.payment.outbox.service.PaymentOutboxWriter;
 import com.min.edu.payment.policy.TicketOrderPolicy;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.TicketOrderIdempotencyRequestRepository;
@@ -78,7 +77,7 @@ class TicketOrderServiceTest {
     private OrderAccessTokenProvider orderAccessTokenProvider;
 
     @Mock
-    private ApplicationEventPublisher applicationEventPublisher;
+    private PaymentOutboxWriter paymentOutboxWriter;
 
     private TicketOrderPolicy ticketOrderPolicy;
 
@@ -99,7 +98,7 @@ class TicketOrderServiceTest {
             exchangeCodeGenerator,
             ticketOrderPolicy,
             orderAccessTokenProvider,
-            applicationEventPublisher
+            paymentOutboxWriter
         );
     }
 
@@ -225,7 +224,7 @@ class TicketOrderServiceTest {
                 assertThat(exchangeCode.getHolderMemberId()).isEqualTo(10L));
         assertThat(response.getPaymentRequired()).isFalse();
         assertThat(response.getExchangeCodes()).hasSize(2);
-        verify(applicationEventPublisher, never()).publishEvent(any());
+        verify(paymentOutboxWriter, never()).appendTicketReservationConfirmation(any(), any(), any());
     }
 
     @Test
@@ -249,12 +248,33 @@ class TicketOrderServiceTest {
         assertThat(exchangeCaptor.getValue().getHolderMemberId()).isNull();
         assertThat(response.getOrderAccessToken()).isEqualTo("guest-order-token");
 
-        ArgumentCaptor<TicketReservationCompletedEvent> eventCaptor =
-            ArgumentCaptor.forClass(TicketReservationCompletedEvent.class);
-        verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().orderNo()).isEqualTo("EVT-20260803-A81C29F4307B");
-        assertThat(eventCaptor.getValue().buyerEmail()).isEqualTo("guest@example.com");
-        assertThat(eventCaptor.getValue().eventName()).isEqualTo("테스트 행사");
+        verify(paymentOutboxWriter).appendTicketReservationConfirmation(
+            "EVT-20260803-A81C29F4307B",
+            "guest@example.com",
+            "test-event"
+        );
+    }
+
+    @Test
+    void create_createsFreeOrder_publishesFunnelCompletePayment() {
+        givenDefaultOrderDependencies(freeEvent());
+        given(exchangeCodeGenerator.generate()).willReturn("A1B2-C3D4-E5F6");
+        when(exchangeCodeRepository.save(any(ExchangeCode.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        CreateTicketOrderRequest request = new CreateTicketOrderRequest(
+            1, new GuestBuyerRequest("guest", "guest@example.com", "010-1234-5678"),
+            null, "session-1", "anon-1");
+
+        ticketOrderService.create(1L, null, request);
+
+        verify(paymentOutboxWriter).appendFunnelCompletePayment(
+            eq((Long) null),
+            eq("session-1"),
+            eq(1L),
+            eq("anon-1"),
+            eq((Long) null),
+            any(OffsetDateTime.class)
+        );
     }
 
     @Test
@@ -370,7 +390,7 @@ class TicketOrderServiceTest {
     private EventTicketSnapshot event(BigDecimal ticketPrice) {
         return new EventTicketSnapshot(
             1L,
-            "테스트 행사",
+            "test-event",
             EventStatus.PUBLISHED,
             ticketPrice,
             10,

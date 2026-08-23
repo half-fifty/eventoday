@@ -5,5 +5,6 @@ package com.min.edu.booth.dto;
 public enum BoothReviewSortOption {
     LATEST,
     RATING_DESC,
-    RATING_ASC
+    RATING_ASC,
+    HELPFUL_DESC
 }
