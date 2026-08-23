@@ -319,6 +319,20 @@ class FunnelSessionReconstructionServiceTest {
     }
 
     @Test
+    void reconstruct_repositoryReturnsNullWindowForEmptyDay_completesWithoutThrowing() {
+        // Spring Data ES가 해당 날짜에 액션이 하나도 없을 때 빈 Window 대신 null을 돌려주는
+        // 경우를 재현한다 (실제 운영에서 당일 재구성 시 NPE로 500이 발생했던 케이스).
+        given(funnelActionRepository.findFirst500ByEventIdAndReceivedAtBetweenOrderBySessionIdAscActionIdAsc(
+                eq(EVENT_ID), any(), any(), any()))
+                .willReturn(null);
+
+        service.reconstruct(EVENT_ID, TARGET_DATE);
+
+        verify(funnelSessionRepository, never()).save(any());
+        verify(visitorProfileRepository, never()).findByVisitorKey(any());
+    }
+
+    @Test
     void reconstructForAdmin_nullActor_throwsForbidden() {
         assertThatThrownBy(() -> service.reconstructForAdmin(EVENT_ID, TARGET_DATE, null))
                 .isInstanceOf(BusinessException.class);
