@@ -62,7 +62,7 @@ public class FunnelSessionSummaryService {
     public FunnelEventRankingResponse rankEventsByDate(LocalDate reportDate, AuthenticatedMemberDto actor) {
         requireAdmin(actor);
 
-        List<FunnelSession> sessions = funnelSessionRepository.findByStartedAtBetween(
+        List<FunnelSession> sessions = funnelSessionRepository.findByStartedAtGreaterThanEqualAndStartedAtLessThan(
                 reportDate.atStartOfDay(KST).toOffsetDateTime(),
                 reportDate.plusDays(1).atStartOfDay(KST).toOffsetDateTime());
 
@@ -87,8 +87,8 @@ public class FunnelSessionSummaryService {
         OffsetDateTime dayStart = reportDate.atStartOfDay(KST).toOffsetDateTime();
         OffsetDateTime dayEnd = reportDate.plusDays(1).atStartOfDay(KST).toOffsetDateTime();
 
-        List<FunnelSession> sessions =
-                funnelSessionRepository.findByEventIdAndStartedAtBetween(eventId, dayStart, dayEnd);
+        List<FunnelSession> sessions = funnelSessionRepository
+                .findByEventIdAndStartedAtGreaterThanEqualAndStartedAtLessThan(eventId, dayStart, dayEnd);
 
         return new FunnelSessionSummaryResponse(
                 eventId,

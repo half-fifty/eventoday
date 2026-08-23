@@ -23,6 +23,9 @@ import lombok.NoArgsConstructor;
 @Builder
 public class TicketOrder {
 
+    private static final int FUNNEL_SESSION_ID_MAX_LENGTH = 80;
+    private static final int FUNNEL_ANONYMOUS_ID_MAX_LENGTH = 100;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
@@ -77,11 +80,17 @@ public class TicketOrder {
             .totalQuantity(totalQuantity)
             .status(status.name())
             .confirmedAt(confirmedAt)
-            .funnelSessionId(funnelSessionId)
-            .funnelAnonymousId(funnelAnonymousId)
+            .funnelSessionId(sanitizeFunnelValue(funnelSessionId, FUNNEL_SESSION_ID_MAX_LENGTH))
+            .funnelAnonymousId(sanitizeFunnelValue(funnelAnonymousId, FUNNEL_ANONYMOUS_ID_MAX_LENGTH))
             .createdAt(now)
             .updatedAt(now)
             .build();
+    }
+
+    // 분석용 값이라 형식이 안 맞아도 주문 생성 자체를 막으면 안 된다 — 컬럼 길이를 넘으면
+    // INSERT 실패로 주문 전체가 롤백되는 대신 조용히 버린다.
+    private static String sanitizeFunnelValue(String value, int maxLength) {
+        return (value != null && value.length() > maxLength) ? null : value;
     }
 
     public boolean isPendingPayment() {

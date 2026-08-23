@@ -91,7 +91,7 @@ class FunnelSessionSummaryServiceTest {
                 session("s2", FunnelStep.OPEN_PURCHASE_MODAL, true, false, true),
                 session("s3", FunnelStep.VIEW_EVENT_DETAIL, true, false, false),
                 session("s4", FunnelStep.VISIT, true, false, false));
-        given(funnelSessionRepository.findByEventIdAndStartedAtBetween(any(), any(), any()))
+        given(funnelSessionRepository.findByEventIdAndStartedAtGreaterThanEqualAndStartedAtLessThan(any(), any(), any()))
                 .willReturn(sessions);
 
         FunnelSessionSummaryResponse response = service.summarizeForAdmin(EVENT_ID, REPORT_DATE, ADMIN);
@@ -109,7 +109,7 @@ class FunnelSessionSummaryServiceTest {
 
     @Test
     void summarizeForAdmin_noSessions_returnsAllZero() {
-        given(funnelSessionRepository.findByEventIdAndStartedAtBetween(any(), any(), any()))
+        given(funnelSessionRepository.findByEventIdAndStartedAtGreaterThanEqualAndStartedAtLessThan(any(), any(), any()))
                 .willReturn(List.of());
 
         FunnelSessionSummaryResponse response = service.summarizeForAdmin(EVENT_ID, REPORT_DATE, ADMIN);
@@ -122,7 +122,7 @@ class FunnelSessionSummaryServiceTest {
     void summarizeForOrganizer_ownsEvent_returnsSummary() {
         given(eventOperationAccessService.requireOperationalAccess(EVENT_ID, ORGANIZER))
                 .willReturn(event(EVENT_ID, "가을 박람회"));
-        given(funnelSessionRepository.findByEventIdAndStartedAtBetween(any(), any(), any()))
+        given(funnelSessionRepository.findByEventIdAndStartedAtGreaterThanEqualAndStartedAtLessThan(any(), any(), any()))
                 .willReturn(List.of(session("s1", FunnelStep.COMPLETE_PAYMENT, false, false, false)));
 
         FunnelSessionSummaryResponse response =
@@ -164,7 +164,7 @@ class FunnelSessionSummaryServiceTest {
                 session("s1", quietEventId, FunnelStep.VISIT, true, false, false),
                 session("s2", popularEventId, FunnelStep.COMPLETE_PAYMENT, false, false, false),
                 session("s3", popularEventId, FunnelStep.VIEW_EVENT_DETAIL, true, false, false));
-        given(funnelSessionRepository.findByStartedAtBetween(any(), any())).willReturn(sessions);
+        given(funnelSessionRepository.findByStartedAtGreaterThanEqualAndStartedAtLessThan(any(), any())).willReturn(sessions);
         given(eventRepository.findAllById(any())).willReturn(List.of(
                 event(popularEventId, "인기 행사"),
                 event(quietEventId, "조용한 행사")));
@@ -180,7 +180,7 @@ class FunnelSessionSummaryServiceTest {
 
     @Test
     void rankEventsByDate_noSessions_returnsEmptyList() {
-        given(funnelSessionRepository.findByStartedAtBetween(any(), any())).willReturn(List.of());
+        given(funnelSessionRepository.findByStartedAtGreaterThanEqualAndStartedAtLessThan(any(), any())).willReturn(List.of());
 
         FunnelEventRankingResponse response = service.rankEventsByDate(REPORT_DATE, ADMIN);
 

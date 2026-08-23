@@ -41,7 +41,7 @@ export default function EventOngoing() {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const { eventId } = useParams();
   const selectedEventId = eventId || "";
-  useFunnelTracking(eventId, "VIEW_BOOTH_LIST");
+  const trackFunnelAction = useFunnelTracking(eventId);
   const [eventDetail, setEventDetail] = useState(null);
   const [loadingEventDetail, setLoadingEventDetail] = useState(false);
   const [eventDetailError, setEventDetailError] = useState("");
@@ -53,6 +53,13 @@ export default function EventOngoing() {
   const [congestionByBoothId, setCongestionByBoothId] = useState(new Map());
 
   const [tab, setTab] = useState("map");
+  // 부스 목록 탭을 실제로 봤을 때만 기록한다. 탭을 오갈 때마다 재전송하지 않도록 최초 1회만 보낸다.
+  const boothListTrackedRef = useRef(false);
+  useEffect(() => {
+    if (tab !== "booths" || boothListTrackedRef.current) return;
+    boothListTrackedRef.current = true;
+    trackFunnelAction("VIEW_BOOTH_LIST");
+  }, [tab, trackFunnelAction]);
 
   // 실제 배정 완료(ASSIGNED)된 참가 부스 목록.
   const [participatingBooths, setParticipatingBooths] = useState([]);

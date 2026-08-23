@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { funnelSessionApi } from "../api/funnelSessionApi.js";
+import { toLocalDateString } from "../utils/datetime.js";
 import FunnelSummaryStats from "./FunnelSummaryStats.jsx";
 
 // 개최자센터 - 선택한 행사의 퍼널 전환 현황 패널.
@@ -7,7 +8,7 @@ import FunnelSummaryStats from "./FunnelSummaryStats.jsx";
 const yesterday = () => {
   const date = new Date();
   date.setDate(date.getDate() - 1);
-  return date.toISOString().slice(0, 10);
+  return toLocalDateString(date);
 };
 
 export default function OrganizerFunnelPanel({ organizationId, eventId }) {
@@ -21,15 +22,26 @@ export default function OrganizerFunnelPanel({ organizationId, eventId }) {
       setSummary(null);
       return;
     }
+    let active = true;
     setLoading(true);
     setError("");
     funnelSessionApi.summaryForOrganizer(organizationId, eventId, date)
-      .then((response) => setSummary(response?.data || null))
+      .then((response) => {
+        if (!active) return;
+        setSummary(response?.data || null);
+      })
       .catch((requestError) => {
+        if (!active) return;
         setError(requestError.message || "퍼널 데이터를 불러오지 못했습니다.");
         setSummary(null);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [organizationId, eventId, date]);
 
   if (!eventId) {

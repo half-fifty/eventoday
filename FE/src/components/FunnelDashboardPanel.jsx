@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { eventApi } from "../api/eventApi.js";
 import { funnelSessionApi } from "../api/funnelSessionApi.js";
+import { toLocalDateString } from "../utils/datetime.js";
 import FunnelEventRankingChart from "./FunnelEventRankingChart.jsx";
 import FunnelSummaryStats from "./FunnelSummaryStats.jsx";
 
@@ -12,7 +13,7 @@ import FunnelSummaryStats from "./FunnelSummaryStats.jsx";
 const yesterday = () => {
   const date = new Date();
   date.setDate(date.getDate() - 1);
-  return date.toISOString().slice(0, 10);
+  return toLocalDateString(date);
 };
 
 export default function FunnelDashboardPanel() {
