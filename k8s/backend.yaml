@@ -57,6 +57,8 @@ spec:
               value: "true"
             - name: ELASTICSEARCH_URIS
               value: "http://eventoday-elasticsearch:9200"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "eventoday-kafka:9092"
           envFrom:
             - secretRef:
                 name: eventoday-secret
