@@ -24,7 +24,10 @@ import lombok.NoArgsConstructor;
 @Document(indexName = "funnel-actions")
 public class FunnelAction {
 
+    // _id로만 매핑하면 검색용 필드가 아니라 정렬/search_after에 쓸 수 없다. keyset scroll의
+    // 보조 정렬 키로도 써야 하므로 일반 필드로도 함께 매핑한다 (FunnelActionRepository 참고).
     @Id
+    @Field(type = FieldType.Keyword)
     private String actionId;
 
     @Field(type = FieldType.Long)

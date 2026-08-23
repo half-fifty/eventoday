@@ -50,6 +50,17 @@ public class PaymentOutboxPublishRunner {
                  leaseHeartbeat.start(event.getId(), leaseOwner)) {
             send(event);
             resultService.markPublished(event.getId(), leaseOwner);
+        } catch (InterruptedException interruptedException) {
+            // Future.get()의 대기 중 인터럽트는 인터럽트 상태를 초기화하고 예외만 던진다.
+            // 여기서 복원하지 않으면 스레드 풀 종료/취소 신호가 유실된다.
+            Thread.currentThread().interrupt();
+            log.warn(
+                "Payment outbox send interrupted. id={}, eventType={}, retryCount={}",
+                event.getId(),
+                event.getEventType(),
+                event.getRetryCount()
+            );
+            resultService.markSendFailure(event.getId(), leaseOwner, interruptedException);
         } catch (Exception exception) {
             log.warn(
                 "Payment outbox email send failed. id={}, eventType={}, retryCount={}, errorType={}",

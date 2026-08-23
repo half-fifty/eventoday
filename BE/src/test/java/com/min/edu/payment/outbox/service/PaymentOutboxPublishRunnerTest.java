@@ -1,5 +1,6 @@
 package com.min.edu.payment.outbox.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -109,6 +110,27 @@ class PaymentOutboxPublishRunnerTest {
 
         verify(resultService).markSendFailure(eq(2L), eq("owner-1"), any(TimeoutException.class));
         verify(resultService, never()).markPublished(any(), any());
+    }
+
+    @Test
+    void publish_funnelEventSendInterrupted_marksRetryAndRestoresInterruptFlag() throws Exception {
+        given(claimService.claim(2L, "owner-1")).willReturn(Optional.of(funnelEvent()));
+        given(leaseService.renew(2L, "owner-1")).willReturn(true);
+        InterruptedException interruptedException = new InterruptedException("취소됨");
+        willThrow(interruptedException)
+            .given(funnelActionProducer).sendAndWait(any(FunnelActionEventDto.class), any(Duration.class));
+
+        try {
+            runner.publish(2L, "owner-1");
+
+            verify(resultService).markSendFailure(2L, "owner-1", interruptedException);
+            verify(resultService, never()).markPublished(any(), any());
+            // Future.get()의 InterruptedException은 인터럽트 상태를 초기화하므로, catch 블록이
+            // 이를 복원했는지 확인한다 (안 하면 스레드 풀 종료/취소 신호가 유실된다).
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
     }
 
     private PaymentOutboxEvent event() {

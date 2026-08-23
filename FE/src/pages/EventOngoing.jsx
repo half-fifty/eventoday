@@ -53,13 +53,14 @@ export default function EventOngoing() {
   const [congestionByBoothId, setCongestionByBoothId] = useState(new Map());
 
   const [tab, setTab] = useState("map");
-  // 부스 목록 탭을 실제로 봤을 때만 기록한다. 탭을 오갈 때마다 재전송하지 않도록 최초 1회만 보낸다.
-  const boothListTrackedRef = useRef(false);
+  // 부스 목록 탭을 실제로 봤을 때만, 행사당 최초 1회만 기록한다. 같은 컴포넌트에서 eventId만
+  // 바뀌는 경우(라우트 파라미터 변경)에도 새 행사 기준으로 다시 전송되도록 ref에 eventId를 같이 둔다.
+  const boothListTrackedEventIdRef = useRef(null);
   useEffect(() => {
-    if (tab !== "booths" || boothListTrackedRef.current) return;
-    boothListTrackedRef.current = true;
+    if (tab !== "booths" || !eventId || boothListTrackedEventIdRef.current === eventId) return;
+    boothListTrackedEventIdRef.current = eventId;
     trackFunnelAction("VIEW_BOOTH_LIST");
-  }, [tab, trackFunnelAction]);
+  }, [tab, eventId, trackFunnelAction]);
 
   // 실제 배정 완료(ASSIGNED)된 참가 부스 목록.
   const [participatingBooths, setParticipatingBooths] = useState([]);
