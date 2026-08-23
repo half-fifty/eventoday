@@ -44,6 +44,14 @@ public class Event {
     @Column(name = "description", nullable = false, columnDefinition = "TEXT")
     private String description;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "detail_display_type", nullable = false, length = 30)
+    @Builder.Default
+    private EventDetailDisplayType detailDisplayType = EventDetailDisplayType.IMAGE_GALLERY;
+
+    @Column(name = "official_website_url", length = 1000)
+    private String officialWebsiteUrl;
+
     @Column(name = "venue_name", nullable = false, length = 200)
     private String venueName;
 
@@ -132,6 +140,7 @@ public class Event {
 
     public void update(
             String name, String eventType, String shortDescription, String description,
+            EventDetailDisplayType detailDisplayType, String officialWebsiteUrl,
             String venueName, String address, String postalCode, String addressDetail,
             String contactEmail, String contactPhone,
             BigDecimal latitude, BigDecimal longitude, String kakaoPlaceId, RegionCode regionCode,
@@ -151,6 +160,8 @@ public class Event {
         this.eventType = eventType;
         this.shortDescription = shortDescription;
         this.description = description;
+        this.detailDisplayType = detailDisplayType;
+        this.officialWebsiteUrl = officialWebsiteUrl;
         this.venueName = venueName;
         this.address = address;
         this.contactEmail = contactEmail;
@@ -178,6 +189,7 @@ public class Event {
 
     public void update(
             String name, String eventType, String shortDescription, String description,
+            EventDetailDisplayType detailDisplayType, String officialWebsiteUrl,
             String venueName, String address, String postalCode, String addressDetail,
             String contactEmail, String contactPhone,
             BigDecimal latitude, BigDecimal longitude, String kakaoPlaceId,
@@ -187,7 +199,8 @@ public class Event {
             Long representativeFileId, boolean boothRecruitmentEnabled,
             boolean venueMapEnabled, boolean boothReservationEnabled,
             Integer noShowGraceMinutes, OffsetDateTime now) {
-        update(name, eventType, shortDescription, description, venueName, address, postalCode,
+        update(name, eventType, shortDescription, description, detailDisplayType, officialWebsiteUrl,
+                venueName, address, postalCode,
                 addressDetail, contactEmail, contactPhone, latitude, longitude, kakaoPlaceId,
                 RegionCode.fromAddress(address), startAt, endAt, ticketSalesStartAt,
                 ticketSalesEndAt, ticketPrice, ticketTotalQuantity, ticketPurchaseLimit,
@@ -199,6 +212,23 @@ public class Event {
         if (status == EventStatus.CANCELLED) {
             throw new IllegalStateException("취소된 행사의 포스터는 수정할 수 없습니다.");
         }
+        this.representativeFileId = representativeFileId;
+        this.updatedAt = now;
+    }
+
+    public void updatePublicInfo(String shortDescription, String description,
+            EventDetailDisplayType detailDisplayType, String officialWebsiteUrl,
+            String contactEmail, String contactPhone, Long representativeFileId,
+            OffsetDateTime now) {
+        if (status == EventStatus.CANCELLED) {
+            throw new IllegalStateException("취소된 행사의 공개 정보는 수정할 수 없습니다.");
+        }
+        this.shortDescription = shortDescription;
+        this.description = description;
+        this.detailDisplayType = detailDisplayType;
+        this.officialWebsiteUrl = officialWebsiteUrl;
+        this.contactEmail = contactEmail;
+        this.contactPhone = contactPhone;
         this.representativeFileId = representativeFileId;
         this.updatedAt = now;
     }

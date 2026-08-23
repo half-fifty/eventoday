@@ -62,12 +62,19 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CONTENT_AI_API_KEY: ${{ secrets.CONTENT_AI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
           VITE_TOSS_CLIENT_KEY: ${{ vars.VITE_TOSS_CLIENT_KEY }}
           FRONTEND_URL: ${{ vars.FRONTEND_URL }}
           COOKIE_SECURE: ${{ vars.COOKIE_SECURE }}
+          GROQ_BASE_URL: ${{ vars.GROQ_BASE_URL }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+          GROQ_VISION_MODEL: ${{ vars.GROQ_VISION_MODEL }}
+          GROQ_CONNECT_TIMEOUT: ${{ vars.GROQ_CONNECT_TIMEOUT }}
+          GROQ_READ_TIMEOUT: ${{ vars.GROQ_READ_TIMEOUT }}
+          GROQ_VISION_READ_TIMEOUT: ${{ vars.GROQ_VISION_READ_TIMEOUT }}
 
         run: |
           set -euo pipefail
@@ -91,12 +98,19 @@ jobs:
             SMTP_PASSWORD
             GEMINI_API_KEY
             CONTENT_AI_API_KEY
+            GROQ_API_KEY
 
             VITE_API_BASE_URL
             VITE_KAKAO_MAP_JS_KEY
             VITE_TOSS_CLIENT_KEY
             FRONTEND_URL
             COOKIE_SECURE
+            GROQ_BASE_URL
+            GROQ_MODEL
+            GROQ_VISION_MODEL
+            GROQ_CONNECT_TIMEOUT
+            GROQ_READ_TIMEOUT
+            GROQ_VISION_READ_TIMEOUT
           )
 
           for name in "${required[@]}"; do
@@ -215,6 +229,13 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CONTENT_AI_API_KEY: ${{ secrets.CONTENT_AI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_BASE_URL: ${{ vars.GROQ_BASE_URL }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+          GROQ_VISION_MODEL: ${{ vars.GROQ_VISION_MODEL }}
+          GROQ_CONNECT_TIMEOUT: ${{ vars.GROQ_CONNECT_TIMEOUT }}
+          GROQ_READ_TIMEOUT: ${{ vars.GROQ_READ_TIMEOUT }}
+          GROQ_VISION_READ_TIMEOUT: ${{ vars.GROQ_VISION_READ_TIMEOUT }}
 
         run: |
           set -euo pipefail
@@ -239,6 +260,13 @@ jobs:
             printf 'SMTP_PASSWORD=%s\n' "${SMTP_PASSWORD}"
             printf 'GEMINI_API_KEY=%s\n' "${GEMINI_API_KEY}"
             printf 'CONTENT_AI_API_KEY=%s\n' "${CONTENT_AI_API_KEY}"
+            printf 'GROQ_API_KEY=%s\n' "${GROQ_API_KEY}"
+            printf 'GROQ_BASE_URL=%s\n' "${GROQ_BASE_URL}"
+            printf 'GROQ_MODEL=%s\n' "${GROQ_MODEL}"
+            printf 'GROQ_VISION_MODEL=%s\n' "${GROQ_VISION_MODEL}"
+            printf 'GROQ_CONNECT_TIMEOUT=%s\n' "${GROQ_CONNECT_TIMEOUT}"
+            printf 'GROQ_READ_TIMEOUT=%s\n' "${GROQ_READ_TIMEOUT}"
+            printf 'GROQ_VISION_READ_TIMEOUT=%s\n' "${GROQ_VISION_READ_TIMEOUT}"
 
           } | sudo kubectl create secret generic eventoday-secret \
             --namespace eventoday \

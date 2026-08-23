@@ -1,5 +1,7 @@
 package com.min.edu.event.service;
 
+import com.min.edu.common.html.HtmlSanitizer;
+
 import com.min.edu.admin.service.PlatformAuditService;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.BoothRecruitmentStatus;
@@ -174,7 +176,10 @@ public class EventService {
         Event event = Event.builder()
                 .organizerOrganizationId(organizationId).name(request.name())
                 .eventType(request.eventType()).shortDescription(request.shortDescription())
-                .description(request.description()).venueName(request.venueName()).address(request.address())
+                .description(HtmlSanitizer.sanitize(request.description()))
+                .detailDisplayType(request.detailDisplayType())
+                .officialWebsiteUrl(request.officialWebsiteUrl())
+                .venueName(request.venueName()).address(request.address())
                 .contactEmail(request.contactEmail()).contactPhone(request.contactPhone())
                 .postalCode(request.postalCode()).addressDetail(request.addressDetail())
                 .latitude(request.latitude()).longitude(request.longitude()).kakaoPlaceId(request.kakaoPlaceId())
@@ -204,7 +209,8 @@ public class EventService {
         fileService.assertPublicAccessible(request.representativeFileId(), actor.getMemberId());
         Event event = getEvent(eventId);
         requireEventOrganization(event, organizationId);
-        transition(() -> event.update(request.name(), request.eventType(), request.shortDescription(), request.description(),
+        transition(() -> event.update(request.name(), request.eventType(), request.shortDescription(),
+                HtmlSanitizer.sanitize(request.description()), request.detailDisplayType(), request.officialWebsiteUrl(),
                 request.venueName(), request.address(), request.postalCode(), request.addressDetail(),
                 request.contactEmail(), request.contactPhone(),
                 request.latitude(), request.longitude(), request.kakaoPlaceId(), RegionCode.fromAddress(request.address()),
@@ -226,6 +232,20 @@ public class EventService {
         fileService.assertPublicAccessible(request.representativeFileId(), actor.getMemberId());
         transition(() -> event.updateRepresentativeFile(
                 request.representativeFileId(), OffsetDateTime.now()));
+        return EventDtos.Detail.from(event, categoryCodes(eventId));
+    }
+
+    @Transactional
+    public EventDtos.Detail updatePublicInfo(Long organizationId, Long eventId,
+            EventDtos.PublicInfoUpdateRequest request, AuthenticatedMemberDto actor) {
+        requireOrganizationManager(organizationId, actor);
+        Event event = getEvent(eventId);
+        requireEventOrganization(event, organizationId);
+        fileService.assertPublicAccessible(request.representativeFileId(), actor.getMemberId());
+        transition(() -> event.updatePublicInfo(request.shortDescription(), HtmlSanitizer.sanitize(request.description()),
+                request.detailDisplayType(), request.officialWebsiteUrl(),
+                request.contactEmail(), request.contactPhone(), request.representativeFileId(),
+                OffsetDateTime.now()));
         return EventDtos.Detail.from(event, categoryCodes(eventId));
     }
 

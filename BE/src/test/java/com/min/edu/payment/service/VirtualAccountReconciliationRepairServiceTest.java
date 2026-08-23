@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.min.edu.advertisement.repository.AdvertisementRepository;
 import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditEventType;
@@ -52,6 +53,9 @@ class VirtualAccountReconciliationRepairServiceTest {
     private PaymentVirtualAccountRepository virtualAccountRepository;
 
     @Mock
+    private AdvertisementRepository advertisementRepository;
+
+    @Mock
     private PaymentFinalizer paymentFinalizer;
 
     @Mock
@@ -66,6 +70,7 @@ class VirtualAccountReconciliationRepairServiceTest {
             ticketOrderRepository,
             paymentRepository,
             virtualAccountRepository,
+            advertisementRepository,
             paymentFinalizer,
             auditLogWriter
         );

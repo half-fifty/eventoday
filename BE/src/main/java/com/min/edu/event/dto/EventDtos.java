@@ -2,6 +2,7 @@ package com.min.edu.event.dto;
 
 import com.min.edu.event.domain.Event;
 import com.min.edu.event.domain.EventMember;
+import com.min.edu.event.domain.EventDetailDisplayType;
 import com.min.edu.event.domain.EventRole;
 import com.min.edu.event.domain.EventStatus;
 import com.min.edu.event.repository.AdmissionEventProjection;
@@ -12,6 +13,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -26,6 +28,8 @@ public final class EventDtos {
             @NotBlank @Size(max = 30) String eventType,
             @Size(max = 300) String shortDescription,
             @NotBlank String description,
+            @NotNull EventDetailDisplayType detailDisplayType,
+            @Size(max = 1000) @Pattern(regexp = "^https?://.+", message = "행사 링크는 http 또는 https 주소여야 합니다.") String officialWebsiteUrl,
             @NotBlank @Size(max = 200) String venueName,
             @NotBlank @Size(max = 300) String address,
             @NotBlank @Email @Size(max = 255) String contactEmail,
@@ -51,6 +55,15 @@ public final class EventDtos {
 
     public record PosterUpdateRequest(@NotNull Long representativeFileId) {}
 
+    public record PublicInfoUpdateRequest(
+            @Size(max = 300) String shortDescription,
+            @NotBlank String description,
+            @NotNull EventDetailDisplayType detailDisplayType,
+            @Size(max = 1000) @Pattern(regexp = "^https?://.+", message = "행사 링크는 http 또는 https 주소여야 합니다.") String officialWebsiteUrl,
+            @NotBlank @Email @Size(max = 255) String contactEmail,
+            @NotBlank @Size(max = 30) String contactPhone,
+            @NotNull Long representativeFileId) {}
+
     public record Summary(
             Long id, String name, String eventType, String shortDescription,
             String venueName, String address, String addressDetail,
@@ -71,6 +84,7 @@ public final class EventDtos {
 
     public record PublicDetail(
             Long id, String name, String eventType, String shortDescription, String description,
+            EventDetailDisplayType detailDisplayType, String officialWebsiteUrl,
             String venueName, String address, String postalCode, String addressDetail,
             String contactEmail, String contactPhone,
             BigDecimal latitude, BigDecimal longitude, String kakaoPlaceId,
@@ -81,7 +95,8 @@ public final class EventDtos {
             boolean boothReservationEnabled, String regionCode, List<String> exhibitCategoryCodes) {
         public static PublicDetail from(Event event, List<String> categoryCodes) {
             return new PublicDetail(event.getId(), event.getName(), event.getEventType(),
-                    event.getShortDescription(), event.getDescription(), event.getVenueName(),
+                    event.getShortDescription(), event.getDescription(), event.getDetailDisplayType(),
+                    event.getOfficialWebsiteUrl(), event.getVenueName(),
                     event.getAddress(), event.getPostalCode(), event.getAddressDetail(),
                     event.getContactEmail(), event.getContactPhone(),
                     event.getLatitude(), event.getLongitude(), event.getKakaoPlaceId(),
@@ -95,7 +110,8 @@ public final class EventDtos {
 
     public record Detail(
             Long id, Long organizerOrganizationId, String name, String eventType,
-            String shortDescription, String description, String venueName, String address,
+            String shortDescription, String description, EventDetailDisplayType detailDisplayType,
+            String officialWebsiteUrl, String venueName, String address,
             String postalCode, String addressDetail, String contactEmail, String contactPhone,
             BigDecimal latitude, BigDecimal longitude,
             String kakaoPlaceId,
@@ -111,6 +127,7 @@ public final class EventDtos {
         public static Detail from(Event event, List<String> categoryCodes) {
             return new Detail(event.getId(), event.getOrganizerOrganizationId(), event.getName(),
                     event.getEventType(), event.getShortDescription(), event.getDescription(),
+                    event.getDetailDisplayType(), event.getOfficialWebsiteUrl(),
                     event.getVenueName(), event.getAddress(), event.getPostalCode(),
                     event.getAddressDetail(), event.getContactEmail(), event.getContactPhone(),
                     event.getLatitude(), event.getLongitude(),

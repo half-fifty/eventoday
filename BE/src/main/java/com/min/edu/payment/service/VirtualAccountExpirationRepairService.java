@@ -1,6 +1,9 @@
 package com.min.edu.payment.service;
 
 import com.min.edu.admission.repository.ExchangeCodeRepository;
+import com.min.edu.advertisement.domain.Advertisement;
+import com.min.edu.advertisement.domain.AdvertisementStatus;
+import com.min.edu.advertisement.repository.AdvertisementRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.Payment;
@@ -8,6 +11,7 @@ import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditEventType;
 import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentOrder;
+import com.min.edu.payment.domain.PaymentOrderType;
 import com.min.edu.payment.domain.PaymentVirtualAccount;
 import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.dto.request.ConfirmPaymentRequest;
@@ -34,6 +38,7 @@ public class VirtualAccountExpirationRepairService {
     private final TicketOrderRepository ticketOrderRepository;
     private final ExchangeCodeRepository exchangeCodeRepository;
     private final TicketInventoryGateway ticketInventoryGateway;
+    private final AdvertisementRepository advertisementRepository;
     private final PaymentFinalizer paymentFinalizer;
     private final PaymentAuditLogWriter auditLogWriter;
 
@@ -45,6 +50,16 @@ public class VirtualAccountExpirationRepairService {
                 || lockedOrder.getExpiresAt() == null
                 || lockedOrder.getExpiresAt().isAfter(now)
                 || paymentRepository.findByPaymentOrderId(lockedOrder.getId()).isPresent()) {
+            return;
+        }
+
+        if (lockedOrder.getOrderType() == PaymentOrderType.EVENT_AD) {
+            Advertisement advertisement = pendingAdvertisement(lockedOrder);
+            String fromStatus = lockedOrder.getStatus();
+            lockedOrder.expire(now);
+            advertisement.expireUnpaid(now);
+            appendExpirationAudit(lockedOrder, null, fromStatus,
+                    "PROVIDER_" + providerStatus, now);
             return;
         }
 
@@ -101,6 +116,24 @@ public class VirtualAccountExpirationRepairService {
             return;
         }
 
+        if (lockedOrder.getOrderType() == PaymentOrderType.EVENT_AD) {
+            Advertisement advertisement = pendingAdvertisement(lockedOrder);
+            if (!lockedOrder.isWaitingForDeposit()) return;
+            if (TOSS_DONE_STATUS.equals(tossPayment.status())) {
+                paymentFinalizer.finalizePaymentFromExpiration(
+                    new ConfirmPaymentRequest(tossPayment.paymentKey(), tossPayment.orderId(),
+                            tossPayment.totalAmount()), tossPayment);
+                return;
+            }
+            String fromStatus = lockedOrder.getStatus();
+            lockedOrder.expire(now);
+            payment.expire(now);
+            virtualAccount.markExpired(now);
+            advertisement.expireUnpaid(now);
+            appendExpirationAudit(lockedOrder, payment.getId(), fromStatus, null, now);
+            return;
+        }
+
         TicketOrder ticketOrder = ticketOrderRepository.findByPaymentOrderId(lockedOrder.getId())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
 
@@ -151,5 +184,22 @@ public class VirtualAccountExpirationRepairService {
             null,
             now
         );
+    }
+
+    private Advertisement pendingAdvertisement(PaymentOrder order) {
+        Advertisement advertisement = advertisementRepository.findByPaymentOrderId(order.getId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+        if (advertisement.getStatus() != AdvertisementStatus.PAYMENT_PENDING) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+        }
+        return advertisement;
+    }
+
+    private void appendExpirationAudit(PaymentOrder order, Long paymentId, String fromStatus,
+            String reason, OffsetDateTime now) {
+        auditLogWriter.append(order.getId(), paymentId, null,
+                PaymentAuditEventType.PAYMENT_EXPIRED, fromStatus, order.getStatus(),
+                PaymentAuditSource.EXPIRATION, reason, PaymentAuditActorType.SYSTEM,
+                null, null, now);
     }
 }

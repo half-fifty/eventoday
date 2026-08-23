@@ -7,6 +7,7 @@ import { eventApi } from "../api/eventApi.js";
 import { advertisementApi } from "../api/advertisementApi.js";
 import { fileDownloadUrl } from "../api/fileApi.js";
 import { listPublicRecruitments } from "../api/recruitmentApi.js";
+import { platformNoticeApi } from "../api/platformNoticeApi.js";
 import { EXHIBIT_CATEGORIES, EXHIBIT_CATEGORY_LABELS, REGION_OPTIONS } from "../constants/eventOptions.js";
 
 const eventPhase = (event) => {
@@ -15,19 +16,6 @@ const eventPhase = (event) => {
   if (now <= new Date(event.endAt).getTime()) return "ongoing";
   return "ended";
 };
-
-const popular = [
-  { rank: 1, bg: "linear-gradient(135deg,#ff9966,#ff5e62)", name: "서울 푸드테크 박람회", rating: "4.8" },
-  { rank: 2, bg: "linear-gradient(135deg,#f7971e,#ffd200)", name: "반려동물 라이프스타일", rating: "4.7" },
-  { rank: 3, bg: "linear-gradient(135deg,#2b5876,#4e4376)", name: "스마트팩토리 전시회", rating: "4.6" },
-  { rank: 4, bg: "linear-gradient(135deg,#5f2c82,#49a09d)", name: "글로벌 스타트업 서밋", rating: "4.5" },
-];
-
-const notices = [
-  { tag: "공지", title: "하절기 행사장 이용 안내", date: "2026.07.20" },
-  { tag: "점검", title: "8/1(토) 새벽 시스템 점검 안내", date: "2026.07.25" },
-  { tag: "안내", title: "교환 코드 발급 정책 변경 안내", date: "2026.07.15" },
-];
 
 export default function Home() {
   const eventRailRef = useRef(null);
@@ -45,6 +33,8 @@ export default function Home() {
   const [recruitments, setRecruitments] = useState([]);
   const [loadingRecruitments, setLoadingRecruitments] = useState(true);
   const [recruitmentError, setRecruitmentError] = useState("");
+  const [notices, setNotices] = useState([]);
+  const [noticeError, setNoticeError] = useState("");
   const eventFallbackSlides = events.slice(0, 3).map((event) => ({
     tag: eventPhase(event) === "ongoing" ? "NOW · 진행 중" : eventPhase(event) === "ended" ? "ENDED · 종료" : "UPCOMING · 추천 행사",
     title: event.name,
@@ -135,6 +125,17 @@ export default function Home() {
     }
   };
 
+  const loadNotices = async () => {
+    try {
+      const result = await platformNoticeApi.list({ page: 0, size: 3 });
+      setNotices(result?.data?.content || []);
+      setNoticeError("");
+    } catch (error) {
+      setNotices([]);
+      setNoticeError(error.message || "공지사항을 불러오지 못했습니다.");
+    }
+  };
+
   const moveHero = (dir) => setHeroIdx((i) => (i + dir + slideCount) % slideCount);
   const moveEventRail = (direction) => {
     eventRailRef.current?.scrollBy({
@@ -171,7 +172,7 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [activeAds, displayedSlides[0]?.imageUrl]);
 
-  useEffect(() => { loadEvents(); loadRecruitments(); }, []);
+  useEffect(() => { loadEvents(); loadRecruitments(); loadNotices(); }, []);
 
   const searchEvents = () => loadEvents({
     ...(keyword.trim() ? { keyword: keyword.trim() } : {}),
@@ -186,7 +187,7 @@ export default function Home() {
 
       <main className="pt-[44px]">
         <div className="bg-on-primary-fixed text-white text-[12px] text-center py-xs px-lg font-nav-link">
-          플랫폼 정식 오픈 기념, 첫 티켓 구매 시 3,000원 할인 · <a href="#" className="underline">자세히</a>
+          공개된 전시·행사와 참가 부스 모집 정보를 한곳에서 확인하세요.
         </div>
 
         {/* Hero banner slider */}
@@ -271,12 +272,6 @@ export default function Home() {
               <select value={eventType} onChange={(event) => setEventType(event.target.value)} className="h-[40px] rounded-full border border-hairline px-md text-caption bg-white outline-none focus:border-primary-focus">
                 <option value="">행사 유형</option><option value="EXPO">박람회</option><option value="EXHIBITION">전시회</option><option value="SEMINAR">세미나</option><option value="CONFERENCE">컨퍼런스</option>
               </select>
-              <select className="h-[40px] rounded-full border border-hairline px-md text-caption bg-white outline-none focus:border-primary-focus">
-                <option>무료·유료</option><option>무료</option><option>유료</option>
-              </select>
-              <button className="h-[40px] px-md rounded-full border border-hairline text-caption font-body-strong hover:bg-surface-container transition-colors flex items-center gap-1">
-                <Icon name="storefront" className="text-[16px]" /> 부스 모집 중만
-              </button>
               <button onClick={searchEvents} className="h-[40px] px-xl rounded-full bg-primary-container text-white text-caption font-body-strong active:scale-95 transition-transform ml-auto">검색</button>
             </div>
           </div>
@@ -361,35 +356,48 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Popular */}
+        {/* Recommended public events (actual API data, ordered by start date) */}
         <section className="max-w-[1200px] mx-auto px-lg py-xl">
-          <h2 className="font-display-md text-[22px] text-on-surface mb-md">인기 행사</h2>
+          <div className="mb-md flex items-end justify-between gap-md">
+            <div><h2 className="font-display-md text-[22px] text-on-surface">추천 행사</h2><p className="mt-xs text-caption text-ink-muted">공개 행사 중 개최일이 가까운 순서로 보여드립니다.</p></div>
+            <Link to="/events" className="text-caption font-body-strong text-primary">전체 보기</Link>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-lg">
-            {popular.map((p) => (
-              <div key={p.rank} className="text-center">
-                <div className="h-[100px] rounded-2xl mb-sm flex items-center justify-center text-white font-hero-display text-[28px]" style={{ background: p.bg }}>{p.rank}</div>
-                <p className="text-caption font-body-strong">{p.name}</p>
-                <p className="text-[11px] text-ink-muted flex items-center justify-center gap-1">
-                  <Icon name="star" fill className="text-[13px] text-amber-500" />{p.rating}
-                </p>
-              </div>
+            {events.slice(0, 4).map((event, index) => (
+              <Link key={event.id} to={`/events/${event.id}`} className="group text-center">
+                <div className="relative h-[150px] overflow-hidden rounded-2xl mb-sm bg-gradient-to-br from-[#24496b] to-[#51477d]">
+                  {event.representativeFileId ? <img src={fileDownloadUrl(event.representativeFileId)} alt="" className="h-full w-full object-cover transition group-hover:scale-105" /> : <span className="grid h-full place-items-center text-white font-hero-display text-[28px]">{index + 1}</span>}
+                  <span className="absolute left-sm top-sm rounded-full bg-black/65 px-sm py-1 text-[11px] font-bold text-white">{eventPhase(event) === "ongoing" ? "진행 중" : eventPhase(event) === "upcoming" ? "예정" : "종료"}</span>
+                </div>
+                <p className="truncate text-caption font-body-strong">{event.name}</p>
+                <p className="mt-1 text-[11px] text-ink-muted">{event.venueName || "장소 미정"}</p>
+              </Link>
             ))}
           </div>
+          {!events.length && !loadingEvents && <p className="text-caption text-ink-muted">표시할 공개 행사가 없습니다.</p>}
         </section>
 
         {/* Notice */}
         <section className="max-w-[1200px] mx-auto px-lg py-xl">
-          <h2 className="font-display-md text-[22px] text-on-surface mb-md">공지사항</h2>
+          <div className="mb-md flex items-center justify-between"><h2 className="font-display-md text-[22px] text-on-surface">공지사항</h2><Link to="/notices" className="text-caption font-body-strong text-primary">전체 보기</Link></div>
           <div className="bg-white border border-hairline rounded-2xl divide-y divide-divider-soft">
-            {notices.map((n, i) => (
-              <div key={i} className="flex items-center justify-between px-lg py-md">
+            {notices.map((n, i) => {
+              const noticeId = n.noticeId ?? n.id;
+              return noticeId ? (
+              <Link key={noticeId} to={`/notices/${noticeId}`} className="flex items-center justify-between gap-md px-lg py-md hover:bg-surface-pearl">
                 <span className="text-body">
-                  <span className="text-primary font-bold text-[12px] mr-sm">{n.tag}</span>
+                  <span className="text-primary font-bold text-[12px] mr-sm">공지</span>
                   {n.title}
                 </span>
-                <span className="text-caption text-ink-muted">{n.date}</span>
-              </div>
-            ))}
+                <span className="shrink-0 text-caption text-ink-muted">{n.publishedAt || n.createdAt ? new Date(n.publishedAt || n.createdAt).toLocaleDateString("ko-KR") : ""}</span>
+              </Link>) : (
+                <div key={`notice-${i}`} className="flex items-center justify-between gap-md px-lg py-md">
+                  <span className="text-body"><span className="text-primary font-bold text-[12px] mr-sm">공지</span>{n.title}</span>
+                  <span className="text-caption text-error">상세 링크 준비 중</span>
+                </div>
+              );
+            })}
+            {!notices.length && <p className="px-lg py-xl text-center text-caption text-ink-muted">{noticeError || "등록된 공지사항이 없습니다."}</p>}
           </div>
         </section>
       </main>

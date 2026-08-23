@@ -29,6 +29,36 @@ class EventPosterUpdateTest {
         assertThat(event.getRepresentativeFileId()).isEqualTo(10L);
     }
 
+    @Test
+    void updatePublicInfo_allowsPublishedEventWithoutChangingOperationalFields() {
+        Event event = event(EventStatus.PUBLISHED, 10L);
+        OffsetDateTime originalStartAt = event.getStartAt();
+        OffsetDateTime updatedAt = OffsetDateTime.parse("2026-08-08T10:00:00+09:00");
+
+        event.updatePublicInfo("새 한 줄 소개", "새 상세 소개", EventDetailDisplayType.RICH_TEXT,
+                null, "new@example.com",
+                "02-1234-5678", 20L, updatedAt);
+
+        assertThat(event.getShortDescription()).isEqualTo("새 한 줄 소개");
+        assertThat(event.getDescription()).isEqualTo("새 상세 소개");
+        assertThat(event.getContactEmail()).isEqualTo("new@example.com");
+        assertThat(event.getContactPhone()).isEqualTo("02-1234-5678");
+        assertThat(event.getRepresentativeFileId()).isEqualTo(20L);
+        assertThat(event.getStartAt()).isEqualTo(originalStartAt);
+        assertThat(event.getUpdatedAt()).isEqualTo(updatedAt);
+    }
+
+    @Test
+    void updatePublicInfo_rejectsCancelledEvent() {
+        Event event = event(EventStatus.CANCELLED, 10L);
+
+        assertThatThrownBy(() -> event.updatePublicInfo("소개", "상세",
+                EventDetailDisplayType.IMAGE_GALLERY, null, "new@example.com",
+                "02-1234-5678", 20L, OffsetDateTime.now()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("취소된 행사");
+    }
+
     private Event event(EventStatus status, Long representativeFileId) {
         OffsetDateTime now = OffsetDateTime.parse("2026-08-01T10:00:00+09:00");
         return Event.builder()
@@ -37,6 +67,7 @@ class EventPosterUpdateTest {
                 .name("테스트 행사")
                 .eventType("EXPO")
                 .description("테스트")
+                .detailDisplayType(EventDetailDisplayType.IMAGE_GALLERY)
                 .venueName("테스트 전시장")
                 .address("서울특별시")
                 .startAt(now.plusDays(1))

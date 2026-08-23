@@ -95,6 +95,13 @@ public class EventController {
         return ApiResponse.success(eventService.updatePoster(organizationId, eventId, request, actor));
     }
 
+    @PatchMapping("/organizations/{organizationId}/events/{eventId}/public-info")
+    public ApiResponse<EventDtos.Detail> updatePublicInfo(@PathVariable Long organizationId,
+            @PathVariable Long eventId, @Valid @RequestBody EventDtos.PublicInfoUpdateRequest request,
+            @AuthenticationPrincipal AuthenticatedMemberDto actor) {
+        return ApiResponse.success(eventService.updatePublicInfo(organizationId, eventId, request, actor));
+    }
+
     @PostMapping("/events/{eventId}/submission")
     public ApiResponse<Void> submit(@PathVariable Long eventId, @AuthenticationPrincipal AuthenticatedMemberDto actor) {
         eventService.submit(eventId, actor); return ApiResponse.success();

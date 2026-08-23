@@ -97,6 +97,24 @@ public class ConfirmPaymentResponse {
         );
     }
 
+    public static ConfirmPaymentResponse waitingForDepositEventAd(
+            Payment payment,
+            String orderNo,
+            Advertisement advertisement,
+            VirtualAccountResponse virtualAccount) {
+        return new ConfirmPaymentResponse(
+            payment.getId(),
+            orderNo,
+            null,
+            payment.getAmount(),
+            payment.getStatus(),
+            advertisement.getStatus().name(),
+            payment.getApprovedAt(),
+            payment.getMethod(),
+            virtualAccount
+        );
+    }
+
     @Getter
     @AllArgsConstructor
     public static class VirtualAccountResponse {
