@@ -23,7 +23,7 @@ test("좌표가 없는 행사는 날짜순으로 보조 정렬한다", () => {
 });
 
 test("거리 표시 형식을 m와 km로 구분한다", () => {
-  assert.equal(formatEventDistance(0.42), "420m");
-  assert.equal(formatEventDistance(3.1415), "3.1km");
+  assert.equal(formatEventDistance(0.42), "약 420m");
+  assert.equal(formatEventDistance(3.1415), "약 3.1km");
   assert.ok(distanceInKilometers({ latitude: 37.5117, longitude: 127.0592 }, { latitude: 37.513, longitude: 127.058 }) < 1);
 });

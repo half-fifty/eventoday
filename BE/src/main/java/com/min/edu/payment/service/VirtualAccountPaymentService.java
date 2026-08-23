@@ -99,6 +99,7 @@ public class VirtualAccountPaymentService {
             now
         ));
 
+        lockedOrder.alignVirtualAccountExpiry(tossResponse.virtualAccount().dueDate(), now);
         lockedOrder.markWaitingForDeposit(now);
         PaymentVirtualAccount virtualAccount = virtualAccountRepository.save(
             PaymentVirtualAccount.create(

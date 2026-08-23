@@ -72,6 +72,7 @@ export default function EventForm() {
   const [organizationLoadFailed, setOrganizationLoadFailed] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(Boolean(eventId));
+  const [detailLoaded, setDetailLoaded] = useState(!eventId);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [placeQuery, setPlaceQuery] = useState("");
@@ -89,8 +90,8 @@ export default function EventForm() {
   const placeSearchSequence = useRef(0);
   const postalCodeSequence = useRef(0);
   const publicInfoOnly =
-    Boolean(eventId) && !["PREPARING", "REJECTED"].includes(form.status);
-  const cancelled = form.status === "CANCELLED";
+    Boolean(eventId) && detailLoaded && !["PREPARING", "REJECTED"].includes(form.status);
+  const cancelled = detailLoaded && form.status === "CANCELLED";
 
   useEffect(() => {
     eventApi
@@ -124,6 +125,7 @@ export default function EventForm() {
   useEffect(() => {
     if (!eventId) {
       setForm(emptyForm);
+      setDetailLoaded(true);
       setLoading(false);
       return;
     }
@@ -133,11 +135,13 @@ export default function EventForm() {
     }
     if (!organizationId) {
       setForm(emptyForm);
+      setDetailLoaded(false);
       setLoading(false);
       return;
     }
     let cancelled = false;
     setForm(emptyForm);
+    setDetailLoaded(false);
     setError("");
     setLoading(true);
     eventApi
@@ -153,6 +157,7 @@ export default function EventForm() {
           ticketSalesStartAt: toInputDateTime(data.ticketSalesStartAt),
           ticketSalesEndAt: toInputDateTime(data.ticketSalesEndAt),
         });
+        setDetailLoaded(true);
       })
       .catch(
         (requestError) =>
@@ -174,9 +179,17 @@ export default function EventForm() {
       setPreviewImages([]);
       return;
     }
+    let cancelled = false;
     eventApi.managedDetailImages(organizationId, eventId)
-      .then((result) => setPreviewImages(result?.data || []))
-      .catch(() => setPreviewImages([]));
+      .then((result) => {
+        if (!cancelled) setPreviewImages(result?.data || []);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewImages([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [eventId, organizationId]);
 
   const change = (key, value) =>
@@ -405,6 +418,10 @@ export default function EventForm() {
       <div className="min-h-screen grid place-items-center">
         행사를 불러오는 중입니다.
       </div>
+    );
+  if (eventId && !detailLoaded)
+    return (
+      <><TopNav /><main className="mx-auto max-w-[760px] px-lg py-xxl"><div role="alert" className="rounded-2xl border border-error/20 bg-error/5 p-xl text-error">{error || "행사 정보를 불러오지 못했습니다."}</div><Link to="/organizer-admin" className="mt-lg inline-flex text-primary">관리 화면으로 돌아가기</Link></main></>
     );
   if (publicInfoOnly)
     return (

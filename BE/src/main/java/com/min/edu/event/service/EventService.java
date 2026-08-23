@@ -171,7 +171,7 @@ public class EventService {
             AuthenticatedMemberDto actor) {
         requireOrganizationManager(organizationId, actor);
         validateRequest(request);
-        fileService.assertPublicAccessible(request.representativeFileId(), actor.getMemberId());
+        fileService.assertPublicImageAccessible(request.representativeFileId(), actor.getMemberId());
         OffsetDateTime now = OffsetDateTime.now();
         Event event = Event.builder()
                 .organizerOrganizationId(organizationId).name(request.name())
@@ -206,7 +206,7 @@ public class EventService {
             AuthenticatedMemberDto actor) {
         requireOrganizationManager(organizationId, actor);
         validateRequest(request);
-        fileService.assertPublicAccessible(request.representativeFileId(), actor.getMemberId());
+        fileService.assertPublicImageAccessible(request.representativeFileId(), actor.getMemberId());
         Event event = getEvent(eventId);
         requireEventOrganization(event, organizationId);
         transition(() -> event.update(request.name(), request.eventType(), request.shortDescription(),
@@ -229,7 +229,7 @@ public class EventService {
         requireOrganizationManager(organizationId, actor);
         Event event = getEvent(eventId);
         requireEventOrganization(event, organizationId);
-        fileService.assertPublicAccessible(request.representativeFileId(), actor.getMemberId());
+        fileService.assertPublicImageAccessible(request.representativeFileId(), actor.getMemberId());
         transition(() -> event.updateRepresentativeFile(
                 request.representativeFileId(), OffsetDateTime.now()));
         return EventDtos.Detail.from(event, categoryCodes(eventId));
@@ -241,7 +241,7 @@ public class EventService {
         requireOrganizationManager(organizationId, actor);
         Event event = getEvent(eventId);
         requireEventOrganization(event, organizationId);
-        fileService.assertPublicAccessible(request.representativeFileId(), actor.getMemberId());
+        fileService.assertPublicImageAccessible(request.representativeFileId(), actor.getMemberId());
         transition(() -> event.updatePublicInfo(request.shortDescription(), HtmlSanitizer.sanitize(request.description()),
                 request.detailDisplayType(), request.officialWebsiteUrl(),
                 request.contactEmail(), request.contactPhone(), request.representativeFileId(),

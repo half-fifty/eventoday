@@ -299,11 +299,29 @@ public class AdvertisementService {
                 .collect(Collectors.toSet());
         Map<Long, PaymentOrder> ordersById = paymentOrderRepository.findAllById(paymentOrderIds).stream()
                 .collect(Collectors.toMap(PaymentOrder::getId, Function.identity()));
+        Map<Long, Payment> paymentsByOrderId = paymentRepository
+                .findAllByPaymentOrderIdIn(paymentOrderIds).stream()
+                .collect(Collectors.toMap(Payment::getPaymentOrderId, Function.identity()));
+        Set<Long> paymentIds = paymentsByOrderId.values().stream().map(Payment::getId)
+                .collect(Collectors.toSet());
+        Map<Long, PaymentVirtualAccount> accountsByPaymentId = virtualAccountRepository
+                .findAllByPaymentIdIn(paymentIds).stream()
+                .collect(Collectors.toMap(PaymentVirtualAccount::getPaymentId, Function.identity()));
         return advertisements.map(ad -> {
             PaymentOrder order = ordersById.get(ad.getPaymentOrderId());
             return order == null ? AdvertisementDtos.Response.from(ad)
-                    : AdvertisementDtos.Response.from(ad, paymentSummary(order));
+                    : AdvertisementDtos.Response.from(ad,
+                            paymentSummary(order, paymentsByOrderId, accountsByPaymentId));
         });
+    }
+
+    private AdvertisementDtos.PaymentOrderSummary paymentSummary(PaymentOrder order,
+            Map<Long, Payment> paymentsByOrderId,
+            Map<Long, PaymentVirtualAccount> accountsByPaymentId) {
+        Payment payment = paymentsByOrderId.get(order.getId());
+        PaymentVirtualAccount account = payment == null ? null : accountsByPaymentId.get(payment.getId());
+        return new AdvertisementDtos.PaymentOrderSummary(order.getOrderNo(), order.getTotalAmount(),
+                order.getStatus(), account == null ? null : virtualAccountSummary(account));
     }
     private AdvertisementDtos.PaymentOrderSummary paymentSummary(PaymentOrder order) {
         AdvertisementDtos.VirtualAccountSummary account = paymentRepository

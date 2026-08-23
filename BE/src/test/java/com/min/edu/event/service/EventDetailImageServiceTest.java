@@ -50,8 +50,8 @@ class EventDetailImageServiceTest {
 
         assertThat(result).extracting(EventDetailImageDtos.Item::fileId).containsExactly(101L, 102L);
         assertThat(result).extracting(EventDetailImageDtos.Item::displayOrder).containsExactly(0, 1);
-        verify(fileService).assertPublicAccessible(101L, 11L);
-        verify(fileService).assertPublicAccessible(102L, 11L);
+        verify(fileService).assertPublicImageAccessible(101L, 11L);
+        verify(fileService).assertPublicImageAccessible(102L, 11L);
         verify(detailImageRepository).deleteAllByEventId(7L);
     }
 

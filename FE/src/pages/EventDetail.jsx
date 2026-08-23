@@ -356,7 +356,7 @@ export default function EventDetail() {
     try {
       const payload = {
         quantity: ticketQuantity,
-        paymentMethod,
+        paymentMethod: PAYMENT_METHODS.CARD,
         funnelSessionId: resolveSessionId(),
         ...(isAuthenticated
           ? {}

@@ -105,7 +105,7 @@ export default function BoothPinPopup({ booth, onClose }) {
         >
           <Icon name="close" className="text-[22px]" />
         </button>
-        <div className="p-xl">
+        <div className="max-h-[70vh] overflow-y-auto p-xl">
           <p className="text-caption font-bold text-primary mb-xs">BOOTH · {booth.boothCode}</p>
           <h3 id="booth-pin-popup-title" className="font-display-md text-[22px]">
             {booth.displayName || booth.boothCode}

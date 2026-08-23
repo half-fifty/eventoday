@@ -46,12 +46,16 @@ public class AdvertisementRefundService {
         this.transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
-    public synchronized AdvertisementDtos.CancellationResponse cancel(
+    public AdvertisementDtos.CancellationResponse cancel(
             Long advertisementId, Long requesterMemberId) {
         AdvertisementStatus status = transaction.execute(ignored -> {
             Advertisement ad = getAdvertisement(advertisementId);
             if (ad.getStatus() == AdvertisementStatus.PAYMENT_PENDING) {
-                ad.cancel(OffsetDateTime.now());
+                OffsetDateTime now = OffsetDateTime.now();
+                PaymentOrder order = paymentOrderRepository.findByIdForUpdate(ad.getPaymentOrderId())
+                        .orElseThrow(() -> new BusinessException(GlobalErrorCode.REFUND_DATA_INCONSISTENT));
+                if (order.isPending() || order.isWaitingForDeposit()) order.expire(now);
+                ad.cancel(now);
                 return AdvertisementStatus.CANCELLED;
             }
             if (ad.getStatus() == AdvertisementStatus.ACTIVE) {
@@ -79,7 +83,7 @@ public class AdvertisementRefundService {
         return refund(advertisementId, requesterMemberId, "광고주 요청에 따른 광고 취소");
     }
 
-    public synchronized AdvertisementDtos.CancellationResponse rejectAndRefund(
+    public AdvertisementDtos.CancellationResponse rejectAndRefund(
             Long advertisementId, Long reviewerId, String reason) {
         RejectionDecision decision = transaction.execute(ignored -> {
             Advertisement ad = getAdvertisement(advertisementId);
@@ -89,7 +93,11 @@ public class AdvertisementRefundService {
                 ad.rejectRevisionWithoutRefund(reviewerId, reason, now);
                 return new RejectionDecision(ad.getPaymentOrderId() != null, false);
             }
-            ad.reject(reviewerId, reason, now);
+            try {
+                ad.reject(reviewerId, reason, now);
+            } catch (IllegalStateException exception) {
+                throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+            }
             return new RejectionDecision(ad.getPaymentOrderId() != null, true);
         });
         if (decision != null && !decision.refundable()) {
@@ -130,9 +138,17 @@ public class AdvertisementRefundService {
                 .filter(key -> key != null && !key.isBlank())
                 .reduce((first, second) -> second)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID));
-        finalizeLocal(new RefundContext(context.advertisementId(), context.paymentOrderId(),
+        RefundContext completedContext = new RefundContext(context.advertisementId(), context.paymentOrderId(),
                 context.paymentId(), context.refundId(), context.paymentKey(), context.orderNo(),
-                context.amount(), cancelKey, false));
+                context.amount(), cancelKey, false);
+        try {
+            finalizeLocal(completedContext);
+        } catch (RuntimeException exception) {
+            transaction.executeWithoutResult(ignored -> paymentRefundRepository.findById(context.refundId())
+                    .filter(refund -> !refund.isCompleted())
+                    .ifPresent(refund -> refund.failAfterGatewayCancellation(cancelKey, OffsetDateTime.now())));
+            throw exception;
+        }
         return refundedResponse();
     }
 
@@ -227,7 +243,7 @@ public class AdvertisementRefundService {
     }
 
     private Advertisement getAdvertisement(Long id) {
-        return advertisementRepository.findById(id)
+        return advertisementRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
     }
 

@@ -38,6 +38,17 @@ class PaymentOrderAdvertisementMethodTest {
                 () -> order.selectPaymentMethod(null, now));
     }
 
+    @Test
+    void 토스가_발급한_가상계좌_만료시각으로_주문을_정렬한다() {
+        PaymentOrder order = pendingAdvertisementOrder();
+        OffsetDateTime tossDueAt = now.plusHours(24);
+
+        order.selectPaymentMethod(PaymentMethod.VIRTUAL_ACCOUNT, now);
+        order.alignVirtualAccountExpiry(tossDueAt, now.plusSeconds(1));
+
+        assertEquals(tossDueAt, order.getExpiresAt());
+    }
+
     private PaymentOrder pendingAdvertisementOrder() {
         return PaymentOrder.createEventAdOrder("AD-ORDER-1", 1L, "광고주", "ad@example.com",
                 BigDecimal.valueOf(100_000), now.plusMinutes(30), now);

@@ -14,9 +14,10 @@ export default function EventDetailPresentation({ event, detailImages = [], prev
   const [expanded, setExpanded] = useState(false);
 
   if (type === "EXTERNAL_SITE") {
-    if (!event?.officialWebsiteUrl) return <Empty icon="link_off" text="등록된 행사 공식 사이트 주소가 없습니다." />;
+    const officialWebsiteUrl = safeHttpUrl(event?.officialWebsiteUrl);
+    if (!officialWebsiteUrl) return <Empty icon="link_off" text="등록된 행사 공식 사이트 주소가 없습니다." />;
     return (
-      <a href={event.officialWebsiteUrl} target="_blank" rel="noopener noreferrer" className="group mx-auto block max-w-[860px] overflow-hidden rounded-xl border border-hairline bg-[#343944] shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+      <a href={officialWebsiteUrl} target="_blank" rel="noopener noreferrer" className="group mx-auto block max-w-[860px] overflow-hidden rounded-xl border border-hairline bg-[#343944] shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
         <div className={`${preview ? "min-h-[230px]" : "min-h-[320px]"} relative grid place-items-center overflow-hidden px-xl py-xxl text-center text-white`}>
           {event.representativeFileId && <img src={fileDownloadUrl(event.representativeFileId)} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20 blur-[2px] transition group-hover:scale-105" />}
           <div className="absolute inset-0 bg-gradient-to-r from-[#303540]/95 to-[#4b5260]/85" />
@@ -60,6 +61,16 @@ export default function EventDetailPresentation({ event, detailImages = [], prev
   }
 
   return <Empty icon="image" text={preview ? "저장 후 등록한 상세 이미지가 이 영역에 순서대로 표시됩니다." : "등록된 상세정보 이미지와 설명이 없습니다."} />;
+}
+
+function safeHttpUrl(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
 }
 
 function CollapsibleContent({ expanded, onToggle, children }) {

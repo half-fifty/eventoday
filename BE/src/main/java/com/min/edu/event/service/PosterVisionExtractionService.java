@@ -14,6 +14,8 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Semaphore;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -22,10 +24,12 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
+@Slf4j
 public class PosterVisionExtractionService {
     private static final long MAX_IMAGE_SIZE = 10L * 1024 * 1024;
     private static final List<OrganizationRole> MANAGER_ROLES =
             List.of(OrganizationRole.OWNER, OrganizationRole.MANAGER);
+    private static final Semaphore ANALYSIS_SLOTS = new Semaphore(2, true);
 
     private final EventOrganizationMemberRepository organizationMemberRepository;
     private final RestClient groqClient;
@@ -52,7 +56,8 @@ public class PosterVisionExtractionService {
     public PosterExtractionDto extract(Long organizationId, MultipartFile image, AuthenticatedMemberDto actor) {
         requireManager(organizationId, actor);
         validate(image);
-        if (apiKey.isBlank()) throw new IllegalStateException("GROQ_API_KEY가 설정되지 않았습니다.");
+        if (apiKey.isBlank()) return unavailable("Groq API 키가 설정되지 않았습니다.");
+        if (!ANALYSIS_SLOTS.tryAcquire()) return unavailable("포스터 분석 요청이 많습니다. 잠시 후 다시 시도해 주세요.");
         try {
             String dataUrl = "data:" + image.getContentType() + ";base64,"
                     + Base64.getEncoder().encodeToString(image.getBytes());
@@ -72,8 +77,17 @@ public class PosterVisionExtractionService {
             String content = root.path("choices").path(0).path("message").path("content").asText();
             return objectMapper.readValue(content, PosterExtractionDto.class);
         } catch (Exception exception) {
-            throw new IllegalStateException("포스터 AI 분석에 실패했습니다.", exception);
+            log.warn("포스터 AI 분석에 실패했습니다. model={}, errorType={}",
+                    model, exception.getClass().getSimpleName());
+            return unavailable("포스터를 자동 분석하지 못했습니다. 내용을 직접 입력해 주세요.");
+        } finally {
+            ANALYSIS_SLOTS.release();
         }
+    }
+
+    private PosterExtractionDto unavailable(String warning) {
+        return new PosterExtractionDto(null, null, null, null, null, null, null,
+                null, List.of(), null, null, List.of(warning));
     }
 
     private void requireManager(Long organizationId, AuthenticatedMemberDto actor) {

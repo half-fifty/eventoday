@@ -2,7 +2,7 @@ name: PR Check
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   backend-check:
@@ -43,6 +43,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build

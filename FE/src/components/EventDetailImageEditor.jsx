@@ -46,13 +46,17 @@ export default function EventDetailImageEditor({
     };
   }, [organizationId, eventId]);
 
-  const update = (index, patch) =>
+  const editingDisabled = disabled || saving;
+  const update = (index, patch) => {
+    if (editingDisabled) return;
     setImages((previous) =>
       previous.map((image, itemIndex) =>
         itemIndex === index ? { ...image, ...patch } : image,
       ),
     );
-  const move = (index, direction) =>
+  };
+  const move = (index, direction) => {
+    if (editingDisabled) return;
     setImages((previous) => {
       const target = index + direction;
       if (target < 0 || target >= previous.length) return previous;
@@ -60,10 +64,13 @@ export default function EventDetailImageEditor({
       [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
-  const remove = (index) =>
+  };
+  const remove = (index) => {
+    if (editingDisabled) return;
     setImages((previous) =>
       previous.filter((_, itemIndex) => itemIndex !== index),
     );
+  };
   const save = async () => {
     if (images.some((image) => !image.fileId)) {
       setError("추가한 이미지 파일을 모두 업로드해 주세요.");
@@ -117,7 +124,7 @@ export default function EventDetailImageEditor({
                 <button
                   type="button"
                   aria-label="위로 이동"
-                  disabled={index === 0}
+                  disabled={editingDisabled || index === 0}
                   onClick={() => move(index, -1)}
                   className="rounded-lg border border-hairline bg-white p-xs disabled:opacity-30"
                 >
@@ -126,7 +133,7 @@ export default function EventDetailImageEditor({
                 <button
                   type="button"
                   aria-label="아래로 이동"
-                  disabled={index === images.length - 1}
+                  disabled={editingDisabled || index === images.length - 1}
                   onClick={() => move(index, 1)}
                   className="rounded-lg border border-hairline bg-white p-xs disabled:opacity-30"
                 >
@@ -135,6 +142,7 @@ export default function EventDetailImageEditor({
                 <button
                   type="button"
                   aria-label="이미지 삭제"
+                  disabled={editingDisabled}
                   onClick={() => remove(index)}
                   className="rounded-lg border border-error/20 bg-white p-xs text-error"
                 >
@@ -154,13 +162,14 @@ export default function EventDetailImageEditor({
             <FileUploadField
               label={image.fileId ? "이미지 교체" : "이미지 업로드"}
               value={image.fileId}
+              disabled={editingDisabled}
               onChange={(fileId) => update(index, { fileId })}
             />
           )}
           <label className="mt-md block text-caption">
             대체텍스트
             <input
-              disabled={disabled}
+              disabled={editingDisabled}
               maxLength={300}
               value={image.altText}
               onChange={(event) =>
@@ -181,7 +190,7 @@ export default function EventDetailImageEditor({
         <div className="flex flex-wrap items-center justify-between gap-sm">
           <button
             type="button"
-            disabled={images.length >= MAX_IMAGES}
+            disabled={editingDisabled || images.length >= MAX_IMAGES}
             onClick={() =>
               setImages((previous) => [
                 ...previous,

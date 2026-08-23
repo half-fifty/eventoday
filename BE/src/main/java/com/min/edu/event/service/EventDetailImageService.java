@@ -64,7 +64,7 @@ public class EventDetailImageService {
             if (!fileIds.add(image.fileId())) {
                 throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
             }
-            fileService.assertPublicAccessible(image.fileId(), actor.getMemberId());
+            fileService.assertPublicImageAccessible(image.fileId(), actor.getMemberId());
         }
 
         detailImageRepository.deleteAllByEventId(event.getId());

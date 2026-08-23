@@ -73,7 +73,7 @@ export default function TicketLinkEventDetail({
     return () => {
       cancelled = true;
     };
-  }, [event.id, event.regionCode, event.exhibitCategoryCodes]);
+  }, [event.id, event.latitude, event.longitude]);
 
   useEffect(() => {
     if (activeTab !== "parking" || venueGuide?.id !== "coex") return;
@@ -177,7 +177,7 @@ export default function TicketLinkEventDetail({
       </section>
 
       <nav className="sticky top-[64px] z-20 border-y border-hairline bg-white">
-        <div className="mx-auto grid max-w-[1080px] grid-cols-3 px-lg sm:grid-cols-7">
+        <div className="mx-auto grid max-w-[1080px] grid-cols-3 px-lg sm:grid-cols-6">
           {tabs.map(([key, label]) => (
             <button
               key={key}
@@ -349,7 +349,7 @@ export default function TicketLinkEventDetail({
                       </div>
                       <p className="mt-sm flex items-center justify-between gap-sm text-caption text-primary">
                         <span>{recommendation.regionCode || "행사"}</span>
-                        <span className="text-ink-muted">약 {formatEventDistance(recommendation.distance)}</span>
+                        <span className="text-ink-muted">{formatEventDistance(recommendation.distance)}</span>
                       </p>
                       <h3 className="mt-xs truncate font-body-strong">{recommendation.name}</h3>
                       <p className="mt-xs text-caption text-ink-muted">{formatDateTime(recommendation.startAt)}</p>

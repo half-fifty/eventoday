@@ -22,6 +22,6 @@ export const rankNearbyEvents = (origin, candidates = [], limit = 4) => candidat
 
 export const formatEventDistance = (distance) => {
   if (!Number.isFinite(distance)) return "거리 정보 없음";
-  if (distance < 1) return `${Math.max(1, Math.round(distance * 1000))}m`;
-  return `${distance.toFixed(distance < 10 ? 1 : 0)}km`;
+  if (distance < 1) return `약 ${Math.max(1, Math.round(distance * 1000))}m`;
+  return `약 ${distance.toFixed(distance < 10 ? 1 : 0)}km`;
 };

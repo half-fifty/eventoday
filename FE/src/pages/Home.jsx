@@ -22,6 +22,7 @@ export default function Home() {
   const eventRequestSequence = useRef(0);
   const [heroIdx, setHeroIdx] = useState(0);
   const [events, setEvents] = useState([]);
+  const [recommendedEvents, setRecommendedEvents] = useState([]);
   const [activeAds, setActiveAds] = useState(null);
   const [heroVisualReady, setHeroVisualReady] = useState(false);
   const [keyword, setKeyword] = useState("");
@@ -125,6 +126,15 @@ export default function Home() {
     }
   };
 
+  const loadRecommendedEvents = async () => {
+    try {
+      const result = await eventApi.list({ size: 4, sort: "startAt,asc" });
+      setRecommendedEvents(result?.data?.content || []);
+    } catch {
+      setRecommendedEvents([]);
+    }
+  };
+
   const loadNotices = async () => {
     try {
       const result = await platformNoticeApi.list({ page: 0, size: 3 });
@@ -172,7 +182,7 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [activeAds, displayedSlides[0]?.imageUrl]);
 
-  useEffect(() => { loadEvents(); loadRecruitments(); loadNotices(); }, []);
+  useEffect(() => { loadEvents(); loadRecommendedEvents(); loadRecruitments(); loadNotices(); }, []);
 
   const searchEvents = () => loadEvents({
     ...(keyword.trim() ? { keyword: keyword.trim() } : {}),
@@ -363,7 +373,7 @@ export default function Home() {
             <Link to="/events" className="text-caption font-body-strong text-primary">전체 보기</Link>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-lg">
-            {events.slice(0, 4).map((event, index) => (
+            {recommendedEvents.map((event, index) => (
               <Link key={event.id} to={`/events/${event.id}`} className="group text-center">
                 <div className="relative h-[150px] overflow-hidden rounded-2xl mb-sm bg-gradient-to-br from-[#24496b] to-[#51477d]">
                   {event.representativeFileId ? <img src={fileDownloadUrl(event.representativeFileId)} alt="" className="h-full w-full object-cover transition group-hover:scale-105" /> : <span className="grid h-full place-items-center text-white font-hero-display text-[28px]">{index + 1}</span>}
@@ -374,7 +384,7 @@ export default function Home() {
               </Link>
             ))}
           </div>
-          {!events.length && !loadingEvents && <p className="text-caption text-ink-muted">표시할 공개 행사가 없습니다.</p>}
+          {!recommendedEvents.length && !loadingEvents && <p className="text-caption text-ink-muted">표시할 공개 행사가 없습니다.</p>}
         </section>
 
         {/* Notice */}

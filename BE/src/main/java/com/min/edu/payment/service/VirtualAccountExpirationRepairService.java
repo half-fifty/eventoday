@@ -55,6 +55,7 @@ public class VirtualAccountExpirationRepairService {
 
         if (lockedOrder.getOrderType() == PaymentOrderType.EVENT_AD) {
             Advertisement advertisement = pendingAdvertisement(lockedOrder);
+            if (advertisement == null) return;
             String fromStatus = lockedOrder.getStatus();
             lockedOrder.expire(now);
             advertisement.expireUnpaid(now);
@@ -118,6 +119,7 @@ public class VirtualAccountExpirationRepairService {
 
         if (lockedOrder.getOrderType() == PaymentOrderType.EVENT_AD) {
             Advertisement advertisement = pendingAdvertisement(lockedOrder);
+            if (advertisement == null) return;
             if (!lockedOrder.isWaitingForDeposit()) return;
             if (TOSS_DONE_STATUS.equals(tossPayment.status())) {
                 paymentFinalizer.finalizePaymentFromExpiration(
@@ -190,7 +192,7 @@ public class VirtualAccountExpirationRepairService {
         Advertisement advertisement = advertisementRepository.findByPaymentOrderId(order.getId())
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
         if (advertisement.getStatus() != AdvertisementStatus.PAYMENT_PENDING) {
-            throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+            return null;
         }
         return advertisement;
     }

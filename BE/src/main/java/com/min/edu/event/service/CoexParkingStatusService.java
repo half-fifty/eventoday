@@ -30,11 +30,14 @@ public class CoexParkingStatusService {
             "label\\s*:\\s*['\"]주차 대수['\"][\\s\\S]*?data\\s*:\\s*\\[([^]]+)]");
     private static final Pattern HOUR_PATTERN = Pattern.compile("(\\d{1,2})시");
     private static final Duration CACHE_TTL = Duration.ofHours(1);
+    private static final Duration FAILURE_RETRY_DELAY = Duration.ofMinutes(5);
     private static final VenueParkingStatusDto.Thresholds DEFAULT_THRESHOLDS =
             new VenueParkingStatusDto.Thresholds(2200, 2400, 2600);
 
     private final RestClient restClient;
     private volatile VenueParkingStatusDto cached;
+    private volatile VenueParkingStatusDto lastFailureResponse;
+    private volatile OffsetDateTime nextRetryAt;
 
     public CoexParkingStatusService(
             @Value("${external.coex.parking-connect-timeout:3s}") Duration connectTimeout,
@@ -46,8 +49,12 @@ public class CoexParkingStatusService {
     }
 
     public VenueParkingStatusDto getStatus() {
+        OffsetDateTime now = OffsetDateTime.now();
+        if (nextRetryAt != null && nextRetryAt.isAfter(now) && lastFailureResponse != null) {
+            return lastFailureResponse;
+        }
         VenueParkingStatusDto current = cached;
-        if (current != null && current.fetchedAt().plus(CACHE_TTL).isAfter(OffsetDateTime.now())) {
+        if (current != null && current.fetchedAt().plus(CACHE_TTL).isAfter(now)) {
             return current;
         }
         return refreshSafely();
@@ -59,8 +66,12 @@ public class CoexParkingStatusService {
     }
 
     private synchronized VenueParkingStatusDto refreshSafely() {
+        OffsetDateTime now = OffsetDateTime.now();
+        if (nextRetryAt != null && nextRetryAt.isAfter(now) && lastFailureResponse != null) {
+            return lastFailureResponse;
+        }
         VenueParkingStatusDto current = cached;
-        if (current != null && current.fetchedAt().plus(CACHE_TTL).isAfter(OffsetDateTime.now())) {
+        if (current != null && current.fetchedAt().plus(CACHE_TTL).isAfter(now)) {
             return current;
         }
         try {
@@ -71,13 +82,16 @@ public class CoexParkingStatusService {
                     .body(String.class);
             VenueParkingStatusDto refreshed = parse(html);
             cached = refreshed;
+            nextRetryAt = null;
+            lastFailureResponse = null;
             return refreshed;
         } catch (RestClientException | IllegalStateException exception) {
             log.warn("코엑스 주차 현황 갱신 실패: {}", exception.getMessage());
-            if (current != null) {
-                return current.asStale("공식 현황을 갱신하지 못해 마지막 확인 정보를 표시합니다.");
-            }
-            return unavailable();
+            nextRetryAt = now.plus(FAILURE_RETRY_DELAY);
+            lastFailureResponse = current != null
+                    ? current.asStale("공식 현황을 갱신하지 못해 마지막 확인 정보를 표시합니다.")
+                    : unavailable();
+            return lastFailureResponse;
         }
     }
 

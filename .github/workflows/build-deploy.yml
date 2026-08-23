@@ -202,8 +202,6 @@ jobs:
             -m "chore: bump image tag to ${IMAGE_TAG} [skip ci]" \
             || echo "No manifest changes to commit"
 
-          git push origin HEAD:dev
-
           echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # ----------------------------------------------------------------
@@ -274,6 +272,12 @@ jobs:
             --dry-run=client \
             -o yaml \
             | sudo kubectl apply -f -
+
+      # Secret이 먼저 반영된 뒤 manifest를 push해야 새 Pod가 최신 envFrom 값을 읽는다.
+      - name: Push updated manifests
+        run: |
+          set -euo pipefail
+          git push origin HEAD:dev
 
       # ----------------------------------------------------------------
       # 배포는 ArgoCD가 유일한 주체로 수행한다.

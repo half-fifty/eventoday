@@ -168,6 +168,14 @@ public class PaymentOrder {
         this.updatedAt = now;
     }
 
+    public void alignVirtualAccountExpiry(OffsetDateTime dueAt, OffsetDateTime now) {
+        if ((!isPending() && !isWaitingForDeposit()) || dueAt == null) {
+            throw new IllegalStateException("Virtual account expiry cannot be changed.");
+        }
+        this.expiresAt = dueAt;
+        this.updatedAt = now;
+    }
+
     public void markPaidFromWaiting(OffsetDateTime now) {
         if (!isWaitingForDeposit()) {
             throw new IllegalStateException("Payment order is not waiting for deposit.");
