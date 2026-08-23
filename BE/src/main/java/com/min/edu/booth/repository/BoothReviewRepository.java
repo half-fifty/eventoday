@@ -56,6 +56,14 @@ public interface BoothReviewRepository extends JpaRepository<BoothReview, Long> 
     Page<BoothReview> findByBoothIdOrderByRatingAsc(@Param("boothId") Long boothId, Pageable pageable);
 
     /**
+     * 부스별 리뷰 목록 ("도움이 돼요" 많은 순 → 같으면 최신순)
+     */
+    @Query("SELECT br FROM BoothReview br WHERE br.boothId = :boothId AND br.hidden = false "
+            + "ORDER BY (SELECT COUNT(v) FROM BoothReviewHelpfulVote v WHERE v.boothReviewId = br.id) DESC, "
+            + "br.createdAt DESC")
+    Page<BoothReview> findByBoothIdOrderByHelpfulCountDesc(@Param("boothId") Long boothId, Pageable pageable);
+
+    /**
      * 사용자의 모든 리뷰 목록 (최신순) — 본인 것이므로 숨김 여부와 무관하게 전부 보여준다.
      */
     Page<BoothReview> findByMemberIdOrderByCreatedAtDesc(Long memberId, Pageable pageable);

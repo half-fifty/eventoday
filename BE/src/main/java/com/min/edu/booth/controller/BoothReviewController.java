@@ -12,6 +12,7 @@ import com.min.edu.booth.dto.CreateBoothReviewRequest;
 import com.min.edu.booth.dto.ReportBoothReviewRequest;
 import com.min.edu.booth.dto.UpdateBoothReviewRequest;
 import java.util.List;
+import com.min.edu.booth.service.BoothReviewHelpfulService;
 import com.min.edu.booth.service.BoothReviewModerationService;
 import com.min.edu.booth.service.BoothReviewReplyService;
 import com.min.edu.booth.service.BoothReviewService;
@@ -36,6 +37,7 @@ public class BoothReviewController {
     private final BoothReviewSummaryService reviewSummaryService;
     private final BoothReviewModerationService reviewModerationService;
     private final BoothReviewReplyService reviewReplyService;
+    private final BoothReviewHelpfulService reviewHelpfulService;
 
     /**
      * 부스 후기 작성
@@ -178,6 +180,40 @@ public class BoothReviewController {
         }
 
         reviewModerationService.cancelReport(boothId, reviewId, principal.getMemberId());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * 부스 리뷰 "도움이 돼요" — 본인 리뷰에는 누를 수 없고, 같은 리뷰에 두 번 누를 수 없다.
+     */
+    @PostMapping("/{reviewId}/helpful")
+    public ResponseEntity<Void> markHelpful(
+            @PathVariable Long boothId,
+            @PathVariable Long reviewId,
+            @AuthenticationPrincipal AuthenticatedMemberDto principal) {
+
+        if (principal == null) {
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+        }
+
+        reviewHelpfulService.markHelpful(boothId, reviewId, principal.getMemberId());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * 부스 리뷰 "도움이 돼요" 취소 — 본인이 누른 것만 철회할 수 있다.
+     */
+    @DeleteMapping("/{reviewId}/helpful")
+    public ResponseEntity<Void> unmarkHelpful(
+            @PathVariable Long boothId,
+            @PathVariable Long reviewId,
+            @AuthenticationPrincipal AuthenticatedMemberDto principal) {
+
+        if (principal == null) {
+            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+        }
+
+        reviewHelpfulService.unmarkHelpful(boothId, reviewId, principal.getMemberId());
         return ResponseEntity.noContent().build();
     }
 

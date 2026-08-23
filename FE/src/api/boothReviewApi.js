@@ -56,6 +56,16 @@ const cancelReport = async (boothId, reviewId) => {
   await apiRequest(`/booths/${boothId}/reviews/${reviewId}/reports`, { method: "DELETE" });
 };
 
+// 리뷰 "도움이 돼요". 본인 리뷰에는 누를 수 없고, 같은 리뷰에 두 번 누를 수 없다.
+const markHelpful = async (boothId, reviewId) => {
+  await apiRequest(`/booths/${boothId}/reviews/${reviewId}/helpful`, { method: "POST" });
+};
+
+// "도움이 돼요" 취소 (본인이 누른 것만 철회 가능)
+const unmarkHelpful = async (boothId, reviewId) => {
+  await apiRequest(`/booths/${boothId}/reviews/${reviewId}/helpful`, { method: "DELETE" });
+};
+
 export {
   listReviews,
   createReview,
@@ -66,4 +76,6 @@ export {
   searchReviews,
   reportReview,
   cancelReport,
+  markHelpful,
+  unmarkHelpful,
 };

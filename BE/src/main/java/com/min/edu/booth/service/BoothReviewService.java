@@ -13,6 +13,7 @@ import com.min.edu.booth.dto.BoothReviewSortOption;
 import com.min.edu.booth.dto.CreateBoothReviewRequest;
 import com.min.edu.booth.dto.UpdateBoothReviewRequest;
 import com.min.edu.booth.repository.BoothRepository;
+import com.min.edu.booth.repository.BoothReviewHelpfulVoteRepository;
 import com.min.edu.booth.repository.BoothReviewPhotoRepository;
 import com.min.edu.booth.repository.BoothReviewReplyRepository;
 import com.min.edu.booth.repository.BoothReviewReportRepository;
@@ -53,6 +54,9 @@ public class BoothReviewService {
     // 이 기간 안이면 계속 작성할 수 있게 유예를 둔다.
     private static final long REVIEW_WRITABLE_GRACE_PERIOD_DAYS = 7;
 
+    // "도움이 돼요"가 이 수 이상이면 "믿을 수 있는 리뷰" 뱃지를 붙인다.
+    static final int TRUSTED_REVIEW_HELPFUL_THRESHOLD = 3;
+
     private final BoothReviewRepository boothReviewRepository;
     private final MemberRepository memberRepository;
     private final BoothRepository boothRepository;
@@ -63,6 +67,7 @@ public class BoothReviewService {
     private final BoothReviewReplyRepository boothReviewReplyRepository;
     private final BoothReviewPhotoRepository boothReviewPhotoRepository;
     private final BoothReviewReportRepository boothReviewReportRepository;
+    private final BoothReviewHelpfulVoteRepository boothReviewHelpfulVoteRepository;
     private final FileAssetRepository fileAssetRepository;
 
     /**
@@ -200,6 +205,7 @@ public class BoothReviewService {
         Page<BoothReview> reviews = switch (sort == null ? BoothReviewSortOption.LATEST : sort) {
             case RATING_DESC -> boothReviewRepository.findByBoothIdOrderByRatingDesc(boothId, pageable);
             case RATING_ASC -> boothReviewRepository.findByBoothIdOrderByRatingAsc(boothId, pageable);
+            case HELPFUL_DESC -> boothReviewRepository.findByBoothIdOrderByHelpfulCountDesc(boothId, pageable);
             case LATEST -> boothReviewRepository.findByBoothIdOrderByCreatedAtDesc(boothId, pageable);
         };
         Booth booth = boothRepository.findById(boothId).orElse(null);
@@ -207,12 +213,16 @@ public class BoothReviewService {
         Map<Long, BoothReviewReplyResponse> repliesByReviewId = repliesByReviewId(reviews.getContent());
         Map<Long, List<BoothReviewPhotoResponse>> photosByReviewId = photosByReviewId(reviews.getContent());
         Set<Long> reportedReviewIds = reportedReviewIdsByViewer(reviews.getContent(), viewerMemberId);
+        Map<Long, Long> helpfulCountsByReviewId = helpfulCountsByReviewId(reviews.getContent());
+        Set<Long> helpfulReviewIds = helpfulReviewIdsByViewer(reviews.getContent(), viewerMemberId);
         // 비로그인도 조회 가능한 공개 엔드포인트라 다른 사람의 memberId는 노출하지 않는다.
         return reviews.map(review -> toResponse(review, booth, event, false,
                 repliesByReviewId.get(review.getId()),
                 photosByReviewId.getOrDefault(review.getId(), List.of()),
                 reportedReviewIds.contains(review.getId()),
-                isMine(review, viewerMemberId)));
+                isMine(review, viewerMemberId),
+                helpfulCountsByReviewId.getOrDefault(review.getId(), 0L),
+                helpfulReviewIds.contains(review.getId())));
     }
 
     // memberId를 노출하지 않는 공개 목록에서도 프론트가 "내 리뷰"를 판별할 수 있도록 별도 플래그로 계산한다.
@@ -237,15 +247,17 @@ public class BoothReviewService {
         Map<Long, Event> eventsById = eventsById(boothsById.values());
         Map<Long, BoothReviewReplyResponse> repliesByReviewId = repliesByReviewId(reviews.getContent());
         Map<Long, List<BoothReviewPhotoResponse>> photosByReviewId = photosByReviewId(reviews.getContent());
+        Map<Long, Long> helpfulCountsByReviewId = helpfulCountsByReviewId(reviews.getContent());
         return reviews.map(review -> {
             Booth booth = boothsById.get(review.getBoothId());
             Event event = booth != null ? eventsById.get(booth.getEventId()) : null;
             // 로그인한 본인의 후기 목록이라 본인 memberId 노출은 안전하다. 본인 리뷰는 자기 자신을
-            // 신고할 수 없으니 reportedByMe는 항상 false, mine은 항상 true.
+            // 신고하거나 "도움이 돼요"를 누를 수 없으니 reportedByMe/helpfulByMe는 항상 false, mine은 항상 true.
             return toResponse(review, booth, event, true,
                     repliesByReviewId.get(review.getId()),
                     photosByReviewId.getOrDefault(review.getId(), List.of()),
-                    false, true);
+                    false, true,
+                    helpfulCountsByReviewId.getOrDefault(review.getId(), 0L), false);
         });
     }
 
@@ -266,12 +278,16 @@ public class BoothReviewService {
         Map<Long, BoothReviewReplyResponse> repliesByReviewId = repliesByReviewId(reviews.getContent());
         Map<Long, List<BoothReviewPhotoResponse>> photosByReviewId = photosByReviewId(reviews.getContent());
         Set<Long> reportedReviewIds = reportedReviewIdsByViewer(reviews.getContent(), viewerMemberId);
+        Map<Long, Long> helpfulCountsByReviewId = helpfulCountsByReviewId(reviews.getContent());
+        Set<Long> helpfulReviewIds = helpfulReviewIdsByViewer(reviews.getContent(), viewerMemberId);
         // 비로그인도 조회 가능한 공개 엔드포인트라 다른 사람의 memberId는 노출하지 않는다.
         return reviews.map(review -> toResponse(review, booth, event, false,
                 repliesByReviewId.get(review.getId()),
                 photosByReviewId.getOrDefault(review.getId(), List.of()),
                 reportedReviewIds.contains(review.getId()),
-                isMine(review, viewerMemberId)));
+                isMine(review, viewerMemberId),
+                helpfulCountsByReviewId.getOrDefault(review.getId(), 0L),
+                helpfulReviewIds.contains(review.getId())));
     }
 
     // 페이지 안 리뷰 ID들 중 이 회원이 이미 신고한 것만 배치로 조회한다 (N+1 방지). 비로그인이면 전부 false.
@@ -285,6 +301,29 @@ public class BoothReviewService {
         }
         return new HashSet<>(boothReviewReportRepository
                 .findBoothReviewIdByReporterMemberIdAndBoothReviewIdIn(viewerMemberId, reviewIds));
+    }
+
+    // 페이지 안 리뷰 ID들의 "도움이 돼요" 개수를 배치로 조회한다 (N+1 방지).
+    private Map<Long, Long> helpfulCountsByReviewId(List<BoothReview> reviews) {
+        List<Long> reviewIds = reviews.stream().map(BoothReview::getId).toList();
+        if (reviewIds.isEmpty()) {
+            return Map.of();
+        }
+        return boothReviewHelpfulVoteRepository.countsByBoothReviewIdIn(reviewIds).stream()
+                .collect(Collectors.toMap(row -> (Long) row[0], row -> (Long) row[1]));
+    }
+
+    // 페이지 안 리뷰 ID들 중 이 회원이 이미 "도움이 돼요"를 누른 것만 배치로 조회한다. 비로그인이면 전부 false.
+    private Set<Long> helpfulReviewIdsByViewer(List<BoothReview> reviews, Long viewerMemberId) {
+        if (viewerMemberId == null) {
+            return Set.of();
+        }
+        List<Long> reviewIds = reviews.stream().map(BoothReview::getId).toList();
+        if (reviewIds.isEmpty()) {
+            return Set.of();
+        }
+        return new HashSet<>(boothReviewHelpfulVoteRepository
+                .findBoothReviewIdByMemberIdAndBoothReviewIdIn(viewerMemberId, reviewIds));
     }
 
     private Map<Long, Booth> boothsById(List<BoothReview> reviews) {
@@ -399,8 +438,9 @@ public class BoothReviewService {
                 .map(this::toPhotoResponse)
                 .toList();
         // 작성/수정 직후 본인에게 돌려주는 응답이라 본인 memberId 노출은 안전하다.
-        // 방금 작성/수정한 자기 리뷰이니 reportedByMe는 항상 false, mine은 항상 true.
-        return toResponse(review, booth, event, true, reply, photos, false, true);
+        // 방금 작성/수정한 자기 리뷰이니 reportedByMe/helpfulByMe는 항상 false, mine은 항상 true.
+        long helpfulCount = boothReviewHelpfulVoteRepository.countByBoothReviewId(review.getId());
+        return toResponse(review, booth, event, true, reply, photos, false, true, helpfulCount, false);
     }
 
     /**
@@ -411,11 +451,13 @@ public class BoothReviewService {
      * @param reportedByMe   조회하는 회원이 이 리뷰를 이미 신고했는지
      * @param mine           조회하는 회원 본인이 작성한 리뷰인지 (memberId를 못 내려주는 공개 목록에서도
      *                       프론트가 이 값으로 "내 리뷰"를 판별할 수 있다)
+     * @param helpfulCount   "도움이 돼요" 누적 수
+     * @param helpfulByMe    조회하는 회원이 이미 "도움이 돼요"를 눌렀는지
      */
     private BoothReviewResponse toResponse(
             BoothReview review, Booth booth, Event event, boolean exposeMemberId,
             BoothReviewReplyResponse reply, List<BoothReviewPhotoResponse> photos, boolean reportedByMe,
-            boolean mine) {
+            boolean mine, long helpfulCount, boolean helpfulByMe) {
         return BoothReviewResponse.builder()
                 .id(review.getId())
                 .boothId(review.getBoothId())
@@ -435,6 +477,9 @@ public class BoothReviewService {
                 .mine(mine)
                 .reply(reply)
                 .photos(photos)
+                .helpfulCount(helpfulCount)
+                .helpfulByMe(helpfulByMe)
+                .trustedReview(helpfulCount >= TRUSTED_REVIEW_HELPFUL_THRESHOLD)
                 .build();
     }
 
