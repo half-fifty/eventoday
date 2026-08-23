@@ -22,15 +22,22 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 
 import com.min.edu.TestcontainersConfiguration;
+import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentMethod;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentOrderStatus;
 import com.min.edu.payment.domain.PaymentOrderType;
+import com.min.edu.payment.domain.PaymentProvider;
+import com.min.edu.payment.domain.PaymentStatus;
+import com.min.edu.payment.domain.PaymentVirtualAccount;
 import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.domain.TicketOrderStatus;
 import com.min.edu.payment.dto.request.TossPaymentWebhookRequest;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
+import com.min.edu.payment.repository.PaymentVirtualAccountRepository;
 import com.min.edu.payment.repository.TicketOrderRepository;
+import com.min.edu.payment.support.PaymentSecretHasher;
 import com.min.edu.payment.toss.TossPaymentClient;
 import com.min.edu.payment.toss.dto.TossConfirmRequest;
 import com.min.edu.payment.toss.dto.TossConfirmResponse;
@@ -41,7 +48,7 @@ import com.min.edu.payment.toss.dto.TossCancelResponse;
     TestcontainersConfiguration.class,
     PaymentWebhookIntegrationTest.FakeTossPaymentClientConfig.class
 })
-@SpringBootTest
+@SpringBootTest(properties = "spring.kafka.bootstrap-servers=localhost:9092")
 class PaymentWebhookIntegrationTest {
 
     @Autowired
@@ -58,6 +65,9 @@ class PaymentWebhookIntegrationTest {
 
     @Autowired
     private PaymentRepository paymentRepository;
+
+    @Autowired
+    private PaymentVirtualAccountRepository paymentVirtualAccountRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -117,6 +127,30 @@ class PaymentWebhookIntegrationTest {
         assertExchangeCodeCount(order.ticketOrderId(), 1);
     }
 
+    @Test
+    void webhook_finalizesWaitingVirtualAccountWhenTossIsDoneAndIsIdempotent() {
+        Long memberId = insertMember();
+        Long eventId = insertEvent();
+        String paymentKey = "payment-key-" + UUID.randomUUID();
+        OrderFixture order = createWaitingVirtualAccountOrder(
+            memberId,
+            eventId,
+            paymentKey,
+            "WEBHOOK-VA-DONE"
+        );
+        TossConfirmResponse tossPayment = virtualAccountDonePayment(paymentKey, order.orderNo());
+        fakeTossPaymentClient.put(paymentKey, tossPayment);
+
+        paymentWebhookService.handleTossWebhook(webhook(tossPayment));
+        paymentWebhookService.handleTossWebhook(webhook(tossPayment));
+
+        assertThat(paymentRepository.countByPaymentKey(paymentKey)).isEqualTo(1);
+        assertPaymentStatus(order.paymentOrderId(), PaymentStatus.PAID);
+        assertOrderStatus(order.paymentOrderId(), PaymentOrderStatus.PAID);
+        assertTicketOrderStatus(order.paymentOrderId(), TicketOrderStatus.CONFIRMED);
+        assertExchangeCodeCount(order.ticketOrderId(), 1);
+    }
+
     private TossPaymentWebhookRequest webhook(TossConfirmResponse tossPayment) {
         return new TossPaymentWebhookRequest(
             "PAYMENT_STATUS_CHANGED",
@@ -145,6 +179,18 @@ class PaymentWebhookIntegrationTest {
         );
     }
 
+    private TossConfirmResponse virtualAccountDonePayment(String paymentKey, String orderNo) {
+        return new TossConfirmResponse(
+            paymentKey,
+            orderNo,
+            BigDecimal.valueOf(10000),
+            "DONE",
+            "VIRTUAL_ACCOUNT",
+            OffsetDateTime.now().minusMinutes(2),
+            OffsetDateTime.now().minusMinutes(1)
+        );
+    }
+
     private OrderFixture createPendingOrder(
             Long memberId,
             Long eventId,
@@ -156,6 +202,7 @@ class PaymentWebhookIntegrationTest {
                 .buyerMemberId(memberId)
                 .orderType(PaymentOrderType.EVENT_TICKET)
                 .totalAmount(BigDecimal.valueOf(10000))
+                .requestedPaymentMethod(PaymentMethod.CARD)
                 .status(PaymentOrderStatus.PENDING.name())
                 .expiresAt(now.plusMinutes(10))
                 .createdAt(now)
@@ -192,6 +239,7 @@ class PaymentWebhookIntegrationTest {
                 .buyerMemberId(memberId)
                 .orderType(PaymentOrderType.EVENT_TICKET)
                 .totalAmount(BigDecimal.valueOf(10000))
+                .requestedPaymentMethod(PaymentMethod.CARD)
                 .status(PaymentOrderStatus.PENDING.name())
                 .expiresAt(now.minusSeconds(1))
                 .createdAt(now.minusMinutes(10))
@@ -209,6 +257,63 @@ class PaymentWebhookIntegrationTest {
                 .updatedAt(now.minusMinutes(10))
                 .build()
         );
+
+        return new OrderFixture(
+            paymentOrder.getId(),
+            ticketOrder.getId(),
+            paymentOrder.getOrderNo()
+        );
+    }
+
+    private OrderFixture createWaitingVirtualAccountOrder(
+            Long memberId,
+            Long eventId,
+            String paymentKey,
+            String orderNoPrefix) {
+        OffsetDateTime now = OffsetDateTime.now();
+        PaymentOrder paymentOrder = paymentOrderRepository.saveAndFlush(
+            PaymentOrder.builder()
+                .orderNo(orderNoPrefix + "-" + UUID.randomUUID())
+                .buyerMemberId(memberId)
+                .orderType(PaymentOrderType.EVENT_TICKET)
+                .totalAmount(BigDecimal.valueOf(10000))
+                .requestedPaymentMethod(PaymentMethod.VIRTUAL_ACCOUNT)
+                .status(PaymentOrderStatus.WAITING_FOR_DEPOSIT.name())
+                .expiresAt(now.plusMinutes(30))
+                .createdAt(now)
+                .updatedAt(now)
+                .build()
+        );
+        TicketOrder ticketOrder = ticketOrderRepository.saveAndFlush(
+            TicketOrder.builder()
+                .paymentOrderId(paymentOrder.getId())
+                .eventId(eventId)
+                .unitPrice(BigDecimal.valueOf(10000))
+                .totalQuantity(1)
+                .status(TicketOrderStatus.PENDING_PAYMENT.name())
+                .createdAt(now)
+                .updatedAt(now)
+                .build()
+        );
+        Payment payment = paymentRepository.saveAndFlush(Payment.waitingForDeposit(
+            paymentOrder.getId(),
+            PaymentProvider.TOSS_PAYMENTS,
+            paymentKey,
+            "VIRTUAL_ACCOUNT",
+            BigDecimal.valueOf(10000),
+            now.minusMinutes(2),
+            now
+        ));
+        paymentVirtualAccountRepository.saveAndFlush(PaymentVirtualAccount.create(
+            payment.getId(),
+            "088",
+            "1234567890",
+            "tester",
+            now.plusMinutes(30),
+            PaymentSecretHasher.sha256("secret"),
+            "WAITING_FOR_DEPOSIT",
+            now
+        ));
 
         return new OrderFixture(
             paymentOrder.getId(),
@@ -317,6 +422,13 @@ class PaymentWebhookIntegrationTest {
         } else {
             assertThat(ticketOrder.getConfirmedAt()).isNull();
         }
+    }
+
+    private void assertPaymentStatus(Long paymentOrderId, PaymentStatus status) {
+        Payment payment = paymentRepository
+            .findByPaymentOrderId(paymentOrderId)
+            .orElseThrow();
+        assertThat(payment.getStatus()).isEqualTo(status.name());
     }
 
     private void assertExchangeCodeCount(Long ticketOrderId, int expectedCount) {

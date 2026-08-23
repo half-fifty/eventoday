@@ -326,7 +326,9 @@ export default function GuestReservationManagement() {
                       </button>
                     </form>
                   ) : (
-                    <p className="text-caption text-ink-muted">현재 상태에서는 환불 신청 버튼이 표시되지 않습니다.</p>
+                    <div className="space-y-md">
+                      <p className="text-caption text-ink-muted">현재 상태에서는 환불 신청 버튼이 표시되지 않습니다.</p>
+                    </div>
                   )}
                 </div>
               ) : (

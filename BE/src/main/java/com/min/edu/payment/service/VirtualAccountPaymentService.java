@@ -3,6 +3,9 @@ package com.min.edu.payment.service;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
+import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentProvider;
 import com.min.edu.payment.domain.PaymentVirtualAccount;
@@ -29,6 +32,7 @@ public class VirtualAccountPaymentService {
     private final TicketOrderRepository ticketOrderRepository;
     private final PaymentRepository paymentRepository;
     private final PaymentVirtualAccountRepository virtualAccountRepository;
+    private final PaymentAuditLogWriter auditLogWriter;
 
     @Transactional
     public ConfirmPaymentResponse getWaitingForDeposit(
@@ -53,6 +57,7 @@ public class VirtualAccountPaymentService {
 
     @Transactional
     public ConfirmPaymentResponse saveWaitingForDeposit(
+            Long requesterMemberId,
             PaymentOrder paymentOrder,
             String paymentKey,
             TossConfirmResponse tossResponse) {
@@ -84,6 +89,7 @@ public class VirtualAccountPaymentService {
         validateVirtualAccountResponse(tossResponse);
 
         OffsetDateTime now = OffsetDateTime.now();
+        String fromStatus = lockedOrder.getStatus();
         Payment payment = paymentRepository.saveAndFlush(Payment.waitingForDeposit(
             lockedOrder.getId(),
             PaymentProvider.TOSS_PAYMENTS,
@@ -106,6 +112,20 @@ public class VirtualAccountPaymentService {
                 tossResponse.status(),
                 now
             )
+        );
+        auditLogWriter.append(
+            lockedOrder.getId(),
+            payment.getId(),
+            null,
+            PaymentAuditEventType.PAYMENT_WAITING_FOR_DEPOSIT,
+            fromStatus,
+            lockedOrder.getStatus(),
+            PaymentAuditSource.CONFIRM,
+            null,
+            PaymentAuditActorType.fromRequester(requesterMemberId),
+            requesterMemberId,
+            null,
+            now
         );
 
         return ConfirmPaymentResponse.waitingForDeposit(

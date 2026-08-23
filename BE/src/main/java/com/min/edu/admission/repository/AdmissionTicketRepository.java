@@ -19,6 +19,33 @@ public interface AdmissionTicketRepository extends JpaRepository<AdmissionTicket
 
     boolean existsByExchangeCodeId(Long exchangeCodeId);
 
+    Optional<AdmissionTicket> findByExchangeCodeId(Long exchangeCodeId);
+
+    // 부스 후기 작성/예약 권한 확인용: 이 회원이 이 행사의 "유효한" 입장권을 갖고 있는지 확인.
+    // CANCELLED(환불)·EXPIRED 상태는 제외한다 — 환불받은 사람이 여전히 "티켓 구매자"로 인정되면 안 되기 때문.
+    @Query("""
+        select case when count(t) > 0 then true else false end
+        from AdmissionTicket t
+        join ExchangeCode c on c.id = t.exchangeCodeId
+        where t.memberId = :memberId and c.eventId = :eventId
+          and t.status in (com.min.edu.admission.domain.AdmissionTicketStatus.ISSUED,
+                            com.min.edu.admission.domain.AdmissionTicketStatus.USED)
+        """)
+    boolean existsByMemberIdAndEventId(@Param("memberId") Long memberId, @Param("eventId") Long eventId);
+
+    Optional<AdmissionTicket> findByQrToken(String qrToken);
+
+    @Query("""
+        select t
+        from AdmissionTicket t
+        join ExchangeCode c on c.id = t.exchangeCodeId
+        where t.id = :admissionTicketId
+            and c.eventId = :eventId
+        """)
+    Optional<AdmissionTicket> findByIdAndEventId(
+            @Param("admissionTicketId") Long admissionTicketId,
+            @Param("eventId") Long eventId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select t from AdmissionTicket t where t.qrToken = :qrToken")
     Optional<AdmissionTicket> findByQrTokenForUpdate(@Param("qrToken") String qrToken);

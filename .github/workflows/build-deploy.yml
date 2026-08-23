@@ -39,6 +39,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # ----------------------------------------------------------------
+      # 배포에 필요한 Secret / Variable 누락 검증
+      # ----------------------------------------------------------------
       - name: Validate deployment configuration
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
@@ -58,6 +61,7 @@ jobs:
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CONTENT_AI_API_KEY: ${{ secrets.CONTENT_AI_API_KEY }}
 
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
@@ -86,6 +90,8 @@ jobs:
             SMTP_USERNAME
             SMTP_PASSWORD
             GEMINI_API_KEY
+            CONTENT_AI_API_KEY
+
             VITE_API_BASE_URL
             VITE_KAKAO_MAP_JS_KEY
             VITE_TOSS_CLIENT_KEY
@@ -208,6 +214,7 @@ jobs:
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CONTENT_AI_API_KEY: ${{ secrets.CONTENT_AI_API_KEY }}
 
         run: |
           set -euo pipefail
@@ -231,6 +238,8 @@ jobs:
             printf 'SMTP_USERNAME=%s\n' "${SMTP_USERNAME}"
             printf 'SMTP_PASSWORD=%s\n' "${SMTP_PASSWORD}"
             printf 'GEMINI_API_KEY=%s\n' "${GEMINI_API_KEY}"
+            printf 'CONTENT_AI_API_KEY=%s\n' "${CONTENT_AI_API_KEY}"
+
           } | sudo kubectl create secret generic eventoday-secret \
             --namespace eventoday \
             --from-env-file=/dev/stdin \
@@ -239,12 +248,7 @@ jobs:
             | sudo kubectl apply -f -
 
       # ----------------------------------------------------------------
-      # 핵심 변경 부분
       # 배포는 ArgoCD가 유일한 주체로 수행한다.
-      # CI는 git manifest만 갱신하고, ArgoCD에게 git을 즉시 다시 읽으라고
-      # 강제(hard refresh)한 뒤, 원하는 커밋까지 동기화되고 Healthy가
-      # 될 때까지 기다린다. (kubectl로 직접 이미지를 바꾸면 ArgoCD의
-      # selfHeal과 서로 되돌리기 경쟁을 벌이게 되어 제거함)
       # ----------------------------------------------------------------
       - name: Sync ArgoCD and wait for healthy rollout
         env:
@@ -277,6 +281,33 @@ jobs:
 
           echo "::error::Timed out waiting for ArgoCD to sync to ${EXPECTED_REVISION}"
           exit 1
+
+      # ----------------------------------------------------------------
+      # 진단용: 위 단계가 실패했을 때만(Ready 안 된 파드가 있을 때) 원인을 로그에 남긴다.
+      # ----------------------------------------------------------------
+      - name: Dump not-ready pod diagnostics
+        if: failure()
+        run: |
+          set +e
+
+          echo "=== kubectl get pods -n eventoday -o wide ==="
+          sudo kubectl get pods -n eventoday -o wide
+
+          NOT_READY_PODS=$(sudo kubectl get pods -n eventoday \
+            -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[0].ready}{"\n"}{end}' \
+            | awk '$2 != "true" {print $1}')
+
+          for pod in ${NOT_READY_PODS}; do
+            echo
+            echo "=== describe ${pod} ==="
+            sudo kubectl describe pod "${pod}" -n eventoday
+            echo
+            echo "=== logs ${pod} (current) ==="
+            sudo kubectl logs "${pod}" -n eventoday --tail=300
+            echo
+            echo "=== logs ${pod} (previous, if restarted) ==="
+            sudo kubectl logs "${pod}" -n eventoday --tail=300 --previous || true
+          done
 
       # ----------------------------------------------------------------
       # 실제 Deployment에 원하는 이미지가 적용됐는지 검증

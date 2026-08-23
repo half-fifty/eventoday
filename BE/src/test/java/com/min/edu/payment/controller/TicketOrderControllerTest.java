@@ -30,6 +30,7 @@ import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.common.exception.GlobalExceptionHandler;
+import com.min.edu.funnel.support.AnonymousIdCookieFactory;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.payment.dto.request.CreateTicketOrderRequest;
 import com.min.edu.payment.dto.response.CreateTicketOrderResponse;
@@ -38,13 +39,15 @@ import com.min.edu.payment.service.TicketOrderService;
 class TicketOrderControllerTest {
 
     private TicketOrderService ticketOrderService;
+    private AnonymousIdCookieFactory anonymousIdCookieFactory;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         ticketOrderService = org.mockito.Mockito.mock(TicketOrderService.class);
+        anonymousIdCookieFactory = org.mockito.Mockito.mock(AnonymousIdCookieFactory.class);
         mockMvc = MockMvcBuilders
-            .standaloneSetup(new TicketOrderController(ticketOrderService))
+            .standaloneSetup(new TicketOrderController(ticketOrderService, anonymousIdCookieFactory))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setCustomArgumentResolvers(authenticationPrincipalResolver())
             .build();
@@ -58,6 +61,7 @@ class TicketOrderControllerTest {
     @Test
     void createTicketOrder_createsGuestOrder() throws Exception {
         given(ticketOrderService.create(
+                eq("order-key-1"),
                 eq(1L),
                 eq(null),
                 org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)))
@@ -65,6 +69,7 @@ class TicketOrderControllerTest {
 
         mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
+                .header("Idempotency-Key", "order-key-1")
                 .content("""
                     {
                       "quantity": 2,
@@ -80,10 +85,46 @@ class TicketOrderControllerTest {
             .andExpect(jsonPath("$.data.paymentRequired").value(false));
 
         verify(ticketOrderService).create(
+            eq("order-key-1"),
             eq(1L),
             eq(null),
             org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)
         );
+    }
+
+    @Test
+    void createTicketOrder_resolvesAnonymousIdFromCookieOntoRequest() throws Exception {
+        given(anonymousIdCookieFactory.resolve(org.mockito.ArgumentMatchers.any()))
+            .willReturn("anon-cookie-1");
+        given(ticketOrderService.create(
+                eq("order-key-1"),
+                eq(1L),
+                eq(null),
+                org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)))
+            .willReturn(response(false));
+
+        mockMvc.perform(post("/events/1/ticket-orders")
+                .contentType("application/json")
+                .header("Idempotency-Key", "order-key-1")
+                .cookie(new jakarta.servlet.http.Cookie("anonymousId", "anon-cookie-1"))
+                .content("""
+                    {
+                      "quantity": 2,
+                      "funnelSessionId": "session-1",
+                      "buyer": {
+                        "name": "guest",
+                        "email": "guest@example.com",
+                        "phone": "010-1234-5678"
+                      }
+                    }
+                    """))
+            .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<CreateTicketOrderRequest> captor =
+            org.mockito.ArgumentCaptor.forClass(CreateTicketOrderRequest.class);
+        verify(ticketOrderService).create(eq("order-key-1"), eq(1L), eq(null), captor.capture());
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().getAnonymousId()).isEqualTo("anon-cookie-1");
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().getFunnelSessionId()).isEqualTo("session-1");
     }
 
     @Test
@@ -98,6 +139,7 @@ class TicketOrderControllerTest {
             );
 
         given(ticketOrderService.create(
+                eq("order-key-2"),
                 eq(1L),
                 eq(10L),
                 org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)))
@@ -107,6 +149,7 @@ class TicketOrderControllerTest {
 
         mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
+                .header("Idempotency-Key", "order-key-2")
                 .content("""
                     {
                       "quantity": 2
@@ -116,6 +159,7 @@ class TicketOrderControllerTest {
             .andExpect(jsonPath("$.data.paymentRequired").value(true));
 
         verify(ticketOrderService).create(
+            eq("order-key-2"),
             eq(1L),
             eq(10L),
             org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)
@@ -147,6 +191,7 @@ class TicketOrderControllerTest {
     @Test
     void createTicketOrder_returnsBusinessErrorWhenGuestBuyerIsMissing() throws Exception {
         given(ticketOrderService.create(
+                eq("order-key-3"),
                 eq(1L),
                 eq(null),
                 org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)))
@@ -154,6 +199,7 @@ class TicketOrderControllerTest {
 
         mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
+                .header("Idempotency-Key", "order-key-3")
                 .content("""
                     {
                       "quantity": 1
@@ -166,6 +212,7 @@ class TicketOrderControllerTest {
     @Test
     void createTicketOrder_returnsEventNotFound() throws Exception {
         given(ticketOrderService.create(
+                eq("order-key-4"),
                 eq(1L),
                 eq(null),
                 org.mockito.ArgumentMatchers.any(CreateTicketOrderRequest.class)))
@@ -173,6 +220,7 @@ class TicketOrderControllerTest {
 
         mockMvc.perform(post("/events/1/ticket-orders")
                 .contentType("application/json")
+                .header("Idempotency-Key", "order-key-4")
                 .content("""
                     {
                       "quantity": 1,

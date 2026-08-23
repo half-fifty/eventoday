@@ -26,4 +26,17 @@ public class InterestBoothResponse {
 
     @JsonProperty("vacancyNotificationEnabled")
     private Boolean vacancyNotificationEnabled;
+
+    @JsonProperty("averageRating")
+    private Double averageRating;
+
+    @JsonProperty("reviewCount")
+    private Long reviewCount;
+
+    @JsonProperty("hasAvailableSlots")
+    private Boolean hasAvailableSlots;
+
+    // 최근 10분 QR 스캔 집계 기준 실시간 혼잡도: HIGH / MEDIUM / LOW
+    @JsonProperty("congestionLevel")
+    private String congestionLevel;
 }

@@ -12,15 +12,19 @@ import com.min.edu.admission.domain.ExchangeCodeStatus;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
-import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.payment.config.PaymentFinalizationProperties;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
+import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentRefund;
 import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.dto.request.CreateRefundRequest;
 import com.min.edu.payment.dto.response.CreateRefundResponse;
 import com.min.edu.payment.event.TicketInventoryGateway;
+import com.min.edu.payment.policy.RefundEligibilityPolicy;
+import com.min.edu.payment.policy.RefundEligibilityPolicy.RefundEligibilityInput;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRefundRepository;
 import com.min.edu.payment.repository.PaymentRepository;
@@ -45,7 +49,8 @@ public class RefundFinalizer {
     private final PaymentRefundRepository paymentRefundRepository;
     private final ExchangeCodeRepository exchangeCodeRepository;
     private final TicketInventoryGateway ticketInventoryGateway;
-    private final EventOperationDeadlinePolicy deadlinePolicy;
+    private final RefundEligibilityPolicy refundEligibilityPolicy;
+    private final PaymentAuditLogWriter auditLogWriter;
 
     @Transactional
     public CreateRefundResponse finalizeRefund(
@@ -86,6 +91,8 @@ public class RefundFinalizer {
         validateTossCancelResponse(projection, tossResponse);
 
         OffsetDateTime now = OffsetDateTime.now();
+        String paymentFromStatus = payment.getStatus();
+        String refundFromStatus = refund.getStatus().name();
         List<ExchangeCode> exchangeCodes =
             exchangeCodeRepository.findAllByTicketOrderIdOrderByIdAsc(ticketOrder.getId());
         if (exchangeCodes.size() != ticketOrder.getTotalQuantity()) {
@@ -107,6 +114,34 @@ public class RefundFinalizer {
         ticketOrder.refund(now);
 
         refund.complete(cancelTransactionKey(tossResponse, payment.getAmount()), now);
+        auditLogWriter.append(
+            paymentOrder.getId(),
+            payment.getId(),
+            refund.getId(),
+            PaymentAuditEventType.PAYMENT_REFUNDED,
+            paymentFromStatus,
+            payment.getStatus(),
+            PaymentAuditSource.REFUND,
+            null,
+            PaymentAuditActorType.fromRequester(requesterMemberId),
+            requesterMemberId,
+            null,
+            now
+        );
+        auditLogWriter.append(
+            paymentOrder.getId(),
+            payment.getId(),
+            refund.getId(),
+            PaymentAuditEventType.REFUND_COMPLETED,
+            refundFromStatus,
+            refund.getStatus().name(),
+            PaymentAuditSource.REFUND,
+            null,
+            PaymentAuditActorType.fromRequester(requesterMemberId),
+            requesterMemberId,
+            null,
+            now
+        );
 
         PaymentRefund savedRefund = paymentRefundRepository.saveAndFlush(refund);
         return CreateRefundResponse.of(savedRefund, paymentOrder.getOrderNo());
@@ -130,22 +165,20 @@ public class RefundFinalizer {
             PaymentOrder paymentOrder,
             TicketOrder ticketOrder,
             PaymentRefund refund) {
-        if (!payment.isPaid()
-                || !paymentOrder.isPaid()
-                || !ticketOrder.isConfirmed()
-                || payment.getAmount().signum() <= 0) {
-            throw new BusinessException(GlobalErrorCode.REFUND_NOT_ALLOWED);
-        }
-
-        if (!deadlinePolicy.isBeforeOperationCutoff(refund.getRequestedAt(), projection.getEventEndAt())) {
-            throw new BusinessException(GlobalErrorCode.REFUND_NOT_ALLOWED);
-        }
-
-        if (exchangeCodeRepository.existsByTicketOrderIdAndStatus(
+        boolean exchangeCodeRedeemed = exchangeCodeRepository.existsByTicketOrderIdAndStatus(
                 ticketOrder.getId(),
-                ExchangeCodeStatus.REDEEMED)) {
-            throw new BusinessException(GlobalErrorCode.USED_TICKET_CANNOT_BE_REFUNDED);
-        }
+                ExchangeCodeStatus.REDEEMED);
+        refundEligibilityPolicy.requireRefundable(refundEligibilityPolicy.evaluate(
+            new RefundEligibilityInput(
+                payment.getStatus(),
+                paymentOrder.getStatus(),
+                ticketOrder.getStatus(),
+                payment.getAmount(),
+                projection.getEventEndAt(),
+                exchangeCodeRedeemed,
+                refund.getRequestedAt()
+            )
+        ));
     }
 
     private void validateTossCancelResponse(

@@ -43,6 +43,7 @@ public class PaymentConfirmService {
     private final TossPaymentClient tossPaymentClient;
     private final PaymentFinalizer paymentFinalizer;
     private final VirtualAccountPaymentService virtualAccountPaymentService;
+    private final PaymentConfirmInflightDuplicateGate inflightDuplicateGate;
     private final PaymentFinalizationExceptionTranslator exceptionTranslator;
     private final AdvertisementRepository advertisementRepository;
 
@@ -57,7 +58,7 @@ public class PaymentConfirmService {
         validateBeforeToss(paymentOrder, memberId, orderAccessToken, request);
 
         if (paymentOrder.isPaid()) {
-            return finalizeWithoutToss(request);
+            return finalizeWithoutToss(memberId, request);
         }
 
         if (paymentOrder.isWaitingForDeposit()
@@ -68,18 +69,46 @@ public class PaymentConfirmService {
             );
         }
 
-        TossConfirmResponse tossResponse = confirmWithToss(request, paymentOrder);
-        validateTossResponse(request, paymentOrder, tossResponse);
-
-        if (requestedMethod(paymentOrder) == PaymentMethod.VIRTUAL_ACCOUNT) {
-            return virtualAccountPaymentService.saveWaitingForDeposit(
-                paymentOrder,
-                request.getPaymentKey(),
-                tossResponse
-            );
+        PaymentConfirmInflightClaim claim = inflightDuplicateGate.tryClaim(request.getOrderId());
+        if (claim.result() == InflightClaimResult.ALREADY_IN_FLIGHT) {
+            return handleAlreadyInFlight(memberId, orderAccessToken, request);
         }
 
-        return finalizeWithLock(request, tossResponse);
+        try {
+            PaymentOrder latestPaymentOrder = reloadAndValidateBeforeToss(
+                memberId,
+                orderAccessToken,
+                request
+            );
+            if (latestPaymentOrder.isPaid()) {
+                return finalizeWithoutToss(memberId, request);
+            }
+            if (latestPaymentOrder.isWaitingForDeposit()
+                    && requestedMethod(latestPaymentOrder) == PaymentMethod.VIRTUAL_ACCOUNT) {
+                return virtualAccountPaymentService.getWaitingForDeposit(
+                    latestPaymentOrder,
+                    request.getPaymentKey()
+                );
+            }
+
+            TossConfirmResponse tossResponse = confirmWithToss(request, latestPaymentOrder);
+            return handleProviderPayment(memberId, request, latestPaymentOrder, tossResponse);
+        } finally {
+            if (claim.acquired()) {
+                inflightDuplicateGate.release(request.getOrderId(), claim.token());
+            }
+        }
+    }
+
+    private PaymentOrder reloadAndValidateBeforeToss(
+            Long memberId,
+            String orderAccessToken,
+            ConfirmPaymentRequest request) {
+        PaymentOrder latestPaymentOrder = paymentOrderRepository
+            .findByOrderNo(request.getOrderId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_ORDER_NOT_FOUND));
+        validateBeforeToss(latestPaymentOrder, memberId, orderAccessToken, request);
+        return latestPaymentOrder;
     }
 
     private void validateBeforeToss(
@@ -173,8 +202,55 @@ public class PaymentConfirmService {
                 return recoverAlreadyProcessedPayment(request, paymentOrder);
             }
 
+            if (isAmbiguousConfirmFailure(exception)) {
+                return recoverAmbiguousConfirm(request, paymentOrder, exception);
+            }
+
             throw new BusinessException(exception.getErrorCode());
         }
+    }
+
+    private ConfirmPaymentResponse handleAlreadyInFlight(
+            Long memberId,
+            String orderAccessToken,
+            ConfirmPaymentRequest request) {
+        PaymentOrder latestPaymentOrder = paymentOrderRepository
+            .findByOrderNo(request.getOrderId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_ORDER_NOT_FOUND));
+        validateAccess(latestPaymentOrder, memberId, orderAccessToken, request.getOrderId());
+
+        if (latestPaymentOrder.isPaid()) {
+            return finalizeWithoutToss(memberId, request);
+        }
+
+        if (latestPaymentOrder.isWaitingForDeposit()
+                && requestedMethod(latestPaymentOrder) == PaymentMethod.VIRTUAL_ACCOUNT) {
+            return virtualAccountPaymentService.getWaitingForDeposit(
+                latestPaymentOrder,
+                request.getPaymentKey()
+            );
+        }
+
+        throw new BusinessException(GlobalErrorCode.PAYMENT_CONFIRM_IN_PROGRESS);
+    }
+
+    private ConfirmPaymentResponse handleProviderPayment(
+            Long memberId,
+            ConfirmPaymentRequest request,
+            PaymentOrder paymentOrder,
+            TossConfirmResponse tossResponse) {
+        validateTossResponse(request, paymentOrder, tossResponse);
+
+        if (requestedMethod(paymentOrder) == PaymentMethod.VIRTUAL_ACCOUNT) {
+            return virtualAccountPaymentService.saveWaitingForDeposit(
+                memberId,
+                paymentOrder,
+                request.getPaymentKey(),
+                tossResponse
+            );
+        }
+
+        return finalizeWithLock(memberId, request, tossResponse);
     }
 
     private TossConfirmResponse recoverAlreadyProcessedPayment(
@@ -188,6 +264,29 @@ public class PaymentConfirmService {
         } catch (TossPaymentClientException exception) {
             throw new BusinessException(exception.getErrorCode());
         }
+    }
+
+    private TossConfirmResponse recoverAmbiguousConfirm(
+            ConfirmPaymentRequest request,
+            PaymentOrder paymentOrder,
+            TossPaymentClientException confirmException) {
+        try {
+            TossConfirmResponse tossPayment = tossPaymentClient.getPayment(request.getPaymentKey());
+            validateTossResponse(request, paymentOrder, tossPayment);
+            log.warn(
+                "Recovered ambiguous Toss confirm outcome by provider lookup: orderId={}, resultStatus={}",
+                request.getOrderId(),
+                tossPayment.status()
+            );
+            return tossPayment;
+        } catch (TossPaymentClientException lookupException) {
+            throw new BusinessException(confirmException.getErrorCode());
+        }
+    }
+
+    private boolean isAmbiguousConfirmFailure(TossPaymentClientException exception) {
+        return exception.getErrorCode() == GlobalErrorCode.PAYMENT_GATEWAY_TIMEOUT
+            || exception.getErrorCode() == GlobalErrorCode.PAYMENT_GATEWAY_ERROR;
     }
 
     private void validateTossResponse(
@@ -268,8 +367,11 @@ public class PaymentConfirmService {
         return response == null ? null : response.method();
     }
 
-    private ConfirmPaymentResponse finalizeWithoutToss(ConfirmPaymentRequest request) {
+    private ConfirmPaymentResponse finalizeWithoutToss(
+            Long memberId,
+            ConfirmPaymentRequest request) {
         return finalizeWithLock(
+            memberId,
             request,
             new TossConfirmResponse(
                 request.getPaymentKey(),
@@ -286,10 +388,11 @@ public class PaymentConfirmService {
     }
 
     private ConfirmPaymentResponse finalizeWithLock(
+            Long memberId,
             ConfirmPaymentRequest request,
             TossConfirmResponse tossResponse) {
         try {
-            return paymentFinalizer.finalizePayment(request, tossResponse);
+            return paymentFinalizer.finalizePayment(memberId, request, tossResponse);
         } catch (RuntimeException exception) {
             BusinessException businessException = exceptionTranslator.translate(exception);
             if (businessException != null) {

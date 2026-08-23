@@ -9,14 +9,12 @@ import com.min.edu.admission.domain.ExchangeCodeStatus;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
-import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.payment.domain.PaymentMethod;
-import com.min.edu.payment.domain.PaymentOrderStatus;
 import com.min.edu.payment.domain.PaymentRefund;
-import com.min.edu.payment.domain.PaymentStatus;
-import com.min.edu.payment.domain.TicketOrderStatus;
 import com.min.edu.payment.dto.request.CreateRefundRequest;
 import com.min.edu.payment.dto.response.CreateRefundResponse;
+import com.min.edu.payment.policy.RefundEligibilityPolicy;
+import com.min.edu.payment.policy.RefundEligibilityPolicy.RefundEligibilityInput;
 import com.min.edu.payment.repository.PaymentRefundRepository;
 import com.min.edu.payment.repository.PaymentRepository;
 import com.min.edu.payment.repository.RefundPaymentProjection;
@@ -46,7 +44,7 @@ public class RefundRequestService {
     private final RefundAttemptRecorder refundAttemptRecorder;
     private final RefundFinalizer refundFinalizer;
     private final RefundFinalizationExceptionTranslator exceptionTranslator;
-    private final EventOperationDeadlinePolicy deadlinePolicy;
+    private final RefundEligibilityPolicy refundEligibilityPolicy;
 
     public CreateRefundResponse refund(
             Long memberId,
@@ -89,6 +87,10 @@ public class RefundRequestService {
             if (shouldMarkRefundFailed(exception)) {
                 refundAttemptRecorder.markFailed(preparedRefund.getId());
             } else {
+                refundAttemptRecorder.markAmbiguous(
+                    preparedRefund.getId(),
+                    ambiguousReasonCode(exception)
+                );
                 logUncertainTossCancelResult(preparedRefund.getId(), payment, exception);
             }
             throw exception;
@@ -150,22 +152,20 @@ public class RefundRequestService {
             RefundPaymentProjection payment,
             CreateRefundRequest request,
             OffsetDateTime refundAttemptedAt) {
-        if (!PaymentStatus.PAID.name().equals(payment.getPaymentStatus())
-                || !PaymentOrderStatus.PAID.name().equals(payment.getPaymentOrderStatus())
-                || !TicketOrderStatus.CONFIRMED.name().equals(payment.getTicketOrderStatus())
-                || payment.getPaymentAmount().signum() <= 0) {
-            throw new BusinessException(GlobalErrorCode.REFUND_NOT_ALLOWED);
-        }
-
-        if (!deadlinePolicy.isBeforeOperationCutoff(refundAttemptedAt, payment.getEventEndAt())) {
-            throw new BusinessException(GlobalErrorCode.REFUND_NOT_ALLOWED);
-        }
-
-        if (exchangeCodeRepository.existsByTicketOrderIdAndStatus(
+        boolean exchangeCodeRedeemed = exchangeCodeRepository.existsByTicketOrderIdAndStatus(
                 payment.getTicketOrderId(),
-                ExchangeCodeStatus.REDEEMED)) {
-            throw new BusinessException(GlobalErrorCode.USED_TICKET_CANNOT_BE_REFUNDED);
-        }
+                ExchangeCodeStatus.REDEEMED);
+        refundEligibilityPolicy.requireRefundable(refundEligibilityPolicy.evaluate(
+            new RefundEligibilityInput(
+                payment.getPaymentStatus(),
+                payment.getPaymentOrderStatus(),
+                payment.getTicketOrderStatus(),
+                payment.getPaymentAmount(),
+                payment.getEventEndAt(),
+                exchangeCodeRedeemed,
+                refundAttemptedAt
+            )
+        ));
 
         if (PaymentMethod.VIRTUAL_ACCOUNT.matchesTossMethod(payment.getPaymentMethod())
                 && request.getRefundReceiveAccount() == null) {
@@ -317,6 +317,16 @@ public class RefundRequestService {
         GlobalErrorCode errorCode = businessException.getErrorCode();
         return errorCode == GlobalErrorCode.REFUND_REJECTED
             || errorCode == GlobalErrorCode.PAYMENT_GATEWAY_RESPONSE_INVALID;
+    }
+
+    private String ambiguousReasonCode(RuntimeException exception) {
+        if (exception instanceof BusinessException businessException) {
+            return businessException.getErrorCode().name();
+        }
+        if (exception instanceof TossPaymentClientException tossException) {
+            return tossException.getErrorCode().name();
+        }
+        return exception.getClass().getSimpleName();
     }
 
     private void logUncertainTossCancelResult(

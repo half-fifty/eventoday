@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Set;
 
 @Repository
@@ -21,6 +22,18 @@ public interface BoothQrScanRepository extends JpaRepository<BoothQrScan, Long> 
             "AND bqs.duplicate = false")
     long countByBoothIdAndScannedAtAfter(
             @Param("boothId") Long boothId,
+            @Param("since") OffsetDateTime since
+    );
+
+    // 관심 부스 목록 등 여러 부스를 한 화면에 보여줄 때, 부스마다 개별 COUNT를 날리는 대신
+    // IN + GROUP BY로 한 번에 집계한다.
+    @Query("SELECT bqs.boothId, COUNT(bqs) FROM BoothQrScan bqs " +
+            "WHERE bqs.boothId IN :boothIds " +
+            "AND bqs.scannedAt >= :since " +
+            "AND bqs.duplicate = false " +
+            "GROUP BY bqs.boothId")
+    List<Object[]> countByBoothIdInAndScannedAtAfter(
+            @Param("boothIds") Set<Long> boothIds,
             @Param("since") OffsetDateTime since
     );
 

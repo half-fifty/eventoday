@@ -66,6 +66,9 @@ public class PaymentWebhookService {
         }
 
         validateDonePayment(tossPayment);
+        if (shouldIgnoreDoneForTerminalLocalState(tossPayment)) {
+            return;
+        }
         finalizePayment(tossPayment);
     }
 
@@ -96,6 +99,9 @@ public class PaymentWebhookService {
 
         if (TOSS_DONE_STATUS.equals(tossPayment.status())) {
             validateDonePayment(tossPayment);
+            if (shouldIgnoreDoneForTerminalLocalState(tossPayment)) {
+                return;
+            }
             finalizePayment(tossPayment);
             return;
         }
@@ -214,6 +220,21 @@ public class PaymentWebhookService {
 
             throw exception;
         }
+    }
+
+    private boolean shouldIgnoreDoneForTerminalLocalState(TossConfirmResponse tossPayment) {
+        PaymentOrder paymentOrder = paymentOrderRepository.findByOrderNo(tossPayment.orderId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_ORDER_NOT_FOUND));
+        if (!paymentOrder.isRefunded()) {
+            return false;
+        }
+
+        log.warn(
+            "Ignoring Toss DONE webhook for refunded payment order: paymentOrderId={}, orderId={}",
+            paymentOrder.getId(),
+            tossPayment.orderId()
+        );
+        return true;
     }
 
     private boolean isDepositCallbackBody(TossPaymentWebhookRequest request) {

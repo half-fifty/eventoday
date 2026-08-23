@@ -7,6 +7,7 @@ import com.min.edu.payment.domain.PaymentMethod;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Getter
 @NoArgsConstructor
@@ -21,6 +22,15 @@ public class CreateTicketOrderRequest {
     private GuestBuyerRequest buyer;
 
     private PaymentMethod paymentMethod = PaymentMethod.CARD;
+
+    // 결제완료 퍼널 이벤트를 같은 세션에 이어붙이기 위한 분석용 값. 클라이언트가 함께 보낸다
+    // (event-contract.md 참고). 없어도 주문 자체는 정상 처리된다.
+    private String funnelSessionId;
+
+    // 게스트 구매자의 익명 방문자 식별자. 클라이언트가 보내는 값이 아니라, 컨트롤러가 쿠키에서
+    // 읽어 바인딩 이후에 채워 넣는다.
+    @Setter
+    private String anonymousId;
 
     public CreateTicketOrderRequest(Integer quantity, GuestBuyerRequest buyer) {
         this.quantity = quantity;
