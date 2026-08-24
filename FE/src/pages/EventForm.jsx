@@ -16,6 +16,8 @@ import EventDetailSettings from "../components/EventDetailSettings.jsx";
 import EventDetailPresentation from "../components/EventDetailPresentation.jsx";
 import { EXHIBIT_CATEGORIES } from "../constants/eventOptions.js";
 import TopNav from "../components/TopNav.jsx";
+import useToast from "../hooks/useToast.js";
+import useAlertModal from "../hooks/useAlertModal.js";
 
 const emptyForm = {
   name: "",
@@ -59,6 +61,8 @@ const toOffsetDateTime = (value) =>
 const OPERATION_CUTOFF_MS = 60 * 60 * 1000;
 
 export default function EventForm() {
+  const { showToast } = useToast();
+  const { showAlert } = useAlertModal();
   const { eventId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -303,18 +307,25 @@ export default function EventForm() {
         setPlaceError("장소는 선택했지만 우편번호를 자동 조회하지 못했습니다.");
     }
   };
+  // 제출 시점 검증/저장 오류는 폼 위 배너뿐 아니라 팝업으로도 즉시 알린다 - 화면이 길어서
+  // 배너만으로는 스크롤 위치에 따라 못 보고 지나칠 수 있다.
+  const raiseError = (message) => {
+    setError(message);
+    showAlert(message);
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     if (!organizationId) {
-      setError("행사를 등록할 운영 조직을 선택해 주세요.");
+      raiseError("행사를 등록할 운영 조직을 선택해 주세요.");
       return;
     }
     if (!form.representativeFileId) {
-      setError("행사 포스터를 등록해 주세요.");
+      raiseError("행사 포스터를 등록해 주세요.");
       return;
     }
     if (form.detailDisplayType === "EXTERNAL_SITE" && !form.officialWebsiteUrl?.trim()) {
-      setError("공식 사이트 표시를 선택했다면 행사 홈페이지 URL을 입력해 주세요.");
+      raiseError("공식 사이트 표시를 선택했다면 행사 홈페이지 URL을 입력해 주세요.");
       return;
     }
     const normalizedDescription = form.description?.trim()
@@ -338,7 +349,7 @@ export default function EventForm() {
           `/organizer-admin?organizationId=${organizationId}&eventId=${eventId}`,
         );
       } catch (requestError) {
-        setError(
+        raiseError(
           requestError.status === 403
             ? "이 행사를 수정할 권한이 없습니다. 조직의 OWNER 또는 MANAGER에게 권한을 요청해 주세요."
             : requestError.message || "공개 정보를 변경하지 못했습니다.",
@@ -349,11 +360,11 @@ export default function EventForm() {
       return;
     }
     if (!form.exhibitCategoryCodes.length) {
-      setError("전시품목을 하나 이상 선택해 주세요.");
+      raiseError("전시품목을 하나 이상 선택해 주세요.");
       return;
     }
     if (new Date(form.startAt) >= new Date(form.endAt)) {
-      setError("행사 종료는 시작 이후여야 합니다.");
+      raiseError("행사 종료는 시작 이후여야 합니다.");
       return;
     }
     if (
@@ -361,7 +372,7 @@ export default function EventForm() {
       new Date(form.ticketSalesEndAt).getTime() >
         new Date(form.endAt).getTime() - OPERATION_CUTOFF_MS
     ) {
-      setError("티켓 판매 종료는 행사 종료 1시간 전까지로 설정해 주세요.");
+      raiseError("티켓 판매 종료는 행사 종료 1시간 전까지로 설정해 주세요.");
       return;
     }
     const operationCutoffTime =
@@ -373,7 +384,7 @@ export default function EventForm() {
       form.ticketSalesStartAt &&
       new Date(form.ticketSalesStartAt).getTime() >= effectiveSalesEndTime
     ) {
-      setError("티켓 판매 시작은 실제 판매 종료보다 이전이어야 합니다.");
+      raiseError("티켓 판매 시작은 실제 판매 종료보다 이전이어야 합니다.");
       return;
     }
     setSaving(true);
@@ -399,7 +410,7 @@ export default function EventForm() {
         `/organizer-admin?organizationId=${organizationId}&eventId=${result.data.id}`,
       );
     } catch (requestError) {
-      setError(
+      raiseError(
         requestError.status === 403
           ? "이 행사를 수정할 권한이 없습니다. 조직의 OWNER 또는 MANAGER에게 권한을 요청해 주세요."
           : requestError.message || "저장하지 못했습니다.",
@@ -703,6 +714,107 @@ export default function EventForm() {
 
           <section className={section}>
             <div>
+              <p className="text-caption text-primary mb-xs">POSTER</p>
+              <h2 className="font-display-md text-[22px]">행사 포스터 · AI 분석</h2>
+              <p className="text-caption text-ink-muted mt-xs">
+                포스터를 올리면 AI가 정보를 미리 채워줍니다. 확인 후 필요한 항목만 적용하세요.
+              </p>
+            </div>
+            <FileUploadField
+              label="행사 포스터"
+              required
+              value={form.representativeFileId}
+              onChange={(fileId) => change("representativeFileId", fileId)}
+              onFileSelected={(file) => {
+                setPosterFile(file);
+                setPosterExtraction(null);
+                setPosterAnalysisError("");
+              }}
+            />
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-md">
+              <div className="flex flex-wrap items-center justify-between gap-md">
+                <div>
+                  <strong className="flex items-center gap-xs text-primary"><Icon name="document_scanner" /> AI 포스터 정보 추출</strong>
+                  <p className="mt-xs text-caption leading-5 text-ink-muted">Qwen이 이미지에 보이는 정보만 후보로 제안합니다. 확인 후 필요한 항목만 적용하세요.</p>
+                </div>
+                <button type="button" onClick={analyzePoster} disabled={!posterFile || posterAnalyzing} className="rounded-full bg-primary px-lg py-sm text-sm font-body-strong text-white disabled:bg-surface-container-highest disabled:text-ink-muted">
+                  {posterAnalyzing ? "분석 중..." : "포스터 분석"}
+                </button>
+              </div>
+              {posterAnalysisError && <p className="mt-md text-caption text-error">{posterAnalysisError}</p>}
+              {posterExtraction && (
+                <div className="mt-md space-y-sm border-t border-primary/10 pt-md">
+                  {[
+                    ["행사명", posterExtraction.eventName, () => change("name", posterExtraction.eventName)],
+                    ["시작일", posterExtraction.startDate, () => applyPosterDate("startAt", posterExtraction.startDate, "09:00")],
+                    ["종료일", posterExtraction.endDate, () => applyPosterDate("endAt", posterExtraction.endDate, "18:00")],
+                    ["장소", [posterExtraction.venueName, posterExtraction.hall].filter(Boolean).join(" "), () => { setPlaceQuery(posterExtraction.venueName || ""); setPlaceError("장소 검색 결과에서 정확한 주소를 선택해 주세요."); }],
+                    ["홈페이지", posterExtraction.officialWebsiteUrl, () => change("officialWebsiteUrl", posterExtraction.officialWebsiteUrl?.startsWith("http") ? posterExtraction.officialWebsiteUrl : `https://${posterExtraction.officialWebsiteUrl}`)],
+                  ].filter(([, value]) => value).map(([label, value, apply]) => (
+                    <div key={label} className="flex items-center gap-sm rounded-lg bg-white px-md py-sm">
+                      <span className="w-20 shrink-0 text-caption font-bold text-ink-muted">{label}</span>
+                      <span className="min-w-0 flex-1 break-words text-sm">{value}</span>
+                      <button type="button" onClick={() => { apply(); showToast("적용되었습니다."); }} className="shrink-0 rounded-full border border-hairline px-md py-xs text-caption font-body-strong hover:border-primary hover:text-primary">적용</button>
+                    </div>
+                  ))}
+                  {(posterExtraction.organizer || posterExtraction.operator || posterExtraction.sponsors?.length > 0) && (
+                    <div className="rounded-lg bg-white px-md py-sm text-caption leading-6 text-ink-muted">
+                      주최 {posterExtraction.organizer || "-"} · 주관 {posterExtraction.operator || "-"}
+                      {posterExtraction.sponsors?.length > 0 && ` · 후원 ${posterExtraction.sponsors.join(", ")}`}
+                    </div>
+                  )}
+                  {posterExtraction.warnings?.length > 0 && <div className="rounded-lg bg-warning/10 px-md py-sm text-caption text-on-surface-variant">확인 필요: {posterExtraction.warnings.join(" · ")}</div>}
+                  <p className="text-caption text-ink-muted">AI 추출 결과는 자동 저장되지 않습니다. 특히 일정과 장소는 원본 포스터와 다시 확인해 주세요.</p>
+                </div>
+              )}
+              <div className="mt-md border-t border-primary/10 pt-md">
+                <div className="flex flex-wrap items-center justify-between gap-md">
+                  <div>
+                    <strong className="text-sm">검색 근거 기반 행사 콘텐츠 추천</strong>
+                    <p className="mt-xs text-caption text-ink-muted">현재 입력값과 포스터에서 확인된 글자만 사용해 소개문과 전시품목을 제안합니다.</p>
+                  </div>
+                  <button type="button" onClick={suggestEventContent} disabled={!form.name || contentSuggesting} className="rounded-full border border-primary px-lg py-sm text-sm font-body-strong text-primary disabled:border-hairline disabled:text-ink-muted">
+                    {contentSuggesting ? "추천 생성 중..." : "소개 콘텐츠 추천"}
+                  </button>
+                </div>
+                {contentSuggestion && (
+                  <div className="mt-md space-y-sm">
+                    {contentSuggestion.notice && <p className="rounded-lg bg-warning/10 px-md py-sm text-caption">{contentSuggestion.notice}</p>}
+                    {contentSuggestion.shortDescription && (
+                      <div className="rounded-lg bg-white p-md text-sm">
+                        <p className="font-body-strong">한 줄 소개</p><p className="mt-xs leading-6 text-ink-muted">{contentSuggestion.shortDescription}</p>
+                        <button type="button" onClick={() => { change("shortDescription", contentSuggestion.shortDescription); showToast("적용되었습니다."); }} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">한 줄 소개에 적용</button>
+                      </div>
+                    )}
+                    {contentSuggestion.description && (
+                      <div className="rounded-lg bg-white p-md text-sm">
+                        <p className="font-body-strong">상세 소개 초안</p><p className="mt-xs whitespace-pre-wrap leading-6 text-ink-muted">{contentSuggestion.description}</p>
+                        <button type="button" onClick={() => { change("description", contentSuggestion.description); showToast("적용되었습니다."); }} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">상세 소개에 적용</button>
+                      </div>
+                    )}
+                    {contentSuggestion.categoryCodes?.length > 0 && (
+                      <div className="rounded-lg bg-white p-md text-sm">
+                        <p className="font-body-strong">추천 전시품목</p><p className="mt-xs text-ink-muted">{contentSuggestion.categoryCodes.map((code) => EXHIBIT_CATEGORIES.find(([value]) => value === code)?.[1] || code).join(" · ")}</p>
+                        <button type="button" onClick={() => { change("exhibitCategoryCodes", contentSuggestion.categoryCodes.slice(0, 5)); showToast("적용되었습니다."); }} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">전시품목에 적용</button>
+                      </div>
+                    )}
+                    {contentSuggestion.sources?.length > 0 && <p className="text-caption text-ink-muted">사용 근거: {contentSuggestion.sources.join(" · ")}</p>}
+                    {contentSuggestion.warnings?.length > 0 && <p className="text-caption text-error">확인 필요: {contentSuggestion.warnings.join(" · ")}</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="rounded-xl bg-primary/5 border border-primary/10 p-md text-caption text-on-surface-variant">
+              <strong className="block text-primary mb-xs">
+                포스터 권장 사양
+              </strong>
+              세로형 3:4 비율, 최소 900×1200px 이미지를 권장합니다. 행사 목록과
+              상세 페이지에 동일한 이미지가 사용됩니다.
+            </div>
+          </section>
+
+          <section className={section}>
+            <div>
               <p className="text-caption text-primary mb-xs">01</p>
               <h2 className="font-display-md text-[22px]">기본 정보</h2>
             </div>
@@ -944,7 +1056,7 @@ export default function EventForm() {
           <section className={section}>
             <div>
               <p className="text-caption text-primary mb-xs">04</p>
-              <h2 className="font-display-md text-[22px]">문의처 및 포스터</h2>
+              <h2 className="font-display-md text-[22px]">문의처</h2>
               <p className="text-caption text-ink-muted mt-xs">
                 방문객에게 공개되는 공식 문의처입니다. 개인번호보다 행사
                 대표번호 사용을 권장합니다.
@@ -985,97 +1097,6 @@ export default function EventForm() {
                   예: 02-1234-5678, 031-123-4567
                 </span>
               </label>
-            </div>
-            <FileUploadField
-              label="행사 포스터"
-              required
-              value={form.representativeFileId}
-              onChange={(fileId) => change("representativeFileId", fileId)}
-              onFileSelected={(file) => {
-                setPosterFile(file);
-                setPosterExtraction(null);
-                setPosterAnalysisError("");
-              }}
-            />
-            <div className="rounded-xl border border-primary/20 bg-primary/5 p-md">
-              <div className="flex flex-wrap items-center justify-between gap-md">
-                <div>
-                  <strong className="flex items-center gap-xs text-primary"><Icon name="document_scanner" /> AI 포스터 정보 추출</strong>
-                  <p className="mt-xs text-caption leading-5 text-ink-muted">Qwen이 이미지에 보이는 정보만 후보로 제안합니다. 확인 후 필요한 항목만 적용하세요.</p>
-                </div>
-                <button type="button" onClick={analyzePoster} disabled={!posterFile || posterAnalyzing} className="rounded-full bg-primary px-lg py-sm text-sm font-body-strong text-white disabled:bg-surface-container-highest disabled:text-ink-muted">
-                  {posterAnalyzing ? "분석 중..." : "포스터 분석"}
-                </button>
-              </div>
-              {posterAnalysisError && <p className="mt-md text-caption text-error">{posterAnalysisError}</p>}
-              {posterExtraction && (
-                <div className="mt-md space-y-sm border-t border-primary/10 pt-md">
-                  {[
-                    ["행사명", posterExtraction.eventName, () => change("name", posterExtraction.eventName)],
-                    ["시작일", posterExtraction.startDate, () => applyPosterDate("startAt", posterExtraction.startDate, "09:00")],
-                    ["종료일", posterExtraction.endDate, () => applyPosterDate("endAt", posterExtraction.endDate, "18:00")],
-                    ["장소", [posterExtraction.venueName, posterExtraction.hall].filter(Boolean).join(" "), () => { setPlaceQuery(posterExtraction.venueName || ""); setPlaceError("장소 검색 결과에서 정확한 주소를 선택해 주세요."); }],
-                    ["홈페이지", posterExtraction.officialWebsiteUrl, () => change("officialWebsiteUrl", posterExtraction.officialWebsiteUrl?.startsWith("http") ? posterExtraction.officialWebsiteUrl : `https://${posterExtraction.officialWebsiteUrl}`)],
-                  ].filter(([, value]) => value).map(([label, value, apply]) => (
-                    <div key={label} className="flex items-center gap-sm rounded-lg bg-white px-md py-sm">
-                      <span className="w-20 shrink-0 text-caption font-bold text-ink-muted">{label}</span>
-                      <span className="min-w-0 flex-1 break-words text-sm">{value}</span>
-                      <button type="button" onClick={apply} className="shrink-0 rounded-full border border-hairline px-md py-xs text-caption font-body-strong hover:border-primary hover:text-primary">적용</button>
-                    </div>
-                  ))}
-                  {(posterExtraction.organizer || posterExtraction.operator || posterExtraction.sponsors?.length > 0) && (
-                    <div className="rounded-lg bg-white px-md py-sm text-caption leading-6 text-ink-muted">
-                      주최 {posterExtraction.organizer || "-"} · 주관 {posterExtraction.operator || "-"}
-                      {posterExtraction.sponsors?.length > 0 && ` · 후원 ${posterExtraction.sponsors.join(", ")}`}
-                    </div>
-                  )}
-                  {posterExtraction.warnings?.length > 0 && <div className="rounded-lg bg-warning/10 px-md py-sm text-caption text-on-surface-variant">확인 필요: {posterExtraction.warnings.join(" · ")}</div>}
-                  <p className="text-caption text-ink-muted">AI 추출 결과는 자동 저장되지 않습니다. 특히 일정과 장소는 원본 포스터와 다시 확인해 주세요.</p>
-                </div>
-              )}
-              <div className="mt-md border-t border-primary/10 pt-md">
-                <div className="flex flex-wrap items-center justify-between gap-md">
-                  <div>
-                    <strong className="text-sm">검색 근거 기반 행사 콘텐츠 추천</strong>
-                    <p className="mt-xs text-caption text-ink-muted">현재 입력값과 포스터에서 확인된 글자만 사용해 소개문과 전시품목을 제안합니다.</p>
-                  </div>
-                  <button type="button" onClick={suggestEventContent} disabled={!form.name || contentSuggesting} className="rounded-full border border-primary px-lg py-sm text-sm font-body-strong text-primary disabled:border-hairline disabled:text-ink-muted">
-                    {contentSuggesting ? "추천 생성 중..." : "소개 콘텐츠 추천"}
-                  </button>
-                </div>
-                {contentSuggestion && (
-                  <div className="mt-md space-y-sm">
-                    {contentSuggestion.notice && <p className="rounded-lg bg-warning/10 px-md py-sm text-caption">{contentSuggestion.notice}</p>}
-                    {contentSuggestion.shortDescription && (
-                      <div className="rounded-lg bg-white p-md text-sm">
-                        <p className="font-body-strong">한 줄 소개</p><p className="mt-xs leading-6 text-ink-muted">{contentSuggestion.shortDescription}</p>
-                        <button type="button" onClick={() => change("shortDescription", contentSuggestion.shortDescription)} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">한 줄 소개에 적용</button>
-                      </div>
-                    )}
-                    {contentSuggestion.description && (
-                      <div className="rounded-lg bg-white p-md text-sm">
-                        <p className="font-body-strong">상세 소개 초안</p><p className="mt-xs whitespace-pre-wrap leading-6 text-ink-muted">{contentSuggestion.description}</p>
-                        <button type="button" onClick={() => change("description", contentSuggestion.description)} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">상세 소개에 적용</button>
-                      </div>
-                    )}
-                    {contentSuggestion.categoryCodes?.length > 0 && (
-                      <div className="rounded-lg bg-white p-md text-sm">
-                        <p className="font-body-strong">추천 전시품목</p><p className="mt-xs text-ink-muted">{contentSuggestion.categoryCodes.map((code) => EXHIBIT_CATEGORIES.find(([value]) => value === code)?.[1] || code).join(" · ")}</p>
-                        <button type="button" onClick={() => change("exhibitCategoryCodes", contentSuggestion.categoryCodes.slice(0, 5))} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">전시품목에 적용</button>
-                      </div>
-                    )}
-                    {contentSuggestion.sources?.length > 0 && <p className="text-caption text-ink-muted">사용 근거: {contentSuggestion.sources.join(" · ")}</p>}
-                    {contentSuggestion.warnings?.length > 0 && <p className="text-caption text-error">확인 필요: {contentSuggestion.warnings.join(" · ")}</p>}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="rounded-xl bg-primary/5 border border-primary/10 p-md text-caption text-on-surface-variant">
-              <strong className="block text-primary mb-xs">
-                포스터 권장 사양
-              </strong>
-              세로형 3:4 비율, 최소 900×1200px 이미지를 권장합니다. 행사 목록과
-              상세 페이지에 동일한 이미지가 사용됩니다.
             </div>
           </section>
 
