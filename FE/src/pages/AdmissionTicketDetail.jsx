@@ -131,14 +131,12 @@ export default function AdmissionTicketDetail() {
               <div className="mb-lg flex flex-wrap items-start justify-between gap-md">
                 <div>
                   <h2 className="font-display-md text-[24px]">{ticket.eventName}</h2>
-                  <p className="mt-xs text-caption text-ink-muted">입장 티켓 ID {ticket.admissionTicketId}</p>
                 </div>
                 <span className="rounded-full bg-primary/10 px-md py-1 text-caption font-body-strong text-primary">
                   {admissionStatusLabel[ticket.admissionTicketStatus] || ticket.admissionTicketStatus}
                 </span>
               </div>
               <div className="grid gap-md sm:grid-cols-2">
-                <Info label="행사 ID" value={ticket.eventId} />
                 <Info label="교환 코드 상태" value={exchangeCodeStatusLabel[ticket.exchangeCodeStatus] || ticket.exchangeCodeStatus} />
                 <Info label="발급 시각" value={formatDateTime(ticket.issuedAt)} />
                 <Info label="사용 시각" value={formatDateTime(ticket.usedAt)} />

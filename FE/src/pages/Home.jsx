@@ -17,6 +17,18 @@ const eventPhase = (event) => {
   return "ended";
 };
 
+const eventCountdown = (event) => {
+  const startAt = new Date(event.startAt);
+  if (Number.isNaN(startAt.getTime())) return "예정";
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startDay = new Date(startAt.getFullYear(), startAt.getMonth(), startAt.getDate());
+  const remainingDays = Math.ceil((startDay.getTime() - today.getTime()) / 86_400_000);
+
+  return remainingDays <= 0 ? "D-DAY" : `D-${remainingDays}`;
+};
+
 export default function Home() {
   const eventRailRef = useRef(null);
   const eventRequestSequence = useRef(0);
@@ -58,7 +70,7 @@ export default function Home() {
     title: ad.adText || "진행 중인 행사 광고",
     desc: ad.eventId
       ? events.find((event) => String(event.id) === String(ad.eventId))?.name || "EvenToday 추천 행사"
-      : `부스 #${ad.boothId}`,
+      : "추천 부스",
     cta: ad.eventId ? "자세히 보기" : "부스 상세 준비 중",
     to: ad.eventId ? `/events/${ad.eventId}` : null,
     bg: "linear-gradient(135deg,#2b5876,#4e4376)",
@@ -72,7 +84,7 @@ export default function Home() {
       ? { text: "진행중", cls: "bg-status-assigned text-white" }
       : eventPhase(event) === "ended"
         ? { text: "종료", cls: "bg-surface-container-highest text-ink-muted" }
-        : { text: "예정", cls: "bg-primary-container text-white" },
+        : { text: eventCountdown(event), cls: "bg-primary-container text-white" },
     icon: "event",
     category: event.exhibitCategoryCodes?.map((code) => EXHIBIT_CATEGORY_LABELS[code] || code).join(" · ") || event.eventType,
     title: event.name,
@@ -377,7 +389,7 @@ export default function Home() {
               <Link key={event.id} to={`/events/${event.id}`} className="group text-center">
                 <div className="relative h-[150px] overflow-hidden rounded-2xl mb-sm bg-gradient-to-br from-[#24496b] to-[#51477d]">
                   {event.representativeFileId ? <img src={fileDownloadUrl(event.representativeFileId)} alt="" className="h-full w-full object-cover transition group-hover:scale-105" /> : <span className="grid h-full place-items-center text-white font-hero-display text-[28px]">{index + 1}</span>}
-                  <span className="absolute left-sm top-sm rounded-full bg-black/65 px-sm py-1 text-[11px] font-bold text-white">{eventPhase(event) === "ongoing" ? "진행 중" : eventPhase(event) === "upcoming" ? "예정" : "종료"}</span>
+                  <span className="absolute left-sm top-sm rounded-full bg-black/65 px-sm py-1 text-[11px] font-bold text-white">{eventPhase(event) === "ongoing" ? "진행 중" : eventPhase(event) === "upcoming" ? eventCountdown(event) : "종료"}</span>
                 </div>
                 <p className="truncate text-caption font-body-strong">{event.name}</p>
                 <p className="mt-1 text-[11px] text-ink-muted">{event.venueName || "장소 미정"}</p>

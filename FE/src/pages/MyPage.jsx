@@ -451,7 +451,7 @@ export default function MyPage() {
       setRedeemMsg({
         ok: true,
         text: redeemed?.admissionTicketId
-          ? `입장 티켓이 발급되었습니다. 티켓 ID: ${redeemed.admissionTicketId}`
+          ? "입장 티켓이 발급되었습니다."
           : "입장 티켓이 발급되었습니다.",
       });
       await loadExchangeCodes();
@@ -751,7 +751,7 @@ export default function MyPage() {
                   <div className="w-11 h-11 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ background: "linear-gradient(135deg,#667eea,#764ba2)" }}><Icon name="payments" className="text-[18px]" /></div>
                   <div className="min-w-0 flex-1">
                     <p className="font-body-strong truncate">{refund.eventName}</p>
-                    <p className="text-caption text-ink-muted">환불 #{refund.refundId} · 주문 {refund.orderNo} · {formatMoney(refund.refundAmount)}</p>
+                    <p className="text-caption text-ink-muted">주문 {refund.orderNo} · {formatMoney(refund.refundAmount)}</p>
                     <p className="text-[11px] text-ink-muted">
                       신청 {formatDateTime(refund.requestedAt)}
                       {refund.completedAt ? ` · 처리 ${formatDateTime(refund.completedAt)}` : ""}
@@ -797,7 +797,6 @@ export default function MyPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-body-strong truncate">{ticket.eventName}</p>
-                    <p className="text-caption text-ink-muted">입장 티켓 ID {ticket.admissionTicketId}</p>
                     <p className="text-[11px] text-ink-muted">
                       발급 {formatDateTime(ticket.issuedAt)}
                       {ticket.usedAt ? ` · 사용 ${formatDateTime(ticket.usedAt)}` : ""}

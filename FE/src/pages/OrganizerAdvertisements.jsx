@@ -139,7 +139,9 @@ export default function OrganizerAdvertisements() {
       loadAds(organizationId),
     ])
       .then(([eventResult]) => {
-        const list = eventResult?.data?.content || [];
+        const list = (eventResult?.data?.content || []).filter(
+          (item) => item.status === "PUBLISHED",
+        );
         setEvents(list);
         const selectedEventId = list.some(
           (item) => String(item.id) === requestedEventId,
@@ -855,8 +857,8 @@ export default function OrganizerAdvertisements() {
                         <div className="flex flex-wrap items-center gap-sm">
                           <p className="font-body-strong">
                             {ad.eventId
-                              ? eventNames[ad.eventId] || `행사 #${ad.eventId}`
-                              : `부스 #${ad.boothId}`}
+                              ? eventNames[ad.eventId] || "행사 광고"
+                              : "부스 광고"}
                           </p>
                           <span
                             className={`text-caption px-sm py-[3px] rounded-full ${ad.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-surface-container text-ink-muted"}`}
@@ -1053,7 +1055,7 @@ export default function OrganizerAdvertisements() {
             </div>
             <div className="mt-lg rounded-xl bg-surface-container-low p-md text-caption leading-6 text-on-surface-variant">
               <p className="font-body-strong text-on-surface">
-                {eventNames[cancelTarget.eventId] || `광고 #${cancelTarget.id}`}
+                {eventNames[cancelTarget.eventId] || "선택한 광고"}
               </p>
               {cancelTarget.status === "ACTIVE" ? (
                 <>

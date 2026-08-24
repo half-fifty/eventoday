@@ -145,6 +145,13 @@ public class EventController {
             @AuthenticationPrincipal AuthenticatedMemberDto actor) {
         return ApiResponse.success(eventService.getMembers(eventId, actor));
     }
+    @GetMapping("/events/{eventId}/member-candidates")
+    public ApiResponse<List<EventDtos.MemberCandidate>> searchMemberCandidates(
+            @PathVariable Long eventId,
+            @RequestParam String query,
+            @AuthenticationPrincipal AuthenticatedMemberDto actor) {
+        return ApiResponse.success(eventService.searchMemberCandidates(eventId, query, actor));
+    }
     @PostMapping("/events/{eventId}/members")
     public ApiResponse<EventDtos.MemberResponse> addMember(@PathVariable Long eventId,
             @Valid @RequestBody EventDtos.MemberRequest request,

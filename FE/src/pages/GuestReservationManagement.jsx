@@ -265,7 +265,6 @@ export default function GuestReservationManagement() {
               {payment ? (
                 <div className="space-y-md">
                   <div className="grid gap-md sm:grid-cols-2 lg:grid-cols-4">
-                    <Info label="결제 ID" value={payment.paymentId} />
                     <Info label="결제 상태" value={statusLabel[payment.paymentStatus] || payment.paymentStatus} />
                     <Info label="결제 수단" value={payment.method || "-"} />
                     <Info label="승인 시각" value={formatDateTime(payment.approvedAt)} />
@@ -377,7 +376,6 @@ export default function GuestReservationManagement() {
                       <div className="mb-sm flex items-center justify-between gap-sm">
                         <div>
                           <p className="font-body-strong">{ticket.eventName}</p>
-                          <p className="text-caption text-ink-muted">입장 티켓 ID {ticket.admissionTicketId}</p>
                         </div>
                         <span className="rounded-full bg-primary/10 px-sm py-1 text-[11px] font-bold text-primary">
                           {statusLabel[ticket.status] || ticket.status}

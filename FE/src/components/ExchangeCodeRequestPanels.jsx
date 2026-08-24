@@ -39,7 +39,7 @@ function RequestRow({ request, onSelect }) {
       <div className="min-w-0 flex-1">
         <p className="font-body-strong truncate">{request.eventName}</p>
         <p className="text-caption text-ink-muted">
-          외부 판매 {request.requestedQuantity}매 · {request.requesterNickname || `회원 #${request.requestedBy}`}
+          외부 판매 {request.requestedQuantity}매 · {request.requesterNickname || "요청자"}
         </p>
         <p className="text-[11px] text-ink-muted">요청 {formatDateTime(request.createdAt)}</p>
       </div>
@@ -68,10 +68,10 @@ function RequestDetail({ request, admin, actionBusy, rejectionReason, onRejectio
       </div>
       <div className="grid gap-sm text-caption sm:grid-cols-2">
         <Info label="외부 판매 티켓 매수" value={`${request.requestedQuantity}매`} />
-        <Info label="요청자" value={request.requesterNickname || `회원 #${request.requestedBy}`} />
+        <Info label="요청자" value={request.requesterNickname || "요청자 정보 없음"} />
         <Info label="요청 시각" value={formatDateTime(request.createdAt)} />
         <Info label="검토 시각" value={formatDateTime(request.reviewedAt)} />
-        <Info label="검토자" value={request.reviewedBy ? `회원 #${request.reviewedBy}` : "-"} />
+        <Info label="검토자" value={request.reviewedBy ? "플랫폼 관리자" : "-"} />
         <Info label="이메일 발송" value={request.emailedAt ? formatDateTime(request.emailedAt) : "미발송"} />
         <div className="sm:col-span-2">
           <Info label="외부 예매처 및 요청 사유" value={request.purpose} />

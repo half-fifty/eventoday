@@ -35,7 +35,16 @@ public class ExchangeCodeIssuanceService {
             AuthenticatedMemberDto actor) {
         requireAdmin(actor);
 
-        ExchangeCodeIssuanceResult result = issuanceFinalizer.issue(requestId);
+        ExchangeCodeIssuanceResult result;
+        try {
+            result = issuanceFinalizer.issue(requestId);
+        } catch (BusinessException exception) {
+            if (exception.getErrorCode() != GlobalErrorCode.EXCHANGE_CODE_REQUEST_ALREADY_ISSUED) {
+                throw exception;
+            }
+            // 코드 저장 후 SMTP만 실패한 요청은 다시 코드를 만들지 않고 기존 코드를 재사용한다.
+            result = issuanceFinalizer.prepareEmailResend(requestId);
+        }
         emailSender.send(new EmailMessage(
             result.recipientEmail(),
             ISSUANCE_EMAIL_SUBJECT,

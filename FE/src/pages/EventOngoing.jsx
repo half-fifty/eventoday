@@ -34,11 +34,8 @@ const tabButtons = [
   { key: "interest", label: "관심 부스", mobile: "관심", icon: "favorite" },
 ];
 
-// deterministic QR mock, same formula as original
-const qrPixels = Array.from({ length: 100 }, (_, i) => (i * 37 + 13) % 7 < 3);
-
 export default function EventOngoing() {
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading, logout } = useAuth();
   const { eventId } = useParams();
   const selectedEventId = eventId || "";
   const trackFunnelAction = useFunnelTracking(eventId);
@@ -71,7 +68,7 @@ export default function EventOngoing() {
   // 바텀시트에 표시할 부스 (평면도 핀 클릭 / 인기·추천 부스 탭 항목 클릭이 공용으로 사용)
   const [activeBooth, setActiveBooth] = useState(null);
   const [boothSheetOpen, setBoothSheetOpen] = useState(false);
-  const [qrSheetOpen, setQrSheetOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   // 혼잡도 기반 추천/혼잡 부스
   const [recommendedBooths, setRecommendedBooths] = useState([]);
@@ -331,7 +328,7 @@ export default function EventOngoing() {
     openBoothDetailSheet({
       boothId: entry.boothId,
       code: boothDetail?.boothCode ?? "",
-      name: boothDetail?.displayName || boothDetail?.boothCode || `부스 #${entry.boothId}`,
+      name: boothDetail?.displayName || boothDetail?.boothCode || "참가 부스",
       zone: [boothDetail?.floorName, boothDetail?.zoneName].filter(Boolean).join(" · "),
       representativeFileId: boothDetail?.representativeFileId ?? null,
       shortIntro: boothDetail?.shortIntro ?? "",
@@ -386,6 +383,11 @@ export default function EventOngoing() {
     setSearchSubmitted(false);
     setSearchSheetOpen(true);
   };
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try { await logout(); } finally { setLoggingOut(false); }
+  };
 
   return (
     <div className="bg-surface font-body text-on-surface antialiased">
@@ -404,13 +406,13 @@ export default function EventOngoing() {
             </svg>
           </button>
           <NotificationBell />
-          <button
-            onClick={() => setQrSheetOpen(true)}
-            aria-label="입장 QR 보기"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-status-available transition-colors hover:bg-white/10"
-          >
-            <Icon name="qr_code_2" fill className="text-[20px]" />
-          </button>
+          {!authLoading && (isAuthenticated ? (
+            <button type="button" onClick={handleLogout} disabled={loggingOut} className="rounded-full border border-white/30 px-md py-1 text-caption text-white disabled:opacity-50">
+              {loggingOut ? "처리 중" : "로그아웃"}
+            </button>
+          ) : (
+            <Link to={`/login?redirect=${encodeURIComponent(`/events/${selectedEventId}/ongoing`)}`} className="rounded-full border border-white/30 px-md py-1 text-caption text-white">로그인</Link>
+          ))}
         </div>
       </header>
 
@@ -448,9 +450,6 @@ export default function EventOngoing() {
                 {eventDetail?.name ?? "행사 정보를 확인할 수 없습니다"}
               </h1>
             </div>
-            <button onClick={() => setQrSheetOpen(true)} className="hidden md:flex bg-primary-container text-white px-lg py-sm rounded-full items-center gap-xs font-body-strong active:scale-95 transition-transform flex-shrink-0">
-              <Icon name="qr_code_2" fill /> 입장 QR
-            </button>
           </div>
           <div className="max-w-[900px] mx-auto mt-lg glass-nav border border-hairline rounded-xl p-md flex items-center justify-between flex-wrap gap-sm">
             <div className="flex items-center gap-sm">
@@ -596,7 +595,7 @@ export default function EventOngoing() {
                               <span className="bg-status-visited text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded">{i + 1}</span>
                               <span className="text-caption text-secondary">{[meta?.floorName, meta?.zoneName].filter(Boolean).join(" · ")}</span>
                             </div>
-                            <h3 className="font-body-strong">{meta?.displayName || meta?.boothCode || `부스 #${entry.boothId}`}</h3>
+                            <h3 className="font-body-strong">{meta?.displayName || meta?.boothCode || "참가 부스"}</h3>
                             <p className="text-caption text-secondary">최근 10분 방문 {entry.congestionCount ?? 0}명</p>
                           </div>
                           <div className="flex items-center"><Icon name="chevron_right" className="text-secondary" /></div>
@@ -634,7 +633,7 @@ export default function EventOngoing() {
                               <span className="bg-status-available text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded">{entry.rank}</span>
                               <span className="text-caption text-secondary">{[meta?.floorName, meta?.zoneName].filter(Boolean).join(" · ")}</span>
                             </div>
-                            <h3 className="font-body-strong">{meta?.displayName || meta?.boothCode || `부스 #${entry.boothId}`}</h3>
+                            <h3 className="font-body-strong">{meta?.displayName || meta?.boothCode || "참가 부스"}</h3>
                             <p className="text-caption text-secondary">최근 10분 방문 {entry.congestionCount ?? 0}명</p>
                           </div>
                           <div className="flex items-center"><Icon name="chevron_right" className="text-secondary" /></div>
@@ -791,24 +790,6 @@ export default function EventOngoing() {
               </div>
             </>
           )}
-        </div>
-      </div>
-
-      {/* QR sheet */}
-      <div className={`sheet-overlay${qrSheetOpen ? " open" : ""}`}>
-        <div className="sheet-backdrop" onClick={() => setQrSheetOpen(false)} />
-        <div className="sheet-panel max-w-[420px] mx-auto left-0 right-0 text-center">
-          <div className="w-12 h-1.5 bg-surface-variant rounded-full mx-auto mb-lg" />
-          <h3 className="font-display-md text-[20px] mb-md">입장 QR</h3>
-          <div className="bg-surface-container-low p-xl rounded-2xl inline-block mb-md">
-            <div className="grid grid-cols-10 gap-[2px] w-[160px] mx-auto">
-              {qrPixels.map((on, i) => (
-                <div key={i} className={`w-full aspect-square ${on ? "bg-black" : "bg-white"}`} />
-              ))}
-            </div>
-          </div>
-          <p className="font-body-strong">회원 입장 QR · 사용 전</p>
-          <p className="text-caption text-ink-muted mt-xs">화면 밝기를 최대로 설정하면 현장 스캔이 더 원활해요.</p>
         </div>
       </div>
 

@@ -16,6 +16,14 @@ public interface EventMemberRepository extends JpaRepository<EventMember, Long> 
             Long eventId, Long memberId, EventRole eventRole);
 
     @Query("""
+            select member.eventId
+            from EventMember member
+            where member.memberId = :memberId
+              and member.active = true
+            """)
+    List<Long> findActiveEventIdsByMemberId(@Param("memberId") Long memberId);
+
+    @Query("""
             select e.id as eventId, e.name as eventName, e.startAt as startAt, e.endAt as endAt,
                    member.eventRole as role
             from EventMember member

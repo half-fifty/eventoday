@@ -248,7 +248,7 @@ export default function OrganizerApplicationPanel({ eventId, onDataChanged }) {
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-body-strong text-[14px]">{application.teamName}</span>
                 <span className="block text-caption text-ink-muted">
-                  신청번호 {application.applicationNo} · 부스 #{application.boothId} · {formatDate(application.submittedAt)}
+                  신청번호 {application.applicationNo} · {formatDate(application.submittedAt)}
                 </span>
               </span>
               <span className={`rounded-full px-sm py-1 text-[11px] font-bold ${statusClass(application.status)}`}>
@@ -289,7 +289,7 @@ export default function OrganizerApplicationPanel({ eventId, onDataChanged }) {
               <p><span className="block text-ink-muted">담당자</span>{selected.contactName}</p>
               <p><span className="block text-ink-muted">연락처</span>{selected.contactPhone}</p>
               <p><span className="block text-ink-muted">이메일</span>{selected.contactEmail}</p>
-              <p><span className="block text-ink-muted">희망 부스</span>#{selected.boothId}</p>
+              <p><span className="block text-ink-muted">희망 부스</span>{selected.boothCode || "선택 완료"}</p>
               <p className="md:col-span-2"><span className="block text-ink-muted">활동 설명</span>{selected.activityDescription || "-"}</p>
               <p className="md:col-span-2"><span className="block text-ink-muted">전시 내용</span>{selected.exhibitionContent || "-"}</p>
               <p className="md:col-span-2"><span className="block text-ink-muted">신청 사유</span>{selected.applicationReason || "-"}</p>

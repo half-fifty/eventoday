@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Link,
   useNavigate,
@@ -58,6 +59,42 @@ const toOffsetDateTime = (value) =>
   value ? new Date(value).toISOString() : null;
 const OPERATION_CUTOFF_MS = 60 * 60 * 1000;
 
+const normalizePosterForAnalysis = async (file) => {
+  const supported = ["image/jpeg", "image/png", "image/webp"];
+  if (!supported.includes(file.type)) {
+    throw new Error("포스터 분석은 JPG, PNG, WEBP 파일만 지원합니다. HEIC·GIF 파일은 JPG 또는 PNG로 변환해 주세요.");
+  }
+  if (file.type !== "image/webp") return file;
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext("2d").drawImage(bitmap, 0, 0);
+    const blob = await new Promise((resolve, reject) =>
+      canvas.toBlob(
+        (result) => result ? resolve(result) : reject(new Error("WEBP 이미지를 변환하지 못했습니다.")),
+        "image/jpeg",
+        0.92,
+      ),
+    );
+    return new File([blob], `${file.name.replace(/\.webp$/i, "")}.jpg`, { type: "image/jpeg" });
+  } finally {
+    bitmap.close();
+  }
+};
+
+function FormToast({ toast, onClose }) {
+  if (!toast) return null;
+  return (
+    <div className={`fixed right-lg top-[64px] z-[100] flex max-w-[420px] items-center gap-sm rounded-xl border bg-white px-lg py-md shadow-xl ${toast.tone === "error" ? "border-error/30 text-error" : "border-status-available/30 text-status-available"}`} role={toast.tone === "error" ? "alert" : "status"}>
+      <Icon name={toast.tone === "error" ? "error" : "check_circle"} />
+      <span className="flex-1 text-sm font-body-strong">{toast.message}</span>
+      <button type="button" aria-label="알림 닫기" onClick={onClose}><Icon name="close" className="text-[18px]" /></button>
+    </div>
+  );
+}
+
 export default function EventForm() {
   const { eventId } = useParams();
   const [searchParams] = useSearchParams();
@@ -81,12 +118,16 @@ export default function EventForm() {
   const [placeError, setPlaceError] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImages, setPreviewImages] = useState([]);
+  const [draftDetailImages, setDraftDetailImages] = useState([]);
   const [posterFile, setPosterFile] = useState(null);
   const [posterExtraction, setPosterExtraction] = useState(null);
   const [posterAnalyzing, setPosterAnalyzing] = useState(false);
   const [posterAnalysisError, setPosterAnalysisError] = useState("");
   const [contentSuggestion, setContentSuggestion] = useState(null);
   const [contentSuggesting, setContentSuggesting] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [aiPortalTarget, setAiPortalTarget] = useState(null);
+  const toastTimer = useRef(null);
   const placeSearchSequence = useRef(0);
   const postalCodeSequence = useRef(0);
   const publicInfoOnly =
@@ -194,6 +235,15 @@ export default function EventForm() {
 
   const change = (key, value) =>
     setForm((previous) => ({ ...previous, [key]: value }));
+  const showToast = (message, tone = "success") => {
+    window.clearTimeout(toastTimer.current);
+    setToast({ message, tone });
+    toastTimer.current = window.setTimeout(() => setToast(null), 2800);
+  };
+  const showFormError = (message) => {
+    setError(message);
+    showToast(message, "error");
+  };
   const analyzePoster = async () => {
     if (!posterFile || !organizationId) {
       setPosterAnalysisError("분석할 포스터 이미지를 먼저 선택해 주세요.");
@@ -203,7 +253,8 @@ export default function EventForm() {
     setPosterAnalysisError("");
     setPosterExtraction(null);
     try {
-      const result = await eventApi.extractPoster(organizationId, posterFile);
+      const analysisFile = await normalizePosterForAnalysis(posterFile);
+      const result = await eventApi.extractPoster(organizationId, analysisFile);
       setPosterExtraction(result?.data || null);
     } catch (requestError) {
       setPosterAnalysisError(requestError.message || "포스터를 분석하지 못했습니다.");
@@ -306,15 +357,15 @@ export default function EventForm() {
   const submit = async (e) => {
     e.preventDefault();
     if (!organizationId) {
-      setError("행사를 등록할 운영 조직을 선택해 주세요.");
+      showFormError("행사를 등록할 운영 조직을 선택해 주세요.");
       return;
     }
     if (!form.representativeFileId) {
-      setError("행사 포스터를 등록해 주세요.");
+      showFormError("행사 포스터를 등록해 주세요.");
       return;
     }
     if (form.detailDisplayType === "EXTERNAL_SITE" && !form.officialWebsiteUrl?.trim()) {
-      setError("공식 사이트 표시를 선택했다면 행사 홈페이지 URL을 입력해 주세요.");
+      showFormError("공식 사이트 표시를 선택했다면 행사 홈페이지 URL을 입력해 주세요.");
       return;
     }
     const normalizedDescription = form.description?.trim()
@@ -349,11 +400,11 @@ export default function EventForm() {
       return;
     }
     if (!form.exhibitCategoryCodes.length) {
-      setError("전시품목을 하나 이상 선택해 주세요.");
+      showFormError("전시품목을 하나 이상 선택해 주세요.");
       return;
     }
     if (new Date(form.startAt) >= new Date(form.endAt)) {
-      setError("행사 종료는 시작 이후여야 합니다.");
+      showFormError("행사 종료는 시작 이후여야 합니다.");
       return;
     }
     if (
@@ -361,7 +412,7 @@ export default function EventForm() {
       new Date(form.ticketSalesEndAt).getTime() >
         new Date(form.endAt).getTime() - OPERATION_CUTOFF_MS
     ) {
-      setError("티켓 판매 종료는 행사 종료 1시간 전까지로 설정해 주세요.");
+      showFormError("티켓 판매 종료는 행사 종료 1시간 전까지로 설정해 주세요.");
       return;
     }
     const operationCutoffTime =
@@ -373,7 +424,7 @@ export default function EventForm() {
       form.ticketSalesStartAt &&
       new Date(form.ticketSalesStartAt).getTime() >= effectiveSalesEndTime
     ) {
-      setError("티켓 판매 시작은 실제 판매 종료보다 이전이어야 합니다.");
+      showFormError("티켓 판매 시작은 실제 판매 종료보다 이전이어야 합니다.");
       return;
     }
     setSaving(true);
@@ -395,6 +446,18 @@ export default function EventForm() {
       const result = eventId
         ? await eventApi.update(organizationId, eventId, payload)
         : await eventApi.create(organizationId, payload);
+      if (!eventId && form.detailDisplayType === "IMAGE_GALLERY" && draftDetailImages.length > 0) {
+        try {
+          await eventApi.replaceDetailImages(organizationId, result.data.id, draftDetailImages);
+        } catch (imageError) {
+          sessionStorage.setItem(
+            "eventFormNotice",
+            imageError.message || "행사는 저장됐지만 상세 이미지를 저장하지 못했습니다. 다시 등록해 주세요.",
+          );
+          navigate(`/organizer-admin/events/${result.data.id}/edit?organizationId=${organizationId}`);
+          return;
+        }
+      }
       navigate(
         `/organizer-admin?organizationId=${organizationId}&eventId=${result.data.id}`,
       );
@@ -427,6 +490,7 @@ export default function EventForm() {
     return (
       <>
         <TopNav active="organizer" />
+        <FormToast toast={toast} onClose={() => setToast(null)} />
         <main className="min-h-screen bg-surface-container-low px-lg pb-xl pt-[76px]">
           <form onSubmit={submit} className="max-w-[920px] mx-auto space-y-lg">
             <header className="flex flex-wrap justify-between items-end gap-md">
@@ -635,6 +699,7 @@ export default function EventForm() {
   return (
     <>
       <TopNav active="organizer" />
+      <FormToast toast={toast} onClose={() => setToast(null)} />
       <main className="min-h-screen bg-surface-container-low px-lg pb-xl pt-[76px]">
         <form onSubmit={submit} className="max-w-[1040px] mx-auto space-y-lg">
           <header className="flex justify-between items-end gap-md">
@@ -699,6 +764,7 @@ export default function EventForm() {
                 </select>
               </label>
             )}
+            <div ref={setAiPortalTarget} className="mt-lg" />
           </section>
 
           <section className={section}>
@@ -997,7 +1063,7 @@ export default function EventForm() {
                 setPosterAnalysisError("");
               }}
             />
-            <div className="rounded-xl border border-primary/20 bg-primary/5 p-md">
+            {aiPortalTarget && createPortal(<div className="rounded-xl border border-primary/20 bg-primary/5 p-md">
               <div className="flex flex-wrap items-center justify-between gap-md">
                 <div>
                   <strong className="flex items-center gap-xs text-primary"><Icon name="document_scanner" /> AI 포스터 정보 추출</strong>
@@ -1020,7 +1086,7 @@ export default function EventForm() {
                     <div key={label} className="flex items-center gap-sm rounded-lg bg-white px-md py-sm">
                       <span className="w-20 shrink-0 text-caption font-bold text-ink-muted">{label}</span>
                       <span className="min-w-0 flex-1 break-words text-sm">{value}</span>
-                      <button type="button" onClick={apply} className="shrink-0 rounded-full border border-hairline px-md py-xs text-caption font-body-strong hover:border-primary hover:text-primary">적용</button>
+                      <button type="button" onClick={() => { apply(); showToast(`${label} 정보가 적용되었습니다.`); }} className="shrink-0 rounded-full border border-hairline px-md py-xs text-caption font-body-strong hover:border-primary hover:text-primary">적용</button>
                     </div>
                   ))}
                   {(posterExtraction.organizer || posterExtraction.operator || posterExtraction.sponsors?.length > 0) && (
@@ -1049,19 +1115,19 @@ export default function EventForm() {
                     {contentSuggestion.shortDescription && (
                       <div className="rounded-lg bg-white p-md text-sm">
                         <p className="font-body-strong">한 줄 소개</p><p className="mt-xs leading-6 text-ink-muted">{contentSuggestion.shortDescription}</p>
-                        <button type="button" onClick={() => change("shortDescription", contentSuggestion.shortDescription)} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">한 줄 소개에 적용</button>
+                        <button type="button" onClick={() => { change("shortDescription", contentSuggestion.shortDescription); showToast("한 줄 소개가 적용되었습니다."); }} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">한 줄 소개에 적용</button>
                       </div>
                     )}
                     {contentSuggestion.description && (
                       <div className="rounded-lg bg-white p-md text-sm">
                         <p className="font-body-strong">상세 소개 초안</p><p className="mt-xs whitespace-pre-wrap leading-6 text-ink-muted">{contentSuggestion.description}</p>
-                        <button type="button" onClick={() => change("description", contentSuggestion.description)} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">상세 소개에 적용</button>
+                        <button type="button" onClick={() => { change("description", contentSuggestion.description); showToast("상세 소개가 적용되었습니다."); }} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">상세 소개에 적용</button>
                       </div>
                     )}
                     {contentSuggestion.categoryCodes?.length > 0 && (
                       <div className="rounded-lg bg-white p-md text-sm">
                         <p className="font-body-strong">추천 전시품목</p><p className="mt-xs text-ink-muted">{contentSuggestion.categoryCodes.map((code) => EXHIBIT_CATEGORIES.find(([value]) => value === code)?.[1] || code).join(" · ")}</p>
-                        <button type="button" onClick={() => change("exhibitCategoryCodes", contentSuggestion.categoryCodes.slice(0, 5))} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">전시품목에 적용</button>
+                        <button type="button" onClick={() => { change("exhibitCategoryCodes", contentSuggestion.categoryCodes.slice(0, 5)); showToast("추천 전시품목이 적용되었습니다."); }} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">전시품목에 적용</button>
                       </div>
                     )}
                     {contentSuggestion.sources?.length > 0 && <p className="text-caption text-ink-muted">사용 근거: {contentSuggestion.sources.join(" · ")}</p>}
@@ -1069,7 +1135,7 @@ export default function EventForm() {
                   </div>
                 )}
               </div>
-            </div>
+            </div>, aiPortalTarget)}
             <div className="rounded-xl bg-primary/5 border border-primary/10 p-md text-caption text-on-surface-variant">
               <strong className="block text-primary mb-xs">
                 포스터 권장 사양
@@ -1166,9 +1232,17 @@ export default function EventForm() {
             </section>
           )}
           {!eventId && form.detailDisplayType === "IMAGE_GALLERY" && (
-            <section className="rounded-2xl border border-dashed border-hairline bg-white p-lg text-caption text-ink-muted">
-              행사를 먼저 저장한 뒤 수정 화면에서 상세정보 이미지를 등록할 수
-              있습니다.
+            <section className={section}>
+              <div>
+                <p className="text-caption text-primary mb-xs">06</p>
+                <h2 className="font-display-md text-[22px]">상세정보 이미지</h2>
+                <p className="text-caption text-ink-muted mt-xs">행사를 처음 저장할 때 상세 이미지도 함께 등록됩니다.</p>
+              </div>
+              <EventDetailImageEditor
+                organizationId={organizationId}
+                initialImages={draftDetailImages}
+                onImagesChange={setDraftDetailImages}
+              />
             </section>
           )}
           <div className="sticky bottom-md bg-white/90 backdrop-blur border border-hairline rounded-2xl p-md flex justify-between items-center shadow-lg">

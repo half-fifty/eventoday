@@ -21,7 +21,11 @@ import com.min.edu.event.repository.EventOrganizationRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.event.repository.ExhibitCategoryRepository;
 import com.min.edu.file.service.FileService;
+import com.min.edu.booth.repository.BoothMapPositionRepository;
+import com.min.edu.booth.repository.BoothRepository;
+import com.min.edu.booth.repository.VenueMapRepository;
 import com.min.edu.member.domain.PlatformRole;
+import com.min.edu.member.repository.MemberRepository;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -34,6 +38,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageRequest;
 
 @ExtendWith(MockitoExtension.class)
 class EventServiceTest {
@@ -48,6 +53,21 @@ class EventServiceTest {
     @Mock private ApplicationEventPublisher applicationEventPublisher;
     @Mock private PlatformAuditService platformAuditService;
     @Mock private FileService fileService;
+    @Mock private MemberRepository memberRepository;
+    @Mock private BoothRepository boothRepository;
+    @Mock private VenueMapRepository venueMapRepository;
+    @Mock private BoothMapPositionRepository boothMapPositionRepository;
+
+    @Test
+    void findOrganizationEvents_hidesEventsWithoutActiveAssignment() {
+        given(organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatus(
+                100L, 10L, OrganizationMemberStatus.ACTIVE)).willReturn(true);
+        given(eventMemberRepository.findActiveEventIdsByMemberId(10L)).willReturn(List.of());
+
+        var result = service().findOrganizationEvents(100L, actor(10L), PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).isEmpty();
+    }
 
     @Test
     void findMyAdmissionEvents_returnsActiveAdmissionRolesForCurrentMember() {
@@ -145,7 +165,8 @@ class EventServiceTest {
         return new EventService(eventRepository, eventMemberRepository, organizationMemberRepository,
                 organizationRepository, boothRecruitmentRepository, exhibitCategoryRepository,
                 eventExhibitCategoryRepository, applicationEventPublisher, platformAuditService,
-                new EventOperationDeadlinePolicy(), fileService);
+                new EventOperationDeadlinePolicy(), fileService, memberRepository,
+                boothRepository, venueMapRepository, boothMapPositionRepository);
     }
 
     private AuthenticatedMemberDto actor(Long memberId) {

@@ -120,6 +120,22 @@ class ExchangeCodeIssuanceServiceTest {
     }
 
     @Test
+    void issue_reusesExistingCodesWhenPreviousEmailAttemptFailed() {
+        ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
+        OffsetDateTime emailedAt = OffsetDateTime.now();
+        given(issuanceFinalizer.issue(7L)).willThrow(
+            new BusinessException(GlobalErrorCode.EXCHANGE_CODE_REQUEST_ALREADY_ISSUED));
+        given(issuanceFinalizer.prepareEmailResend(7L)).willReturn(result);
+        given(emailRecorder.markEmailed(7L)).willReturn(emailedAt);
+
+        ExchangeCodeRequestDtos.IssuanceResponse response = service.issue(7L, admin());
+
+        assertThat(response.emailedAt()).isEqualTo(emailedAt);
+        verify(issuanceFinalizer).prepareEmailResend(7L);
+        verify(emailSender).send(any(EmailMessage.class));
+    }
+
+    @Test
     void issue_propagatesRecorderFailureAfterEmailSent() {
         ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
         given(issuanceFinalizer.issue(7L)).willReturn(result);

@@ -12,6 +12,7 @@ import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.Event;
 import com.min.edu.event.domain.EventRole;
+import com.min.edu.event.domain.EventStatus;
 import com.min.edu.event.repository.EventMemberRepository;
 import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventRepository;
@@ -124,6 +125,9 @@ public class AdvertisementService {
     public AdvertisementDtos.Response createEventAd(Long eventId, AdvertisementDtos.SaveRequest request,
             AuthenticatedMemberDto actor) {
         Event event = getEvent(eventId);
+        if (event.getStatus() != EventStatus.PUBLISHED) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
         if (!event.getOrganizerOrganizationId().equals(request.applicantOrganizationId()))
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         requireOrganizationManager(request.applicantOrganizationId(), actor);

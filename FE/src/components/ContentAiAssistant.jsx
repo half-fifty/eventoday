@@ -238,7 +238,7 @@ export default function ContentAiAssistant({
         {action !== "TITLE_SUGGEST" && action !== "PROOFREAD" && (
           <fieldset className="mt-md">
             <legend className="mb-xs text-caption text-ink-muted">문체</legend>
-            <div className="flex flex-wrap gap-md">
+            <div className="flex flex-wrap items-center gap-md">
               {TONES.map((item) => (
                 <label key={item.value} className="flex cursor-pointer items-center gap-xxs text-caption">
                   <input
@@ -253,6 +253,16 @@ export default function ContentAiAssistant({
                   {item.label}
                 </label>
               ))}
+              {hasResult && (
+                <button
+                  type="button"
+                  onClick={runGenerate}
+                  disabled={loading}
+                  className="ml-auto rounded-full border border-hairline px-md py-xs text-caption disabled:opacity-40"
+                >
+                  다시 생성
+                </button>
+              )}
             </div>
           </fieldset>
         )}
@@ -338,12 +348,6 @@ export default function ContentAiAssistant({
               className="rounded-full border border-hairline px-lg py-sm text-caption">
               취소
             </button>
-            {hasResult && (
-              <button type="button" onClick={runGenerate} disabled={loading}
-                className="rounded-full border border-hairline px-lg py-sm text-caption disabled:opacity-40">
-                다시 생성
-              </button>
-            )}
             {hasResult && result.content ? (
               <button
                 type="button"
