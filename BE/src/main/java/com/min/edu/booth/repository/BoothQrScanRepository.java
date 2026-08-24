@@ -18,8 +18,7 @@ public interface BoothQrScanRepository extends JpaRepository<BoothQrScan, Long> 
     // WBS-156: 특정 부스 최근 10분 혼잡도 조회
     @Query("SELECT COUNT(bqs) FROM BoothQrScan bqs " +
             "WHERE bqs.boothId = :boothId " +
-            "AND bqs.scannedAt >= :since " +
-            "AND bqs.duplicate = false")
+            "AND bqs.scannedAt >= :since")
     long countByBoothIdAndScannedAtAfter(
             @Param("boothId") Long boothId,
             @Param("since") OffsetDateTime since
@@ -30,7 +29,6 @@ public interface BoothQrScanRepository extends JpaRepository<BoothQrScan, Long> 
     @Query("SELECT bqs.boothId, COUNT(bqs) FROM BoothQrScan bqs " +
             "WHERE bqs.boothId IN :boothIds " +
             "AND bqs.scannedAt >= :since " +
-            "AND bqs.duplicate = false " +
             "GROUP BY bqs.boothId")
     List<Object[]> countByBoothIdInAndScannedAtAfter(
             @Param("boothIds") Set<Long> boothIds,
@@ -45,15 +43,13 @@ public interface BoothQrScanRepository extends JpaRepository<BoothQrScan, Long> 
                     "JOIN Booth b ON bqs.boothId = b.id " +
                     "WHERE b.eventId = :eventId " +
                     "AND bqs.scannedAt >= :since " +
-                    "AND bqs.duplicate = false " +
                     "GROUP BY bqs.boothId " +
                     "ORDER BY congestionCount DESC",
             countQuery = "SELECT COUNT(DISTINCT bqs.boothId) " +
                     "FROM BoothQrScan bqs " +
                     "JOIN Booth b ON bqs.boothId = b.id " +
                     "WHERE b.eventId = :eventId " +
-                    "AND bqs.scannedAt >= :since " +
-                    "AND bqs.duplicate = false"
+                    "AND bqs.scannedAt >= :since"
     )
     Page<Object[]> findPopularBooths(
             @Param("eventId") Long eventId,
@@ -68,7 +64,6 @@ public interface BoothQrScanRepository extends JpaRepository<BoothQrScan, Long> 
                     "FROM Booth b " +
                     "LEFT JOIN BoothQrScan bqs ON b.id = bqs.boothId " +
                     "  AND bqs.scannedAt >= :since " +
-                    "  AND bqs.duplicate = false " +
                     "WHERE b.eventId = :eventId " +
                     "GROUP BY b.id " +
                     "ORDER BY congestionCount ASC",
@@ -88,7 +83,6 @@ public interface BoothQrScanRepository extends JpaRepository<BoothQrScan, Long> 
                     "FROM Booth b " +
                     "LEFT JOIN BoothQrScan bqs ON b.id = bqs.boothId " +
                     "  AND bqs.scannedAt >= :since " +
-                    "  AND bqs.duplicate = false " +
                     "WHERE b.eventId = :eventId " +
                     "  AND b.id NOT IN (:excludedIds) " +
                     "GROUP BY b.id " +
@@ -103,6 +97,7 @@ public interface BoothQrScanRepository extends JpaRepository<BoothQrScan, Long> 
             Pageable pageable
     );
 
-    // WBS-155: 중복 스캔 판별 (같은 부스에서의 최근 스캔 확인)
-    boolean existsByBoothIdAndExchangeCodeId(Long boothId, Long exchangeCodeId);
+    // 부스 하나에 같은 입장권으로 이미 체크인했는지 판별 (booth_qr_scans 유니크 제약과 함께
+    // "부스당 한 번만 체크인 가능"을 보장한다)
+    boolean existsByBoothIdAndAdmissionTicketId(Long boothId, Long admissionTicketId);
 }

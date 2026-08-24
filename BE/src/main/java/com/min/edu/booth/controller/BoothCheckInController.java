@@ -2,7 +2,7 @@ package com.min.edu.booth.controller;
 
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.dto.BoothCheckInRequest;
-import com.min.edu.booth.dto.BoothReservationResponse;
+import com.min.edu.booth.dto.BoothCheckInResponse;
 import com.min.edu.booth.service.BoothCheckInService;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
@@ -20,13 +20,14 @@ public class BoothCheckInController {
     private final BoothCheckInService checkInService;
 
     /**
-     * 부스 방문 확인 (checkIn)
-     * - 교환 코드로 입장 확인
-     * - 예약 상태 변경: RESERVED → CHECKED_IN
-     * - BoothQrScan 기록 저장
+     * 부스 체크인 (부스 현장 QR 인식)
+     * - 부스 현장에 게시된 QR을 스캔해야 넘어오는 qrToken을 발급된 값과 대조 (실물 방문 검증)
+     * - 게이트에서 이미 입장 처리된 본인의 AdmissionTicket으로 방문객을 식별
+     * - 부스당 한 번만 체크인 가능 (booth_qr_scans 유니크 제약)
+     * - BoothQrScan 기록 저장 (혼잡도 계산용) + 슬롯 예약이 있으면 CHECKED_IN으로 함께 반영
      */
     @PostMapping("/check-in")
-    public ResponseEntity<BoothReservationResponse> checkIn(
+    public ResponseEntity<BoothCheckInResponse> checkIn(
             @PathVariable Long boothId,
             @RequestBody @Valid BoothCheckInRequest request,
             @AuthenticationPrincipal AuthenticatedMemberDto principal) {
@@ -36,9 +37,10 @@ public class BoothCheckInController {
             throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
         }
 
-        BoothReservationResponse response = checkInService.checkIn(
+        BoothCheckInResponse response = checkInService.checkIn(
                 boothId,
-                request.getExchangeCode(),
+                request.getAdmissionTicketId(),
+                request.getQrToken(),
                 principal.getMemberId()
         );
         return ResponseEntity.ok(response);

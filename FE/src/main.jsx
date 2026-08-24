@@ -41,6 +41,8 @@ const VenueGuide = lazy(() => import("./pages/VenueGuide.jsx"));
 import { AuthProvider } from "./auth/AuthProvider.jsx";
 import ProtectedRoute from "./auth/ProtectedRoute.jsx";
 import NotificationSseProvider from "./notifications/NotificationSseProvider.jsx";
+import ToastProvider from "./feedback/ToastProvider.jsx";
+import AlertModalProvider from "./feedback/AlertModalProvider.jsx";
 
 const organizerOnly = (element) => (
   <ProtectedRoute roles={["USER"]} organizationTypes={["ORGANIZER"]}>
@@ -141,11 +143,15 @@ const router = createBrowserRouter([
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <AuthProvider>
-      <NotificationSseProvider onNavigate={(path) => router.navigate(path)}>
-        <Suspense fallback={<main className="grid min-h-screen place-items-center bg-surface text-ink-muted">페이지를 불러오는 중입니다.</main>}>
-          <RouterProvider router={router} />
-        </Suspense>
-      </NotificationSseProvider>
+      <ToastProvider>
+        <AlertModalProvider>
+          <NotificationSseProvider onNavigate={(path) => router.navigate(path)}>
+            <Suspense fallback={<main className="grid min-h-screen place-items-center bg-surface text-ink-muted">페이지를 불러오는 중입니다.</main>}>
+              <RouterProvider router={router} />
+            </Suspense>
+          </NotificationSseProvider>
+        </AlertModalProvider>
+      </ToastProvider>
     </AuthProvider>
   </React.StrictMode>
 );
