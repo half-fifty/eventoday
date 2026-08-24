@@ -190,7 +190,7 @@ export default function ExhibitorAdmin() {
     setEditingApplicationId(application.id);
     setSlotManagerApplicationId(null);
     setReservationManagerApplicationId(null);
-    setQr(EMPTY_QR);
+    closeQr();
     setIntroError("");
     setEditImageFile(null);
     setEditForm({
@@ -260,7 +260,7 @@ export default function ExhibitorAdmin() {
   const openSlotManager = (application) => {
     setEditingApplicationId(null);
     setReservationManagerApplicationId(null);
-    setQr(EMPTY_QR);
+    closeQr();
     setSlotManagerApplicationId(application.id);
     setSlotForm(EMPTY_SLOT_FORM);
     setSlotError("");
@@ -423,7 +423,7 @@ export default function ExhibitorAdmin() {
   const openReservationManager = (application) => {
     setEditingApplicationId(null);
     setSlotManagerApplicationId(null);
-    setQr(EMPTY_QR);
+    closeQr();
     setReservationManagerApplicationId(application.id);
     loadReservations(application);
   };

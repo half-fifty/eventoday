@@ -113,9 +113,9 @@ export default function FloorplanCanvasEditor({ onComplete, onCancel }) {
       prev.map((box) => {
         if (box.id !== id) return box;
         if (field === "width") {
-          return { ...box, width: clamp(snapToGrid(box.width), 0, CANVAS_WIDTH - box.x) };
+          return { ...box, width: clamp(snapToGrid(box.width), MIN_BOX_SIZE, CANVAS_WIDTH - box.x) };
         }
-        return { ...box, height: clamp(snapToGrid(box.height), 0, CANVAS_HEIGHT - box.y) };
+        return { ...box, height: clamp(snapToGrid(box.height), MIN_BOX_SIZE, CANVAS_HEIGHT - box.y) };
       })
     );
   };
@@ -283,8 +283,8 @@ export default function FloorplanCanvasEditor({ onComplete, onCancel }) {
     if (drag.mode === "move") {
       // 그룹 전체에 대해 한 번만 clamp/snap한 delta를 모든 박스에 동일하게 적용해야
       // 크기가 다른 박스들끼리도 상대 위치가 흐트러지지 않고 한 덩어리로 움직인다.
-      const groupDx = snapToGrid(clamp(dx, drag.dxMin, drag.dxMax));
-      const groupDy = snapToGrid(clamp(dy, drag.dyMin, drag.dyMax));
+      const groupDx = clamp(snapToGrid(dx), drag.dxMin, drag.dxMax);
+      const groupDy = clamp(snapToGrid(dy), drag.dyMin, drag.dyMax);
       setBoxes((prev) =>
         prev.map((box) => {
           const start = drag.startPositions.get(box.id);
@@ -302,8 +302,8 @@ export default function FloorplanCanvasEditor({ onComplete, onCancel }) {
           box.id === drag.boxId
             ? {
                 ...box,
-                width: snapToGrid(clamp(drag.startWidth + dx, MIN_BOX_SIZE, CANVAS_WIDTH - box.x)),
-                height: snapToGrid(clamp(drag.startHeight + dy, MIN_BOX_SIZE, CANVAS_HEIGHT - box.y)),
+                width: clamp(snapToGrid(drag.startWidth + dx), MIN_BOX_SIZE, CANVAS_WIDTH - box.x),
+                height: clamp(snapToGrid(drag.startHeight + dy), MIN_BOX_SIZE, CANVAS_HEIGHT - box.y),
               }
             : box
         )
@@ -329,10 +329,10 @@ export default function FloorplanCanvasEditor({ onComplete, onCancel }) {
       // 드래그 거리가 너무 짧으면(=사실상 그냥 클릭) 칸을 만들지 않고 선택 해제로만 처리한다.
       // 이게 없으면 다중 선택을 취소하려고 빈 곳을 클릭할 때마다 작은 칸이 생겨버린다.
       if (draft.width >= GRID_SIZE && draft.height >= GRID_SIZE) {
-        const width = snapToGrid(clamp(draft.width, MIN_BOX_SIZE, CANVAS_WIDTH));
-        const height = snapToGrid(clamp(draft.height, MIN_BOX_SIZE, CANVAS_HEIGHT));
-        const x = snapToGrid(clamp(draft.x, 0, CANVAS_WIDTH - width));
-        const y = snapToGrid(clamp(draft.y, 0, CANVAS_HEIGHT - height));
+        const width = clamp(snapToGrid(draft.width), MIN_BOX_SIZE, CANVAS_WIDTH);
+        const height = clamp(snapToGrid(draft.height), MIN_BOX_SIZE, CANVAS_HEIGHT);
+        const x = clamp(snapToGrid(draft.x), 0, CANVAS_WIDTH - width);
+        const y = clamp(snapToGrid(draft.y), 0, CANVAS_HEIGHT - height);
         const id = nextBoxId++;
         pendingFocusIdRef.current = id;
         setBoxes((prev) => [...prev, { id, x, y, width, height, label: "" }]);
@@ -427,7 +427,7 @@ export default function FloorplanCanvasEditor({ onComplete, onCancel }) {
               가로
               <input
                 type="number"
-                min={0}
+                min={MIN_BOX_SIZE}
                 step={GRID_SIZE}
                 value={Math.round(selectedBox.width)}
                 onChange={(e) => updateBoxSize(selectedBox.id, "width", e.target.value)}
@@ -439,7 +439,7 @@ export default function FloorplanCanvasEditor({ onComplete, onCancel }) {
               세로
               <input
                 type="number"
-                min={0}
+                min={MIN_BOX_SIZE}
                 step={GRID_SIZE}
                 value={Math.round(selectedBox.height)}
                 onChange={(e) => updateBoxSize(selectedBox.id, "height", e.target.value)}
