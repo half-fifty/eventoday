@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "./Icon.jsx";
+import FloorplanCanvasEditor from "./FloorplanCanvasEditor.jsx";
 import { ApiError } from "../api/apiClient.js";
 import { uploadFile, fileDownloadUrl } from "../api/fileApi.js";
 import {
@@ -60,9 +61,17 @@ export default function FloorplanManagementPanel({ eventId }) {
   // <input type="file">는 uncontrolled라 uploadForm.file을 null로 되돌려도 브라우저가 보여주는
   // 파일명은 그대로 남는다. key를 바꿔 매 업로드 후 input을 새로 마운트해서 강제로 비운다.
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [showCanvasEditor, setShowCanvasEditor] = useState(false);
+  // <input type="file">는 실제로 고른 파일만 자기 화면에 표시하므로, 캔버스로 직접 그려서
+  // uploadForm.file에 채워 넣은 경우엔 input이 계속 "선택된 파일 없음"으로 보인다.
+  // 이 경우를 구분해서 별도 안내 문구를 보여주기 위한 플래그.
+  const [fileIsDrawn, setFileIsDrawn] = useState(false);
   const [selectedMapId, setSelectedMapId] = useState(null);
   const [positions, setPositions] = useState([]);
+  // 선택된(또는 직접 그린) 파일의 썸네일 미리보기 - 업로드 전에 뭘 골랐는지 눈으로 확인시켜준다.
+  const [filePreviewUrl, setFilePreviewUrl] = useState(null);
 
+  const fileInputRef = useRef(null);
   const imageRef = useRef(null);
   const draggingBoothIdRef = useRef(null);
   // 행사를 빠르게 전환할 때 이전 요청의 응답이 늦게 도착해 현재 화면을 덮어쓰는 것을 막기 위한 버전 가드.
@@ -107,6 +116,8 @@ export default function FloorplanManagementPanel({ eventId }) {
     mapSelectionGenerationRef.current += 1;
     setUploadForm(EMPTY_UPLOAD_FORM);
     setFileInputKey((prev) => prev + 1);
+    setFileIsDrawn(false);
+    setShowCanvasEditor(false);
     setSelectedMapId(null);
     setPositions([]);
     setMessage("");
@@ -176,7 +187,28 @@ export default function FloorplanManagementPanel({ eventId }) {
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0] || null;
+    setFileIsDrawn(false);
     setUploadForm((prev) => ({ ...prev, file }));
+  };
+
+  // uploadForm.file이 바뀔 때마다(파일 선택이든 직접 그리기든) 썸네일 미리보기를 새로 만들고,
+  // 이전 objectURL은 반드시 해제해야 메모리에 계속 쌓이지 않는다.
+  useEffect(() => {
+    if (!uploadForm.file) {
+      setFilePreviewUrl(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(uploadForm.file);
+    setFilePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [uploadForm.file]);
+
+  // FloorplanCanvasEditor가 만든 이미지를 실제 파일을 고른 것과 동일하게 취급한다 - 그 뒤
+  // dimensions 계산/업로드/평면도 생성은 handleUpload의 기존 로직을 그대로 탄다.
+  const handleCanvasEditorComplete = (file) => {
+    setFileIsDrawn(true);
+    setUploadForm((prev) => ({ ...prev, file }));
+    setShowCanvasEditor(false);
   };
 
   const handleUpload = () =>
@@ -196,6 +228,7 @@ export default function FloorplanManagementPanel({ eventId }) {
     }, "평면도를 업로드했습니다.", () => {
       setUploadForm(EMPTY_UPLOAD_FORM);
       setFileInputKey((prev) => prev + 1);
+      setFileIsDrawn(false);
     });
 
   const handlePublish = (mapId) => runAction(() => publishVenueMap(eventId, mapId), "게시했습니다.");
@@ -381,41 +414,124 @@ export default function FloorplanManagementPanel({ eventId }) {
 
       {eventId && (
         <>
-          <div className="bg-white border border-hairline rounded-xl p-lg space-y-sm">
-            <p className="font-body-strong">평면도 업로드</p>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-sm items-center">
-              <input
-                placeholder="층 이름 (예: 1층)"
-                value={uploadForm.floorName}
-                onChange={(e) => setUploadForm({ ...uploadForm, floorName: e.target.value })}
-                className="border border-hairline rounded-lg px-md py-sm"
-              />
-              <select
-                value={uploadForm.mapType}
-                onChange={(e) => setUploadForm({ ...uploadForm, mapType: e.target.value })}
-                className="border border-hairline rounded-lg px-md py-sm bg-white"
-              >
-                {MAP_TYPE_OPTIONS.map((type) => (
-                  <option key={type} value={type}>
-                    {MAP_TYPE_LABEL[type]}
-                  </option>
-                ))}
-              </select>
-              <input
-                key={fileInputKey}
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                className="text-caption md:col-span-1"
-              />
-              <button
-                onClick={handleUpload}
-                disabled={submitting}
-                className="px-lg py-sm bg-primary text-white rounded-full text-caption font-body-strong disabled:opacity-40"
-              >
-                업로드
-              </button>
+          <div className="bg-white border border-hairline rounded-xl p-lg space-y-md">
+            <div className="flex items-center justify-between gap-md">
+              <div>
+                <p className="font-body-strong">평면도 업로드</p>
+                <p className="text-caption text-ink-muted mt-1">
+                  층별로 평면도 이미지를 등록하면, 이후 부스 위치를 배치할 수 있어요.
+                </p>
+              </div>
+              {!showCanvasEditor && (
+                <button
+                  onClick={() => setShowCanvasEditor(true)}
+                  className="shrink-0 text-caption border border-hairline rounded-full px-md py-1"
+                >
+                  <Icon name="draw" className="text-[13px] mr-1" />
+                  직접 그리기
+                </button>
+              )}
             </div>
+
+            {showCanvasEditor ? (
+              <FloorplanCanvasEditor
+                onComplete={handleCanvasEditorComplete}
+                onCancel={() => {
+                  // 취소 시 파일 입력창은 빈 채로 다시 보이는데 uploadForm.file을 그대로 두면
+                  // 화면엔 아무것도 선택 안 된 것처럼 보이면서 실제로는 이전 파일이 업로드된다.
+                  setShowCanvasEditor(false);
+                  setFileIsDrawn(false);
+                  setUploadForm((prev) => ({ ...prev, file: null }));
+                  setFileInputKey((prev) => prev + 1);
+                }}
+              />
+            ) : (
+              <div className="space-y-md">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+                  <label className="block">
+                    <span className="text-caption font-body-strong text-ink-muted">층 이름</span>
+                    <input
+                      placeholder="예: 1층, 지하 1층"
+                      value={uploadForm.floorName}
+                      onChange={(e) => setUploadForm({ ...uploadForm, floorName: e.target.value })}
+                      className="mt-1 w-full border border-hairline rounded-lg px-md py-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-caption font-body-strong text-ink-muted">게시 대상</span>
+                    <select
+                      value={uploadForm.mapType}
+                      onChange={(e) => setUploadForm({ ...uploadForm, mapType: e.target.value })}
+                      className="mt-1 w-full border border-hairline rounded-lg px-md py-sm bg-white"
+                    >
+                      {MAP_TYPE_OPTIONS.map((type) => (
+                        <option key={type} value={type}>
+                          {MAP_TYPE_LABEL[type]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div>
+                  <span className="text-caption font-body-strong text-ink-muted">평면도 이미지</span>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="mt-1 w-full flex items-center gap-md border border-dashed border-hairline rounded-lg p-md text-left hover:border-primary hover:bg-surface-container-lowest transition-colors"
+                  >
+                    {filePreviewUrl ? (
+                      <img
+                        src={filePreviewUrl}
+                        alt=""
+                        className="w-14 h-14 object-cover rounded-md border border-hairline shrink-0"
+                      />
+                    ) : (
+                      <span className="w-14 h-14 shrink-0 flex items-center justify-center rounded-md bg-surface-container-lowest text-ink-muted">
+                        <Icon name="image" className="text-[22px]" />
+                      </span>
+                    )}
+                    <span className="min-w-0">
+                      {uploadForm.file ? (
+                        <>
+                          <span className="block text-caption font-body-strong truncate">
+                            {uploadForm.file.name}
+                          </span>
+                          <span className="block text-[11px] text-ink-muted">
+                            {fileIsDrawn
+                              ? "직접 그린 평면도예요 · 클릭해서 다른 이미지로 바꿀 수 있어요"
+                              : "클릭해서 다른 이미지로 바꿀 수 있어요"}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="block text-caption font-body-strong">이미지를 선택하세요</span>
+                          <span className="block text-[11px] text-ink-muted">
+                            PNG, JPG 등 이미지 파일 · 클릭해서 선택
+                          </span>
+                        </>
+                      )}
+                    </span>
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    key={fileInputKey}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </div>
+
+                <button
+                  onClick={handleUpload}
+                  disabled={submitting}
+                  className="w-full md:w-auto px-lg py-sm bg-primary text-white rounded-full text-caption font-body-strong disabled:opacity-40"
+                >
+                  {submitting ? "업로드 중..." : "업로드"}
+                </button>
+              </div>
+            )}
           </div>
 
           {maps.length === 0 ? (
