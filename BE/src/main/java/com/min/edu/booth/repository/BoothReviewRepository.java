@@ -135,4 +135,41 @@ public interface BoothReviewRepository extends JpaRepository<BoothReview, Long> 
      */
     @Query("SELECT MAX(br.updatedAt) FROM BoothReview br WHERE " + COMMENTED_REVIEW_CONDITION)
     Optional<OffsetDateTime> findMaxUpdatedAtByBoothIdAndCommentIsNotBlank(@Param("boothId") Long boothId);
+
+    // ===== 리뷰 요약 배치(BoothReviewSummaryBatch) 관리용 =====
+    // 배치는 review id 범위로 고정되므로, "다음 배치 후보"는 항상 id 오름차순으로 찾는다.
+
+    /**
+     * 마지막으로 닫힌 배치 이후(id > afterId)의, 아직 배치로 묶이지 않은 리뷰들을 id 오름차순으로 조회한다.
+     * pageable의 size만큼 채워지면 새 배치로 닫고, 못 채우면 아직 배치가 안 된 "꼬리(tail)"로 둔다.
+     */
+    @Query("SELECT br FROM BoothReview br WHERE " + COMMENTED_REVIEW_CONDITION
+            + " AND br.id > :afterId ORDER BY br.id ASC")
+    List<BoothReview> findCommentedReviewsAfterIdOrderByIdAsc(
+            @Param("boothId") Long boothId, @Param("afterId") Long afterId, Pageable pageable);
+
+    /**
+     * 이미 닫힌 배치[fromId, toId] 범위 안에 지금도 남아있는 리뷰 수 — 배치 안의 리뷰가 삭제됐는지
+     * 판별하는 신선도 체크용(원래 개수와 다르면 그 배치만 다시 요약한다).
+     */
+    @Query("SELECT COUNT(br.id) FROM BoothReview br WHERE " + COMMENTED_REVIEW_CONDITION
+            + " AND br.id BETWEEN :fromId AND :toId")
+    long countCommentedReviewsInIdRange(
+            @Param("boothId") Long boothId, @Param("fromId") Long fromId, @Param("toId") Long toId);
+
+    /**
+     * 닫힌 배치 범위 안 리뷰들의 최신 수정 시각 — 개수는 그대로여도 내용이 수정됐는지 판별하는 신선도 체크용.
+     */
+    @Query("SELECT MAX(br.updatedAt) FROM BoothReview br WHERE " + COMMENTED_REVIEW_CONDITION
+            + " AND br.id BETWEEN :fromId AND :toId")
+    Optional<OffsetDateTime> findMaxUpdatedAtInIdRange(
+            @Param("boothId") Long boothId, @Param("fromId") Long fromId, @Param("toId") Long toId);
+
+    /**
+     * 닫힌 배치 범위 안에 지금 실제로 남아있는 리뷰들(재요약용).
+     */
+    @Query("SELECT br FROM BoothReview br WHERE " + COMMENTED_REVIEW_CONDITION
+            + " AND br.id BETWEEN :fromId AND :toId ORDER BY br.id ASC")
+    List<BoothReview> findCommentedReviewsInIdRangeOrderByIdAsc(
+            @Param("boothId") Long boothId, @Param("fromId") Long fromId, @Param("toId") Long toId);
 }
