@@ -139,6 +139,17 @@ public class PaymentOrder {
         return PaymentOrderStatus.REFUNDED.name().equals(status);
     }
 
+    public void selectPaymentMethod(PaymentMethod paymentMethod, OffsetDateTime now) {
+        if (!isPending()) {
+            throw new IllegalStateException("Payment method can only be changed while the order is pending.");
+        }
+        if (paymentMethod != PaymentMethod.CARD && paymentMethod != PaymentMethod.VIRTUAL_ACCOUNT) {
+            throw new IllegalArgumentException("Unsupported advertisement payment method.");
+        }
+        this.requestedPaymentMethod = paymentMethod;
+        this.updatedAt = now;
+    }
+
     public void markPaid(OffsetDateTime now) {
         if (!isPending()) {
             throw new IllegalStateException("Payment order is not pending.");
@@ -154,6 +165,14 @@ public class PaymentOrder {
         }
 
         this.status = PaymentOrderStatus.WAITING_FOR_DEPOSIT.name();
+        this.updatedAt = now;
+    }
+
+    public void alignVirtualAccountExpiry(OffsetDateTime dueAt, OffsetDateTime now) {
+        if ((!isPending() && !isWaitingForDeposit()) || dueAt == null) {
+            throw new IllegalStateException("Virtual account expiry cannot be changed.");
+        }
+        this.expiresAt = dueAt;
         this.updatedAt = now;
     }
 

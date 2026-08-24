@@ -110,7 +110,9 @@ function VenueCard({ venue, selected, onSelect }) {
 }
 
 function MapStage({filtered,selected,onSelect}) {
+  const [failedImageIds, setFailedImageIds] = useState(() => new Set());
   const visible = new Set(filtered.map(v=>v.id));
+  const venueImage = failedImageIds.has(selected.id) ? null : venueImages[selected.id];
   return <div className="venue-map-stage">
     <div className="venue-map-glow"/>
     <div className="venue-map-canvas">
@@ -122,11 +124,11 @@ function MapStage({filtered,selected,onSelect}) {
       {venues.map(v=><button key={v.id} type="button" aria-label={`${v.name} 선택`} onClick={()=>onSelect(v.id)} className={`venue-marker ${selected.id===v.id?"is-active":""} ${visible.has(v.id)?"":"is-dimmed"}`} style={{left:`${v.x}%`,top:`${v.y}%`,"--venue-color":v.color}}><span className="venue-marker-ring"/><span className="venue-marker-dot"/><span className="venue-marker-label">{v.short}</span></button>)}
     </div>
     <div key={selected.id} className="venue-detail-card" style={{"--venue-color":selected.color}}>
-      <div className={`venue-detail-visual ${venueImages[selected.id] ? "has-photo" : ""}`}>
-        {venueImages[selected.id] ? <img src={venueImages[selected.id].src} alt={`${selected.name} 전경`} className="venue-detail-photo"/> : <><span className="venue-detail-grid"/><Icon name="apartment" className="relative text-[54px] text-white/90"/></>}
+      <div className={`venue-detail-visual ${venueImage ? "has-photo" : ""}`}>
+        {venueImage ? <img src={venueImage.src} alt={`${selected.name} 전경`} onError={()=>setFailedImageIds((previous)=>new Set(previous).add(selected.id))} className="venue-detail-photo"/> : <><span className="venue-detail-grid"/><Icon name="apartment" className="relative text-[54px] text-white/90"/></>}
         <span className="venue-detail-shade"/>
         <span className="absolute bottom-3 left-4 text-[9px] font-black tracking-[.22em] text-white/90">EVENTODAY VENUE</span>
-        {venueImages[selected.id] && <span className="venue-photo-credit">{venueImages[selected.id].credit}</span>}
+        {venueImage && <span className="venue-photo-credit">{venueImage.credit}</span>}
       </div>
       <div className="p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-black tracking-[.17em]" style={{color:selected.color}}>{selected.short}</p><h2 className="mt-1 text-[20px] font-black tracking-tight">{selected.name}</h2></div><span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-600">{selected.city}</span></div>
       <p className="mt-3 flex gap-2 text-[11px] leading-5 text-slate-500"><Icon name="location_on" className="mt-0.5 text-[14px]"/>{selected.address}</p><p className="mt-1 flex gap-2 text-[11px] text-slate-500"><Icon name="call" className="text-[14px]"/>{selected.phone}</p>

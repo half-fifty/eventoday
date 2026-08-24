@@ -261,6 +261,21 @@ public class PaymentFinalizer {
             TossConfirmResponse tossResponse,
             OffsetDateTime now) {
         if (requestedMethod(paymentOrder) == PaymentMethod.VIRTUAL_ACCOUNT) {
+            // Toss에서는 입금이 완료됐지만 최초 가상계좌 발급 응답을 로컬에 저장하기 전에
+            // 장애가 난 경우 웹훅으로 복구할 수 있어야 한다. DONE 응답은 이미 Toss 재조회와
+            // 주문번호·금액 검증을 통과했으므로 승인 결제를 새로 기록한다.
+            if (existingPayment == null) {
+                return paymentRepository.saveAndFlush(Payment.approved(
+                    paymentOrder.getId(),
+                    PaymentProvider.TOSS_PAYMENTS,
+                    request.getPaymentKey(),
+                    tossResponse.method(),
+                    request.getAmount(),
+                    tossResponse.requestedAt(),
+                    tossResponse.approvedAt(),
+                    now
+                ));
+            }
             return completeWaitingVirtualAccount(
                 existingPayment,
                 request,

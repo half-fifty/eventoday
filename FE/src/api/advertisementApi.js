@@ -20,8 +20,12 @@ export const advertisementApi = {
     apiRequest(`/v1/advertisements/${advertisementId}`, json("PATCH", payload)),
   updateCreative: (advertisementId, payload) =>
     apiRequest(`/v1/advertisements/${advertisementId}/creative`, json("PATCH", payload)),
+  selectPaymentMethod: (advertisementId, paymentMethod) =>
+    apiRequest(`/v1/advertisements/${advertisementId}/payment-method`, json("PATCH", { paymentMethod })),
   cancel: (advertisementId) =>
     apiRequest(`/v1/advertisements/${advertisementId}/cancellation`, json("POST")),
+  archive: (advertisementId) =>
+    apiRequest(`/v1/advertisements/${advertisementId}/archive`, json("POST")),
   adminList: (params = {}) =>
     apiRequest(`/v1/admin/advertisements?${new URLSearchParams(params)}`),
   approve: (advertisementId) =>
@@ -29,4 +33,6 @@ export const advertisementApi = {
   reject: (advertisementId, reason) =>
     apiRequest(`/v1/admin/advertisements/${advertisementId}/rejection`, json("POST", { reason })),
   boothCandidates: (eventId) => apiRequest(`/v1/events/${eventId}/booth-ad-candidates`),
+  suggestCopy: (payload) =>
+    apiRequest("/v1/advertisements/copy-suggestions", json("POST", payload)),
 };

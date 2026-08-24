@@ -20,6 +20,7 @@ import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.event.repository.EventOrganizationRepository;
 import com.min.edu.event.repository.EventRepository;
 import com.min.edu.event.repository.ExhibitCategoryRepository;
+import com.min.edu.file.service.FileService;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import java.math.BigDecimal;
@@ -46,6 +47,7 @@ class EventServiceTest {
     @Mock private EventExhibitCategoryRepository eventExhibitCategoryRepository;
     @Mock private ApplicationEventPublisher applicationEventPublisher;
     @Mock private PlatformAuditService platformAuditService;
+    @Mock private FileService fileService;
 
     @Test
     void findMyAdmissionEvents_returnsActiveAdmissionRolesForCurrentMember() {
@@ -143,7 +145,7 @@ class EventServiceTest {
         return new EventService(eventRepository, eventMemberRepository, organizationMemberRepository,
                 organizationRepository, boothRecruitmentRepository, exhibitCategoryRepository,
                 eventExhibitCategoryRepository, applicationEventPublisher, platformAuditService,
-                new EventOperationDeadlinePolicy());
+                new EventOperationDeadlinePolicy(), fileService);
     }
 
     private AuthenticatedMemberDto actor(Long memberId) {
@@ -189,6 +191,8 @@ class EventServiceTest {
                 "EXPO",
                 "short",
                 "description",
+                com.min.edu.event.domain.EventDetailDisplayType.IMAGE_GALLERY,
+                null,
                 "venue",
                 "서울시 강남구 테헤란로 1",
                 "contact@example.com",

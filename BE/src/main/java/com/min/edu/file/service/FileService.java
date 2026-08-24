@@ -193,6 +193,25 @@ public class FileService {
         findAndCheckAccess(fileId, memberId);
     }
 
+    @Transactional(readOnly = true)
+    public void assertPublicAccessible(Long fileId, Long memberId) {
+        FileAsset fileAsset = findAndCheckAccess(fileId, memberId);
+        if (fileAsset.getAccessLevel() != FileAccessLevel.PUBLIC) {
+            throw new BusinessException(GlobalErrorCode.FILE_ACCESS_DENIED);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public void assertPublicImageAccessible(Long fileId, Long memberId) {
+        FileAsset fileAsset = findAndCheckAccess(fileId, memberId);
+        if (fileAsset.getAccessLevel() != FileAccessLevel.PUBLIC) {
+            throw new BusinessException(GlobalErrorCode.FILE_ACCESS_DENIED);
+        }
+        if (fileAsset.getMimeType() == null || !fileAsset.getMimeType().startsWith("image/")) {
+            throw new BusinessException(GlobalErrorCode.INVALID_FILE_TYPE);
+        }
+    }
+
     /**
      * 대표 이미지로 쓰기 위해 파일이 PUBLIC 상태인지 검증한다.
      */

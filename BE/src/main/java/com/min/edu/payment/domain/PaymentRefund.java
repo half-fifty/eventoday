@@ -100,6 +100,11 @@ public class PaymentRefund {
         this.completedAt = failedAt;
     }
 
+    public void failAfterGatewayCancellation(String pgCancelKey, OffsetDateTime failedAt) {
+        fail(failedAt);
+        this.pgCancelKey = pgCancelKey;
+    }
+
     public void retry(
             Long requesterMemberId,
             BigDecimal refundAmount,
@@ -115,6 +120,5 @@ public class PaymentRefund {
         this.status = PaymentRefundStatus.REQUESTED;
         this.requestedAt = requestedAt;
         this.completedAt = null;
-        this.pgCancelKey = null;
     }
 }

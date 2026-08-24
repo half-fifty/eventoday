@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import Icon from "./Icon.jsx";
+import { fileDownloadUrl } from "../api/fileApi.js";
 
 const FOCUSABLE_ELEMENT_SELECTOR = [
   "a[href]",
@@ -85,22 +86,42 @@ export default function BoothPinPopup({ booth, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="booth-pin-popup-title"
-        className="bg-white rounded-2xl max-w-[360px] w-full p-xl relative"
+        className="bg-white rounded-2xl max-w-[520px] w-full overflow-hidden relative shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
+        {booth.representativeFileId && (
+          <img
+            src={fileDownloadUrl(booth.representativeFileId)}
+            alt={`${booth.displayName || booth.boothCode} 대표 이미지`}
+            className="w-full aspect-[16/9] object-cover bg-surface-container"
+          />
+        )}
         <button
           ref={closeButtonRef}
           type="button"
           onClick={onClose}
           aria-label="닫기"
-          className="absolute top-lg right-lg text-ink-muted hover:text-on-surface"
+          className="absolute top-md right-md w-9 h-9 rounded-full bg-white/95 shadow grid place-items-center text-ink-muted hover:text-on-surface"
         >
           <Icon name="close" className="text-[22px]" />
         </button>
-        <h3 id="booth-pin-popup-title" className="font-display-md text-[18px] mb-1">
-          {booth.displayName || booth.boothCode}
-        </h3>
-        <p className="text-caption text-ink-muted">{booth.boothCode}</p>
+        <div className="max-h-[70vh] overflow-y-auto p-xl">
+          <p className="text-caption font-bold text-primary mb-xs">BOOTH · {booth.boothCode}</p>
+          <h3 id="booth-pin-popup-title" className="font-display-md text-[22px]">
+            {booth.displayName || booth.boothCode}
+          </h3>
+          <p className="text-caption text-ink-muted mt-xs">
+            {[booth.floorName, booth.zoneName, booth.locationDescription].filter(Boolean).join(" · ") || "행사장 배치도에서 위치를 확인해 주세요."}
+          </p>
+          {booth.shortIntro && <p className="mt-md font-body-strong">{booth.shortIntro}</p>}
+          {booth.description && <p className="mt-sm text-body text-on-surface-variant whitespace-pre-line leading-6">{booth.description}</p>}
+          {booth.exhibitionContent && (
+            <div className="mt-md rounded-xl bg-primary/5 p-md">
+              <p className="text-caption font-bold text-primary">전시 · 판매 내용</p>
+              <p className="mt-xs text-caption whitespace-pre-line leading-6">{booth.exhibitionContent}</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ package com.min.edu.advertisement.controller;
 import com.min.edu.advertisement.domain.AdvertisementStatus;
 import com.min.edu.advertisement.dto.AdvertisementDtos;
 import com.min.edu.advertisement.service.AdvertisementService;
+import com.min.edu.advertisement.service.AdvertisementCopySuggestionService;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.common.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -23,8 +24,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/v1")
 public class AdvertisementController {
     private final AdvertisementService advertisementService;
-    public AdvertisementController(AdvertisementService advertisementService) {
+    private final AdvertisementCopySuggestionService copySuggestionService;
+    public AdvertisementController(AdvertisementService advertisementService,
+            AdvertisementCopySuggestionService copySuggestionService) {
         this.advertisementService = advertisementService;
+        this.copySuggestionService = copySuggestionService;
+    }
+    @PostMapping("/advertisements/copy-suggestions")
+    public ApiResponse<AdvertisementDtos.CopySuggestionResponse> suggestCopy(
+            @Valid @RequestBody AdvertisementDtos.CopySuggestionRequest request,
+            @AuthenticationPrincipal AuthenticatedMemberDto actor) {
+        return ApiResponse.success(copySuggestionService.suggest(request, actor));
     }
 
     @GetMapping("/advertisements/active")
@@ -71,10 +81,24 @@ public class AdvertisementController {
             @AuthenticationPrincipal AuthenticatedMemberDto actor) {
         return ApiResponse.success(advertisementService.updateCreative(advertisementId, request, actor));
     }
-    @PostMapping("/advertisements/{advertisementId}/cancellation")
-    public ApiResponse<Void> cancel(@PathVariable Long advertisementId,
+    @PatchMapping("/advertisements/{advertisementId}/payment-method")
+    public ApiResponse<AdvertisementDtos.Response> selectPaymentMethod(
+            @PathVariable Long advertisementId,
+            @Valid @RequestBody AdvertisementDtos.PaymentMethodRequest request,
             @AuthenticationPrincipal AuthenticatedMemberDto actor) {
-        advertisementService.cancel(advertisementId, actor); return ApiResponse.success();
+        return ApiResponse.success(advertisementService.selectPaymentMethod(
+                advertisementId, request.paymentMethod(), actor));
+    }
+    @PostMapping("/advertisements/{advertisementId}/cancellation")
+    public ApiResponse<AdvertisementDtos.CancellationResponse> cancel(@PathVariable Long advertisementId,
+            @AuthenticationPrincipal AuthenticatedMemberDto actor) {
+        return ApiResponse.success(advertisementService.cancel(advertisementId, actor));
+    }
+    @PostMapping("/advertisements/{advertisementId}/archive")
+    public ApiResponse<Void> archive(@PathVariable Long advertisementId,
+            @AuthenticationPrincipal AuthenticatedMemberDto actor) {
+        advertisementService.archive(advertisementId, actor);
+        return ApiResponse.success();
     }
     @GetMapping("/admin/advertisements")
     public ApiResponse<Page<AdvertisementDtos.Response>> findAdminAds(
@@ -88,10 +112,10 @@ public class AdvertisementController {
         advertisementService.approve(advertisementId, actor); return ApiResponse.success();
     }
     @PostMapping("/admin/advertisements/{advertisementId}/rejection")
-    public ApiResponse<Void> reject(@PathVariable Long advertisementId,
+    public ApiResponse<AdvertisementDtos.CancellationResponse> reject(@PathVariable Long advertisementId,
             @Valid @RequestBody AdvertisementDtos.RejectionRequest request,
             @AuthenticationPrincipal AuthenticatedMemberDto actor) {
-        advertisementService.reject(advertisementId, request.reason(), actor); return ApiResponse.success();
+        return ApiResponse.success(advertisementService.reject(advertisementId, request.reason(), actor));
     }
     @GetMapping("/events/{eventId}/booth-ad-candidates")
     public ApiResponse<List<AdvertisementDtos.BoothCandidate>> findBoothCandidates(@PathVariable Long eventId,

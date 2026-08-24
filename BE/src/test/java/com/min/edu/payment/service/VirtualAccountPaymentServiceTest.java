@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.advertisement.repository.AdvertisementRepository;
 import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditEventType;
@@ -54,6 +55,9 @@ class VirtualAccountPaymentServiceTest {
     @Mock
     private PaymentAuditLogWriter auditLogWriter;
 
+    @Mock
+    private AdvertisementRepository advertisementRepository;
+
     @Test
     void saveWaitingForDeposit_storesTossDueDateAsKoreaOffsetDateTime() {
         VirtualAccountPaymentService service = new VirtualAccountPaymentService(
@@ -61,7 +65,8 @@ class VirtualAccountPaymentServiceTest {
             ticketOrderRepository,
             paymentRepository,
             virtualAccountRepository,
-            auditLogWriter
+            auditLogWriter,
+            advertisementRepository
         );
         PaymentOrder paymentOrder = pendingVirtualAccountOrder();
         TicketOrder ticketOrder = pendingTicketOrder();
@@ -112,7 +117,8 @@ class VirtualAccountPaymentServiceTest {
             ticketOrderRepository,
             paymentRepository,
             virtualAccountRepository,
-            auditLogWriter
+            auditLogWriter,
+            advertisementRepository
         );
         PaymentOrder paymentOrder = pendingGuestVirtualAccountOrder();
         TicketOrder ticketOrder = pendingTicketOrder();
@@ -157,7 +163,8 @@ class VirtualAccountPaymentServiceTest {
             ticketOrderRepository,
             paymentRepository,
             virtualAccountRepository,
-            auditLogWriter
+            auditLogWriter,
+            advertisementRepository
         );
         PaymentOrder paymentOrder = pendingVirtualAccountOrder();
 

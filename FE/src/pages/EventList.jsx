@@ -93,7 +93,7 @@ export default function EventList() {
         {!loading && !error && events.length > 0 && <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-lg mt-xl">
           {events.map((event) => <Link key={event.id} to={`/events/${event.id}`} className="group overflow-hidden bg-white border border-hairline rounded-2xl hover:-translate-y-1 hover:shadow-lg transition-all">
             <div className="relative h-52 bg-gradient-to-br from-primary-focus to-secondary overflow-hidden">
-              {event.representativeFileId ? <img src={fileDownloadUrl(event.representativeFileId)} alt={`${event.name} 포스터`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" /> : <div className="h-full grid place-items-center text-white/80"><Icon name="event" className="text-[48px]" /></div>}
+              {event.representativeFileId ? <img src={fileDownloadUrl(event.representativeFileId)} alt={`${event.name} 포스터`} onError={(imageEvent) => { imageEvent.currentTarget.style.display = "none"; }} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" /> : <div className="h-full grid place-items-center text-white/80"><Icon name="event" className="text-[48px]" /></div>}
               <span className="absolute top-sm left-sm px-sm py-xs rounded-full bg-black/55 text-white text-caption backdrop-blur">{typeLabel[event.eventType] || event.eventType}</span>
             </div>
             <div className="p-lg">

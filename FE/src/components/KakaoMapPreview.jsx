@@ -20,7 +20,7 @@ const loadKakaoMap = () => {
   return sdkPromise;
 };
 
-export default function KakaoMapPreview({ latitude, longitude, venueName }) {
+export default function KakaoMapPreview({ latitude, longitude, venueName, heightClass = "h-[240px]" }) {
   const containerRef = useRef(null);
   const [error, setError] = useState("");
   const hasSelectedPlace = Boolean(latitude && longitude);
@@ -43,7 +43,7 @@ export default function KakaoMapPreview({ latitude, longitude, venueName }) {
   }, [displayLatitude, displayLongitude, displayName]);
 
   return <div className="relative">
-    <div ref={containerRef} className="h-[240px] rounded-xl overflow-hidden border border-hairline" aria-label={`${displayName} 지도 위치`} />
+    <div ref={containerRef} className={`${heightClass} rounded-xl overflow-hidden border border-hairline`} aria-label={`${displayName} 지도 위치`} />
     {!hasSelectedPlace && <div className="absolute top-md left-md right-md bg-white/95 border border-hairline rounded-lg p-sm text-caption shadow-sm pointer-events-none"><strong>예시 위치 · 코엑스</strong><span className="text-ink-muted ml-sm">장소를 검색해 선택하면 실제 위치로 변경됩니다.</span></div>}
     {error && <p className="absolute inset-x-md bottom-md bg-white/95 text-error text-caption p-sm rounded-lg">{error}</p>}
   </div>;

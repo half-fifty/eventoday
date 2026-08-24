@@ -2,6 +2,9 @@ package com.min.edu.payment.service;
 
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
+import com.min.edu.advertisement.domain.Advertisement;
+import com.min.edu.advertisement.domain.AdvertisementStatus;
+import com.min.edu.advertisement.repository.AdvertisementRepository;
 import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.PaymentAuditActorType;
 import com.min.edu.payment.domain.PaymentAuditEventType;
@@ -37,6 +40,7 @@ public class VirtualAccountReconciliationRepairService {
     private final TicketOrderRepository ticketOrderRepository;
     private final PaymentRepository paymentRepository;
     private final PaymentVirtualAccountRepository virtualAccountRepository;
+    private final AdvertisementRepository advertisementRepository;
     private final PaymentFinalizer paymentFinalizer;
     private final PaymentAuditLogWriter auditLogWriter;
 
@@ -103,12 +107,21 @@ public class VirtualAccountReconciliationRepairService {
     private Payment createWaitingLocalState(
             PaymentOrder lockedOrder,
             TossConfirmResponse providerPayment) {
-        TicketOrder ticketOrder = ticketOrderRepository
-            .findByPaymentOrderId(lockedOrder.getId())
-            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
-        if (lockedOrder.getOrderType() != PaymentOrderType.EVENT_TICKET
-                || !ticketOrder.isPendingPayment()) {
-            throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+        if (lockedOrder.getOrderType() == PaymentOrderType.EVENT_AD) {
+            Advertisement advertisement = advertisementRepository
+                    .findByPaymentOrderId(lockedOrder.getId())
+                    .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+            if (advertisement.getStatus() != AdvertisementStatus.PAYMENT_PENDING) {
+                throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+            }
+        } else {
+            TicketOrder ticketOrder = ticketOrderRepository
+                .findByPaymentOrderId(lockedOrder.getId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+            if (lockedOrder.getOrderType() != PaymentOrderType.EVENT_TICKET
+                    || !ticketOrder.isPendingPayment()) {
+                throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+            }
         }
 
         OffsetDateTime now = OffsetDateTime.now();

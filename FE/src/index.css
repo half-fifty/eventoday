@@ -11,6 +11,13 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: #fcf8fb;
+  /* F7 캐럿 브라우징이 켜져도 일반 본문에 입력 커서가 노출되지 않게 한다. */
+  caret-color: transparent;
+}
+input,
+textarea,
+[contenteditable="true"] {
+  caret-color: auto;
 }
 .font-hero-display,
 .font-display-md,
