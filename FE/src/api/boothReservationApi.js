@@ -53,10 +53,12 @@ const cancelReservation = async (boothId, reservationId) =>
 const markReservationAttendance = async (boothId, reservationId, attended) =>
   apiRequest(`/booths/${boothId}/reservations/${reservationId}/attendance`, json("PATCH", { attended }));
 
-// 방문객: 부스 체크인 (입장 QR 인식). 본인의 admissionTicketId를 넘기면 게이트 입장 처리(USED)
-// 여부를 서버가 확인하고, 부스당 한 번만 성공한다(두 번째 시도는 409로 실패).
-const checkInBooth = async (boothId, admissionTicketId) =>
-  apiRequest(`/booths/${boothId}/check-in`, json("POST", { admissionTicketId }));
+// 방문객: 부스 체크인 (부스 현장 QR 인식). qrToken은 부스 현장 QR을 스캔해 도달한 booth-detail
+// 링크(?qr=...)에서 읽은 값으로, 서버가 그 부스에 실제 발급된 토큰과 대조해 실물 방문을 검증한다.
+// 본인의 admissionTicketId를 함께 넘기면 게이트 입장 처리(USED) 여부도 확인하고,
+// 부스당 한 번만 성공한다(두 번째 시도는 409로 실패).
+const checkInBooth = async (boothId, admissionTicketId, qrToken) =>
+  apiRequest(`/booths/${boothId}/check-in`, json("POST", { admissionTicketId, qrToken }));
 
 // 내 부스 예약 목록: 행사 전체에 걸쳐 내가 예약한 모든 부스 예약 (최신순, 페이징).
 // ApiResponse 래핑 없이 Page를 그대로 반환한다.

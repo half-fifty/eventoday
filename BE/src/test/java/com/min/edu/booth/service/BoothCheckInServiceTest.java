@@ -39,6 +39,7 @@ class BoothCheckInServiceTest {
     private static final Long MEMBER_ID = 100L;
     private static final Long TICKET_ID = 200L;
     private static final Long EXCHANGE_CODE_ID = 300L;
+    private static final String QR_TOKEN = "booth-qr-token";
 
     @Mock private AdmissionTicketRepository admissionTicketRepository;
     @Mock private ExchangeCodeRepository exchangeCodeRepository;
@@ -50,7 +51,7 @@ class BoothCheckInServiceTest {
     private BoothCheckInService service;
 
     private Booth booth() {
-        return Booth.builder().id(BOOTH_ID).eventId(EVENT_ID).build();
+        return Booth.builder().id(BOOTH_ID).eventId(EVENT_ID).qrToken(QR_TOKEN).build();
     }
 
     private ExchangeCode exchangeCode(Long eventId) {
@@ -81,7 +82,7 @@ class BoothCheckInServiceTest {
         given(exchangeCodeRepository.findById(EXCHANGE_CODE_ID)).willReturn(Optional.of(exchangeCode(EVENT_ID)));
         given(reservationRepository.findByMemberIdAndBoothIdWithLock(MEMBER_ID, BOOTH_ID)).willReturn(Optional.empty());
 
-        BoothCheckInResponse response = service.checkIn(BOOTH_ID, TICKET_ID, MEMBER_ID);
+        BoothCheckInResponse response = service.checkIn(BOOTH_ID, TICKET_ID, QR_TOKEN, MEMBER_ID);
 
         assertThat(response.getBoothId()).isEqualTo(BOOTH_ID);
         assertThat(response.getMemberId()).isEqualTo(MEMBER_ID);
@@ -108,7 +109,7 @@ class BoothCheckInServiceTest {
             .build();
         given(reservationRepository.findByMemberIdAndBoothIdWithLock(MEMBER_ID, BOOTH_ID)).willReturn(Optional.of(reservation));
 
-        BoothCheckInResponse response = service.checkIn(BOOTH_ID, TICKET_ID, MEMBER_ID);
+        BoothCheckInResponse response = service.checkIn(BOOTH_ID, TICKET_ID, QR_TOKEN, MEMBER_ID);
 
         assertThat(response.isReservationLinked()).isTrue();
         assertThat(response.getReservationStatus()).isEqualTo(BoothReservationStatus.CHECKED_IN);
@@ -118,11 +119,34 @@ class BoothCheckInServiceTest {
     }
 
     @Test
+    void 부스에_아직_QR이_발급되지_않았으면_예외() {
+        given(boothRepository.findById(BOOTH_ID))
+            .willReturn(Optional.of(Booth.builder().id(BOOTH_ID).eventId(EVENT_ID).qrToken(null).build()));
+
+        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, QR_TOKEN, MEMBER_ID))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.BOOTH_CHECK_IN_QR_INVALID);
+        verify(admissionTicketRepository, never()).findById(any());
+    }
+
+    @Test
+    void QR_토큰이_일치하지_않으면_예외() {
+        given(boothRepository.findById(BOOTH_ID)).willReturn(Optional.of(booth()));
+
+        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, "다른-토큰", MEMBER_ID))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.BOOTH_CHECK_IN_QR_INVALID);
+        verify(admissionTicketRepository, never()).findById(any());
+    }
+
+    @Test
     void 존재하지_않는_티켓이면_예외() {
         given(boothRepository.findById(BOOTH_ID)).willReturn(Optional.of(booth()));
         given(admissionTicketRepository.findById(TICKET_ID)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, MEMBER_ID))
+        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, QR_TOKEN, MEMBER_ID))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND);
@@ -134,7 +158,7 @@ class BoothCheckInServiceTest {
         given(admissionTicketRepository.findById(TICKET_ID)).willReturn(Optional.of(ticket(AdmissionTicketStatus.USED, MEMBER_ID)));
         given(exchangeCodeRepository.findById(EXCHANGE_CODE_ID)).willReturn(Optional.of(exchangeCode(999L)));
 
-        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, MEMBER_ID))
+        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, QR_TOKEN, MEMBER_ID))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.INVALID_INPUT_VALUE);
@@ -147,10 +171,23 @@ class BoothCheckInServiceTest {
         given(admissionTicketRepository.findById(TICKET_ID)).willReturn(Optional.of(ticket(AdmissionTicketStatus.USED, 999L)));
         given(exchangeCodeRepository.findById(EXCHANGE_CODE_ID)).willReturn(Optional.of(exchangeCode(EVENT_ID)));
 
-        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, MEMBER_ID))
+        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, QR_TOKEN, MEMBER_ID))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    void 소유자가_없는_입장권이면_예외() {
+        given(boothRepository.findById(BOOTH_ID)).willReturn(Optional.of(booth()));
+        given(admissionTicketRepository.findById(TICKET_ID)).willReturn(Optional.of(ticket(AdmissionTicketStatus.USED, null)));
+        given(exchangeCodeRepository.findById(EXCHANGE_CODE_ID)).willReturn(Optional.of(exchangeCode(EVENT_ID)));
+
+        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, QR_TOKEN, MEMBER_ID))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.FORBIDDEN);
+        verify(qrScanRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -159,7 +196,7 @@ class BoothCheckInServiceTest {
         given(admissionTicketRepository.findById(TICKET_ID)).willReturn(Optional.of(ticket(AdmissionTicketStatus.ISSUED, MEMBER_ID)));
         given(exchangeCodeRepository.findById(EXCHANGE_CODE_ID)).willReturn(Optional.of(exchangeCode(EVENT_ID)));
 
-        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, MEMBER_ID))
+        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, QR_TOKEN, MEMBER_ID))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.BOOTH_CHECK_IN_NOT_ADMITTED);
@@ -174,7 +211,7 @@ class BoothCheckInServiceTest {
         given(qrScanRepository.saveAndFlush(any()))
             .willThrow(new DataIntegrityViolationException("uk_booth_qr_scans_booth_ticket"));
 
-        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, MEMBER_ID))
+        assertThatThrownBy(() -> service.checkIn(BOOTH_ID, TICKET_ID, QR_TOKEN, MEMBER_ID))
             .isInstanceOf(BusinessException.class)
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.BOOTH_CHECK_IN_ALREADY_DONE);

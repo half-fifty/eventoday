@@ -54,17 +54,10 @@ class BoothReviewSummaryWriter {
         OffsetDateTime now = OffsetDateTime.now();
         BoothReviewSummaryBatch entity = Optional.ofNullable(existingId)
             .flatMap(boothReviewSummaryBatchRepository::findById)
-            .map(existing -> BoothReviewSummaryBatch.builder()
-                .id(existing.getId())
-                .boothId(existing.getBoothId())
-                .batchIndex(existing.getBatchIndex())
-                .fromReviewId(existing.getFromReviewId())
-                .toReviewId(existing.getToReviewId())
-                .reviewCount(reviewCount)
-                .summary(summary)
-                .lastReviewUpdatedAt(lastReviewUpdatedAt)
-                .generatedAt(now)
-                .build())
+            .map(existing -> {
+                existing.update(reviewCount, summary, lastReviewUpdatedAt, now);
+                return existing;
+            })
             .orElseGet(() -> BoothReviewSummaryBatch.builder()
                 .boothId(boothId)
                 .batchIndex(batchIndex)

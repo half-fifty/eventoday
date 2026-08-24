@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -43,15 +44,22 @@ public class BoothCheckInService {
      * "부스당 한 번만 체크인 가능"은 booth_qr_scans의 (booth_id, admission_ticket_id) 유니크
      * 제약으로 별도 보장한다.
      *
-     * 방문객은 부스 현장에 게시된 QR(부스 상세 페이지로 랜딩)을 스캔해 이 체크인 화면에
-     * 도달하므로, 여기서 다시 QR 문자열을 스캔/입력받지 않고 로그인한 본인의 admissionTicketId만
-     * 넘겨받는다(qrToken은 이미지로만 노출되는 값이라 텍스트로 재입력받기에 적합하지 않다).
+     * 방문객은 부스 현장에 게시된 QR(부스 상세 페이지 링크에 booth.qrToken이 실려있음)을 스캔해
+     * 이 체크인 화면에 도달한다. FE가 그 qrToken을 그대로 실어 보내면, 서버는 이 부스에 실제로
+     * 발급된 토큰과 일치하는지 대조한다 — boothId만 알고 API를 직접 호출하는 것으로는(그 부스
+     * QR을 실제로 스캔하지 않는 한) 체크인이 성립하지 않게 막기 위함이다.
      */
-    public BoothCheckInResponse checkIn(Long boothId, Long admissionTicketId, Long memberId) {
+    public BoothCheckInResponse checkIn(Long boothId, Long admissionTicketId, String qrToken, Long memberId) {
         OffsetDateTime now = OffsetDateTime.now();
 
         Booth booth = boothRepository.findById(boothId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.BOOTH_NOT_FOUND));
+
+        // 이 부스에 발급된 QR과 일치하는지 확인. 아직 운영자가 QR을 발급하지 않았으면
+        // booth.getQrToken()이 null이라 그 무엇과도 일치할 수 없다.
+        if (booth.getQrToken() == null || !booth.getQrToken().equals(qrToken)) {
+            throw new BusinessException(GlobalErrorCode.BOOTH_CHECK_IN_QR_INVALID);
+        }
 
         AdmissionTicket ticket = admissionTicketRepository.findById(admissionTicketId)
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.ADMISSION_TICKET_NOT_FOUND));
@@ -63,8 +71,10 @@ public class BoothCheckInService {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
 
-        // 본인 명의 입장권인지 확인
-        if (ticket.getMemberId() != null && !ticket.getMemberId().equals(memberId)) {
+        // 본인 명의 입장권인지 확인 - 소유자가 없는(게스트) 입장권은 이 인증 기반 API로는
+        // 누구 것인지 증명할 방법이 없으므로 무조건 거부한다. null을 통과시키면 ID만 알면
+        // 아무 로그인 사용자나 그 게스트 티켓으로 체크인할 수 있게 된다.
+        if (!Objects.equals(ticket.getMemberId(), memberId)) {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
 

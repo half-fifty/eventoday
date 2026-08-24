@@ -53,6 +53,8 @@ public class BoothReviewSummaryService {
     private static final Duration SUMMARY_LOCK_TTL = Duration.ofSeconds(15);
     private static final String UNLOCK_SCRIPT =
         "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+    private static final String EXTEND_LOCK_SCRIPT =
+        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('pexpire', KEYS[1], ARGV[2]) else return 0 end";
 
     private static final String SUMMARY_SYSTEM_PROMPT = """
         너는 박람회 부스 방문객 리뷰를 요약하는 어시스턴트야.
@@ -131,7 +133,7 @@ public class BoothReviewSummaryService {
             }
 
             try {
-                String summary = generateSummary(boothId, ratingAverage);
+                String summary = generateSummary(boothId, ratingAverage, lockToken);
                 BoothReviewSummary saved = boothReviewSummaryWriter.save(
                     boothId, summary, (int) commentedCount, latestReviewUpdatedAt);
                 return toResponse(saved, totalReviewCount, ratingAverage, false);
@@ -147,8 +149,8 @@ public class BoothReviewSummaryService {
         }
     }
 
-    private String generateSummary(Long boothId, Double ratingAverage) {
-        BatchSyncResult sync = syncBatches(boothId);
+    private String generateSummary(Long boothId, Double ratingAverage, String lockToken) {
+        BatchSyncResult sync = syncBatches(boothId, lockToken);
         String userPrompt = buildReducePrompt(sync.batches(), sync.tail(), ratingAverage);
         return openAiChatClient.summarize(SUMMARY_SYSTEM_PROMPT, userPrompt);
     }
@@ -156,7 +158,13 @@ public class BoothReviewSummaryService {
     // review id 범위로 고정된 배치들을 최신 상태로 맞춘다: (1) 이미 닫힌 배치 중 내용이 바뀐 것을
     // 다시 요약하고, (2) 아직 배치로 안 묶인 최신 리뷰가 BATCH_SIZE만큼 쌓였으면 새 배치로 닫는다.
     // 반환값의 tail은 그러고도 아직 배치가 안 찬(BATCH_SIZE 미만) 최신 리뷰들이다.
-    private BatchSyncResult syncBatches(Long boothId) {
+    //
+    // 배치를 하나 요약할 때마다(LLM 호출 1회) lockToken으로 락 TTL을 연장한다 - 대량 시드처럼
+    // 배치가 MAX_BATCHES_TO_CLOSE_PER_SYNC(20)개까지 연달아 닫히면 SUMMARY_LOCK_TTL(15초)을
+    // 훌쩍 넘길 수 있는데, 락이 만료된 채로 계속 진행하면 다른 요청이 같은 부스에 락을 새로 잡아
+    // LLM 호출이 중복되고 saveBatch가 같은 batchIndex로 충돌(uk_booth_review_summary_batches)할
+    // 수 있다.
+    private BatchSyncResult syncBatches(Long boothId, String lockToken) {
         List<BoothReviewSummaryBatch> batches = new ArrayList<>(
             boothReviewSummaryBatchRepository.findByBoothIdOrderByBatchIndexAsc(boothId));
 
@@ -181,6 +189,7 @@ public class BoothReviewSummaryService {
             List<BoothReview> members = boothReviewRepository.findCommentedReviewsInIdRangeOrderByIdAsc(
                 boothId, batch.getFromReviewId(), batch.getToReviewId());
             String batchSummary = summarizeBatch(members);
+            extendLock(boothId, lockToken);
             refreshed.add(boothReviewSummaryWriter.saveBatch(
                 batch.getId(), boothId, batch.getBatchIndex(),
                 batch.getFromReviewId(), batch.getToReviewId(),
@@ -199,6 +208,7 @@ public class BoothReviewSummaryService {
                 return new BatchSyncResult(batches, candidates);
             }
             String batchSummary = summarizeBatch(candidates);
+            extendLock(boothId, lockToken);
             long fromId = candidates.get(0).getId();
             long toId = candidates.get(candidates.size() - 1).getId();
             OffsetDateTime maxUpdatedAt = candidates.stream()
@@ -269,6 +279,14 @@ public class BoothReviewSummaryService {
     private void unlock(Long boothId, String token) {
         RedisScript<Long> script = RedisScript.of(UNLOCK_SCRIPT, Long.class);
         stringRedisTemplate.execute(script, Collections.singletonList(lockKey(boothId)), token);
+    }
+
+    // 아직 이 요청이 락 소유자일 때만(GET == token) TTL을 되돌린다 - 만료 후 다른 요청이 이미
+    // 락을 새로 잡았다면 그 락을 건드리지 않는다.
+    private void extendLock(Long boothId, String token) {
+        RedisScript<Long> script = RedisScript.of(EXTEND_LOCK_SCRIPT, Long.class);
+        stringRedisTemplate.execute(script, Collections.singletonList(lockKey(boothId)),
+            token, String.valueOf(SUMMARY_LOCK_TTL.toMillis()));
     }
 
     private String lockKey(Long boothId) {

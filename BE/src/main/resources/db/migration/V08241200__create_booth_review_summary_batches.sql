@@ -18,5 +18,3 @@ CREATE TABLE booth_review_summary_batches (
     CONSTRAINT uk_booth_review_summary_batches UNIQUE (booth_id, batch_index),
     CONSTRAINT fk_booth_review_summary_batches_booth FOREIGN KEY (booth_id) REFERENCES booths(id) ON DELETE CASCADE
 );
-
-CREATE INDEX idx_booth_review_summary_batches_booth ON booth_review_summary_batches(booth_id);

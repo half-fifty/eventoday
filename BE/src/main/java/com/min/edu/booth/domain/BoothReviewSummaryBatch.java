@@ -60,4 +60,11 @@ public class BoothReviewSummaryBatch {
 
     @Column(name = "generated_at", nullable = false)
     private OffsetDateTime generatedAt;
+
+    public void update(int reviewCount, String summary, OffsetDateTime lastReviewUpdatedAt, OffsetDateTime generatedAt) {
+        this.reviewCount = reviewCount;
+        this.summary = summary;
+        this.lastReviewUpdatedAt = lastReviewUpdatedAt;
+        this.generatedAt = generatedAt;
+    }
 }

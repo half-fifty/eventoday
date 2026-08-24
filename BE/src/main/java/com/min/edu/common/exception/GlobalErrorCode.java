@@ -167,6 +167,7 @@ public enum GlobalErrorCode implements ErrorCode {
     VENUE_MAP_AUTO_LAYOUT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "BOOTH_503_002", "평면도 자동 배치 제안 서비스를 이용할 수 없습니다."),
     BOOTH_CHECK_IN_NOT_ADMITTED(HttpStatus.UNPROCESSABLE_ENTITY, "BOOTH_422_011", "게이트에서 입장 처리되지 않은 티켓입니다."),
     BOOTH_CHECK_IN_ALREADY_DONE(HttpStatus.CONFLICT, "BOOTH_409_011", "이미 이 부스에서 체크인했습니다."),
+    BOOTH_CHECK_IN_QR_INVALID(HttpStatus.FORBIDDEN, "BOOTH_403_005", "부스 현장의 QR을 스캔해야 체크인할 수 있습니다."),
     // 공지·자료 AI 작성 보조 (부스 리뷰 요약과 별개로 관리한다)
     CONTENT_AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "CONTENT_503_001", "AI 작성 기능을 사용할 수 없습니다. 잠시 후 다시 시도해주세요."),
     CONTENT_AI_INVALID_RESPONSE(HttpStatus.SERVICE_UNAVAILABLE, "CONTENT_503_002", "AI 응답을 이해하지 못했습니다. 다시 시도해주세요.");

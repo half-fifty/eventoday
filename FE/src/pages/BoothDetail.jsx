@@ -35,6 +35,10 @@ export default function BoothDetail() {
   const [params] = useSearchParams();
   const eventId = params.get("eventId");
   const boothId = params.get("boothId");
+  // 부스 현장 QR을 스캔해 도달했을 때만 실리는 값 — 운영자 화면에서 발급한 QR이 이
+  // booth-detail 링크에 ?qr=<qrToken>을 담고 있다. 검색/목록 등 다른 경로로 들어오면
+  // 이 값이 없으므로, 체크인 버튼 대신 "QR을 스캔해야 한다"는 안내를 보여준다.
+  const qrToken = params.get("qr");
   const { isAuthenticated } = useAuth();
 
   // 매 렌더마다 최신 boothId를 반영 - 비동기 응답이 도착했을 때 그 사이 부스가 바뀌었는지
@@ -245,7 +249,7 @@ export default function BoothDetail() {
     setCheckingIn(true);
     setCheckInError("");
     try {
-      await checkInBooth(boothId, myAdmissionTicket.admissionTicketId);
+      await checkInBooth(boothId, myAdmissionTicket.admissionTicketId, qrToken);
       if (currentBoothIdRef.current !== requestedBoothId) return;
       setCheckInSuccess(true);
     } catch (requestError) {
@@ -1108,6 +1112,8 @@ export default function BoothDetail() {
                       <h3 className="font-body-strong text-body-strong mb-sm">부스 체크인</h3>
                       {!isAuthenticated ? (
                         <p className="text-caption text-ink-muted">체크인은 로그인 후 이용할 수 있어요.</p>
+                      ) : !qrToken ? (
+                        <p className="text-caption text-ink-muted">부스 현장에 게시된 QR을 스캔하면 체크인할 수 있어요.</p>
                       ) : loadingAdmissionTicket ? (
                         <p className="text-caption text-ink-muted">입장권 정보를 확인하는 중입니다.</p>
                       ) : !myAdmissionTicket ? (
