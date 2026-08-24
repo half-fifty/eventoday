@@ -7,11 +7,15 @@ import com.min.edu.advertisement.repository.AdvertisementRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.Payment;
+import com.min.edu.payment.domain.PaymentAuditActorType;
+import com.min.edu.payment.domain.PaymentAuditEventType;
+import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentRefund;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRefundRepository;
 import com.min.edu.payment.repository.PaymentRepository;
+import com.min.edu.payment.service.PaymentAuditLogWriter;
 import com.min.edu.payment.toss.TossPaymentClient;
 import com.min.edu.payment.toss.TossPaymentClientException;
 import com.min.edu.payment.toss.dto.TossCancelRequest;
@@ -31,17 +35,19 @@ public class AdvertisementRefundService {
     private final PaymentRepository paymentRepository;
     private final PaymentRefundRepository paymentRefundRepository;
     private final TossPaymentClient tossPaymentClient;
+    private final PaymentAuditLogWriter auditLogWriter;
     private final TransactionTemplate transaction;
 
     public AdvertisementRefundService(AdvertisementRepository advertisementRepository,
             PaymentOrderRepository paymentOrderRepository, PaymentRepository paymentRepository,
             PaymentRefundRepository paymentRefundRepository, TossPaymentClient tossPaymentClient,
-            PlatformTransactionManager transactionManager) {
+            PaymentAuditLogWriter auditLogWriter, PlatformTransactionManager transactionManager) {
         this.advertisementRepository = advertisementRepository;
         this.paymentOrderRepository = paymentOrderRepository;
         this.paymentRepository = paymentRepository;
         this.paymentRefundRepository = paymentRefundRepository;
         this.tossPaymentClient = tossPaymentClient;
+        this.auditLogWriter = auditLogWriter;
         this.transaction = new TransactionTemplate(transactionManager);
         this.transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -54,7 +60,15 @@ public class AdvertisementRefundService {
                 OffsetDateTime now = OffsetDateTime.now();
                 PaymentOrder order = paymentOrderRepository.findByIdForUpdate(ad.getPaymentOrderId())
                         .orElseThrow(() -> new BusinessException(GlobalErrorCode.REFUND_DATA_INCONSISTENT));
-                if (order.isPending() || order.isWaitingForDeposit()) order.expire(now);
+                if (order.isPending() || order.isWaitingForDeposit()) {
+                    String fromStatus = order.getStatus();
+                    order.expire(now);
+                    auditLogWriter.append(order.getId(), null, null,
+                            PaymentAuditEventType.PAYMENT_EXPIRED, fromStatus, order.getStatus(),
+                            PaymentAuditSource.REFUND, "ADVERTISEMENT_CANCELLED_BEFORE_PAYMENT",
+                            PaymentAuditActorType.fromRequester(requesterMemberId), requesterMemberId,
+                            null, now);
+                }
                 ad.cancel(now);
                 return AdvertisementStatus.CANCELLED;
             }
