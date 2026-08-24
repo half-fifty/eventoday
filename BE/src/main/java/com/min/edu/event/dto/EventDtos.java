@@ -158,10 +158,16 @@ public final class EventDtos {
     public record ExhibitCategoryResponse(String code, String name) {}
     public record MemberRequest(@NotNull Long memberId, @NotNull EventRole eventRole) {}
     public record MemberUpdateRequest(@NotNull EventRole eventRole, boolean active) {}
-    public record MemberResponse(Long memberId, EventRole eventRole, boolean active, OffsetDateTime createdAt) {
+    public record MemberResponse(Long memberId, String email, String nickname,
+            EventRole eventRole, boolean active, OffsetDateTime createdAt) {
         public static MemberResponse from(EventMember member) {
-            return new MemberResponse(member.getMemberId(), member.getEventRole(),
+            return new MemberResponse(member.getMemberId(), null, null, member.getEventRole(),
                     member.isActive(), member.getCreatedAt());
         }
+        public static MemberResponse from(EventMember eventMember, com.min.edu.member.domain.Member member) {
+            return new MemberResponse(eventMember.getMemberId(), member.getEmail(), member.getNickname(),
+                    eventMember.getEventRole(), eventMember.isActive(), eventMember.getCreatedAt());
+        }
     }
+    public record MemberCandidate(Long memberId, String email, String nickname) {}
 }

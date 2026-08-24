@@ -5,6 +5,11 @@ import com.min.edu.common.html.HtmlSanitizer;
 import com.min.edu.admin.service.PlatformAuditService;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.BoothRecruitmentStatus;
+import com.min.edu.booth.domain.VenueMapStatus;
+import com.min.edu.booth.domain.VenueMapType;
+import com.min.edu.booth.repository.BoothMapPositionRepository;
+import com.min.edu.booth.repository.BoothRepository;
+import com.min.edu.booth.repository.VenueMapRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.Event;
@@ -26,6 +31,7 @@ import com.min.edu.event.repository.ExhibitCategoryRepository;
 import com.min.edu.event.policy.EventOperationDeadlinePolicy;
 import com.min.edu.file.service.FileService;
 import com.min.edu.member.domain.PlatformRole;
+import com.min.edu.member.repository.MemberRepository;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
 import jakarta.persistence.criteria.Predicate;
@@ -61,6 +67,10 @@ public class EventService {
     private final PlatformAuditService platformAuditService;
     private final EventOperationDeadlinePolicy deadlinePolicy;
     private final FileService fileService;
+    private final MemberRepository memberRepository;
+    private final BoothRepository boothRepository;
+    private final VenueMapRepository venueMapRepository;
+    private final BoothMapPositionRepository boothMapPositionRepository;
 
     public EventService(EventRepository eventRepository, EventMemberRepository eventMemberRepository,
             EventOrganizationMemberRepository organizationMemberRepository,
@@ -71,7 +81,11 @@ public class EventService {
             ApplicationEventPublisher applicationEventPublisher,
             PlatformAuditService platformAuditService,
             EventOperationDeadlinePolicy deadlinePolicy,
-            FileService fileService) {
+            FileService fileService,
+            MemberRepository memberRepository,
+            BoothRepository boothRepository,
+            VenueMapRepository venueMapRepository,
+            BoothMapPositionRepository boothMapPositionRepository) {
         this.eventRepository = eventRepository;
         this.eventMemberRepository = eventMemberRepository;
         this.organizationMemberRepository = organizationMemberRepository;
@@ -83,6 +97,10 @@ public class EventService {
         this.platformAuditService = platformAuditService;
         this.deadlinePolicy = deadlinePolicy;
         this.fileService = fileService;
+        this.memberRepository = memberRepository;
+        this.boothRepository = boothRepository;
+        this.venueMapRepository = venueMapRepository;
+        this.boothMapPositionRepository = boothMapPositionRepository;
     }
 
     public List<EventDtos.ManagedOrganization> findManagedOrganizations(AuthenticatedMemberDto actor) {
@@ -153,8 +171,12 @@ public class EventService {
     public Page<EventDtos.Summary> findOrganizationEvents(Long organizationId,
             AuthenticatedMemberDto actor, Pageable pageable) {
         requireOrganizationMember(organizationId, actor);
-        Specification<Event> spec = (root, query, cb) ->
-                cb.equal(root.get("organizerOrganizationId"), organizationId);
+        List<Long> managedEventIds = eventMemberRepository.findActiveEventIdsByMemberIdAndRole(
+                actor.getMemberId(), EventRole.EVENT_MANAGER);
+        if (managedEventIds.isEmpty()) return Page.empty(pageable);
+        Specification<Event> spec = (root, query, cb) -> cb.and(
+                cb.equal(root.get("organizerOrganizationId"), organizationId),
+                root.get("id").in(managedEventIds));
         return summaries(eventRepository.findAll(spec, pageable));
     }
 
@@ -256,6 +278,19 @@ public class EventService {
                         eventId, BoothRecruitmentStatus.COMPLETED)) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
+        if (event.isBoothRecruitmentEnabled() && !boothRepository.existsByEventId(eventId)) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (event.isVenueMapEnabled()) {
+            List<Long> publishedVisitorMapIds = venueMapRepository
+                    .findByEventIdAndMapTypeAndStatusOrderByFloorNameAsc(
+                            eventId, VenueMapType.VISITOR, VenueMapStatus.PUBLISHED)
+                    .stream().map(map -> map.getId()).toList();
+            if (publishedVisitorMapIds.isEmpty()
+                    || !boothMapPositionRepository.existsByVenueMapIdIn(publishedVisitorMapIds)) {
+                throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+            }
+        }
         transition(() -> event.submit(OffsetDateTime.now()));
         platformAuditService.record(actor.getMemberId(), "EVENT", "SUBMITTED",
                 event.getId(), event.getName(), null);
@@ -307,8 +342,30 @@ public class EventService {
 
     public List<EventDtos.MemberResponse> getMembers(Long eventId, AuthenticatedMemberDto actor) {
         Event event = getEvent(eventId); requireEventManager(event, actor);
-        return eventMemberRepository.findAllByEventIdOrderByCreatedAtAsc(eventId).stream()
-                .map(EventDtos.MemberResponse::from).toList();
+        List<EventMember> eventMembers = eventMemberRepository.findAllByEventIdOrderByCreatedAtAsc(eventId);
+        Map<Long, com.min.edu.member.domain.Member> membersById = memberRepository
+                .findAllById(eventMembers.stream().map(EventMember::getMemberId).toList()).stream()
+                .collect(java.util.stream.Collectors.toMap(com.min.edu.member.domain.Member::getId, member -> member));
+        return eventMembers.stream()
+                .map(member -> membersById.containsKey(member.getMemberId())
+                        ? EventDtos.MemberResponse.from(member, membersById.get(member.getMemberId()))
+                        : EventDtos.MemberResponse.from(member))
+                .toList();
+    }
+
+    public List<EventDtos.MemberCandidate> searchMemberCandidates(
+            Long eventId, String query, AuthenticatedMemberDto actor) {
+        Event event = getEvent(eventId);
+        requireEventManager(event, actor);
+        if (query == null || query.trim().length() < 2) return List.of();
+        String normalizedQuery = query.trim();
+        if (normalizedQuery.length() > 100) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+        return memberRepository.searchByEmailOrNickname(normalizedQuery).stream()
+                .map(member -> new EventDtos.MemberCandidate(
+                        member.getId(), member.getEmail(), member.getNickname()))
+                .toList();
     }
 
     @Transactional
@@ -318,8 +375,10 @@ public class EventService {
         EventMember member = eventMemberRepository.findByEventIdAndMemberId(eventId, request.memberId())
                 .orElseGet(() -> EventMember.builder().eventId(eventId).memberId(request.memberId())
                         .createdAt(OffsetDateTime.now()).build());
+        com.min.edu.member.domain.Member account = memberRepository.findById(request.memberId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
         member.update(request.eventRole(), true);
-        return EventDtos.MemberResponse.from(eventMemberRepository.save(member));
+        return EventDtos.MemberResponse.from(eventMemberRepository.save(member), account);
     }
 
     @Transactional
@@ -327,8 +386,10 @@ public class EventService {
             EventDtos.MemberUpdateRequest request, AuthenticatedMemberDto actor) {
         Event event = getEvent(eventId); requireEventManager(event, actor);
         EventMember member = getMember(eventId, memberId);
+        com.min.edu.member.domain.Member account = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
         member.update(request.eventRole(), request.active());
-        return EventDtos.MemberResponse.from(member);
+        return EventDtos.MemberResponse.from(member, account);
     }
 
     @Transactional

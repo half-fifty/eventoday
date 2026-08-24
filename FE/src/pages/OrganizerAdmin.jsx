@@ -446,7 +446,6 @@ export default function OrganizerAdmin() {
   const requestableStatus = ["PREPARING", "REJECTED"].includes(selectedEvent?.status);
   const platformApproved = ["APPROVED", "PUBLISHED"].includes(selectedEvent?.status);
   const recruitmentReady = !selectedEvent?.boothRecruitmentEnabled || recruitmentStatus === "COMPLETED";
-  const approvalRequestReady = Boolean(selectedEventId) && requestableStatus && recruitmentReady && !recruitmentLoading;
   const approvalGuide = !selectedEvent
     ? "행사를 선택해 주세요."
     : !requestableStatus
@@ -490,6 +489,13 @@ export default function OrganizerAdmin() {
     return checks;
   }, [selectedEvent, detail, recruitmentStatus, boothCount, publishedMaps.length, positionedBoothIds.size]);
   const completedPreparationCount = preparationChecks.filter((check) => check.completed).length;
+  const allPreparationReady = preparationChecks.every((check) => check.completed);
+  const approvalRequestReady = Boolean(selectedEventId)
+    && requestableStatus
+    && recruitmentReady
+    && allPreparationReady
+    && !recruitmentLoading
+    && !approvalLoading;
   const preparationPercent = preparationChecks.length
     ? Math.round((completedPreparationCount / preparationChecks.length) * 100)
     : 0;
@@ -498,6 +504,15 @@ export default function OrganizerAdmin() {
     setPage(key);
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
+  const isNavAvailable = (key) => {
+    if (!selectedEvent) return key === "dashboard";
+    if (["recruitment", "applications", "assignment"].includes(key)) return selectedEvent.boothRecruitmentEnabled;
+    if (key === "floorplan") return selectedEvent.venueMapEnabled;
+    return true;
+  };
+  useEffect(() => {
+    if (selectedEvent && !isNavAvailable(page)) setPage("dashboard");
+  }, [selectedEvent, page]);
   const navBtnCls = (active) => `group flex w-full items-center gap-sm rounded-r-xl border-l-[3px] px-md py-sm text-left font-body transition-all ${
     active
       ? "border-primary bg-primary/10 font-body-strong text-primary shadow-sm"
@@ -528,7 +543,13 @@ export default function OrganizerAdmin() {
         <nav className="flex-1 space-y-1 overflow-y-auto px-md py-md" aria-label="개최자센터 메뉴">
           <p className="px-sm pb-xs text-[10px] font-bold tracking-[0.14em] text-ink-muted">행사 운영</p>
           {navItems.map((item) => (
-            <button key={item.key} onClick={() => gotoPage(item.key)} className={navBtnCls(page === item.key)}>
+            <button
+              key={item.key}
+              disabled={!isNavAvailable(item.key)}
+              title={!isNavAvailable(item.key) ? "행사 등록 시 해당 운영 기능을 선택해야 사용할 수 있습니다." : undefined}
+              onClick={() => gotoPage(item.key)}
+              className={`${navBtnCls(page === item.key)} disabled:cursor-not-allowed disabled:opacity-35`}
+            >
               <Icon name={item.icon} /><span>{item.label}</span>
             </button>
           ))}
@@ -643,7 +664,7 @@ export default function OrganizerAdmin() {
                       ) : dashboard.applications.map((application) => (
                         <button key={application.id} type="button" onClick={() => gotoPage("applications")} className="flex w-full items-center gap-sm p-lg text-left hover:bg-surface-container-lowest">
                           <span className="grid h-10 w-10 place-items-center rounded-lg bg-surface-container"><Icon name="description" className="text-[18px] text-ink-muted" /></span>
-                          <span className="min-w-0 flex-1"><span className="block truncate font-body-strong text-[14px]">{application.teamName}</span><span className="text-caption text-ink-muted">신청번호 {application.applicationNo} · 부스 #{application.boothId}</span></span>
+                          <span className="min-w-0 flex-1"><span className="block truncate font-body-strong text-[14px]">{application.teamName}</span><span className="text-caption text-ink-muted">신청번호 {application.applicationNo}</span></span>
                           <span className="text-caption text-status-pending">{APPLICATION_STATUS_LABEL[application.status] || application.status}</span>
                         </button>
                       ))}
@@ -811,6 +832,21 @@ export default function OrganizerAdmin() {
                     <div className="mt-lg h-2 overflow-hidden rounded-full bg-white/80"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${preparationPercent}%` }} /></div>
                     <p className="mt-xs text-right text-caption text-ink-muted">운영 정보 준비 {preparationPercent}% ({completedPreparationCount}/{preparationChecks.length})</p>
                   </div>
+
+                  {selectedEvent.status === "REJECTED" && detail?.rejectionReason && (
+                    <div role="alert" className="rounded-xl border border-error/25 bg-error/5 p-lg">
+                      <div className="flex items-start gap-sm">
+                        <Icon name="error" className="mt-0.5 text-error" />
+                        <div>
+                          <p className="font-body-strong text-error">행사 승인 반려 사유</p>
+                          <p className="mt-xs whitespace-pre-wrap text-caption leading-6 text-on-surface-variant">
+                            {detail.rejectionReason}
+                          </p>
+                          <p className="mt-sm text-caption text-ink-muted">내용을 보완한 뒤 다시 승인 요청할 수 있습니다.</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {approvalLoading && <p className="text-caption text-ink-muted">준비 상태를 확인하는 중입니다.</p>}
                   {approvalError && <p className="rounded-xl border border-error/20 bg-error/10 p-md text-caption text-error">{approvalError}</p>}

@@ -38,11 +38,11 @@ public class BoothRecruitmentService {
             Long eventId,
             BoothRecruitmentCreateRequestDto request,
             AuthenticatedMemberDto member) {
-        eventRepository.findById(eventId)
-            .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
-
         requireEventManager(eventId, member);
+        Event event = eventRepository.findById(eventId)
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
         validatePeriod(request.getRecruitmentStartAt(), request.getRecruitmentEndAt());
+        validateBeforeEventEnd(request.getRecruitmentEndAt(), event);
 
         if (boothRecruitmentRepository.existsByEventId(eventId)) {
             throw new BusinessException(GlobalErrorCode.RECRUITMENT_ALREADY_EXISTS);
@@ -82,12 +82,15 @@ public class BoothRecruitmentService {
             AuthenticatedMemberDto member) {
         requireEventManager(eventId, member);
         BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
+        Event event = eventRepository.findById(eventId)
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
         if (recruitment.getStatus() != BoothRecruitmentStatus.BEFORE_OPEN) {
             throw new BusinessException(GlobalErrorCode.RECRUITMENT_STATUS_TRANSITION_INVALID);
         }
 
         validatePeriod(request.getRecruitmentStartAt(), request.getRecruitmentEndAt());
+        validateBeforeEventEnd(request.getRecruitmentEndAt(), event);
 
         recruitment.updateDetails(
             request.getTitle(),
@@ -115,6 +118,8 @@ public class BoothRecruitmentService {
             AuthenticatedMemberDto member) {
         requireEventManager(eventId, member);
         BoothRecruitment recruitment = getByEventIdOrThrow(eventId);
+        Event event = eventRepository.findById(eventId)
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
 
         if (recruitment.getStatus() != BoothRecruitmentStatus.OPEN) {
             throw new BusinessException(GlobalErrorCode.RECRUITMENT_STATUS_TRANSITION_INVALID);
@@ -122,6 +127,7 @@ public class BoothRecruitmentService {
 
         OffsetDateTime now = OffsetDateTime.now();
         validatePeriod(recruitment.getRecruitmentStartAt(), request.getRecruitmentEndAt());
+        validateBeforeEventEnd(request.getRecruitmentEndAt(), event);
         if (!request.getRecruitmentEndAt().isAfter(now)) {
             throw new BusinessException(GlobalErrorCode.RECRUITMENT_PERIOD_INVALID);
         }
@@ -233,6 +239,12 @@ public class BoothRecruitmentService {
 
     private void validatePeriod(OffsetDateTime startAt, OffsetDateTime endAt) {
         if (!endAt.isAfter(startAt)) {
+            throw new BusinessException(GlobalErrorCode.RECRUITMENT_PERIOD_INVALID);
+        }
+    }
+
+    private void validateBeforeEventEnd(OffsetDateTime recruitmentEndAt, Event event) {
+        if (recruitmentEndAt.isAfter(event.getEndAt())) {
             throw new BusinessException(GlobalErrorCode.RECRUITMENT_PERIOD_INVALID);
         }
     }

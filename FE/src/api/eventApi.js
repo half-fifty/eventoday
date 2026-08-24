@@ -91,6 +91,8 @@ export const eventApi = {
   suspend: (eventId) =>
     apiRequest(`/v1/admin/events/${eventId}/suspension`, json("POST")),
   members: (eventId) => apiRequest(`/v1/events/${eventId}/members`),
+  memberCandidates: (eventId, query) =>
+    apiRequest(`/v1/events/${eventId}/member-candidates?${new URLSearchParams({ query })}`),
   addMember: (eventId, payload) =>
     apiRequest(`/v1/events/${eventId}/members`, json("POST", payload)),
   updateMember: (eventId, memberId, payload) =>

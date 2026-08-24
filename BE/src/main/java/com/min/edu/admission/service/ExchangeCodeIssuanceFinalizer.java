@@ -47,6 +47,28 @@ public class ExchangeCodeIssuanceFinalizer {
         long existingCount = exchangeCodeRepository.countByExchangeCodeRequestId(requestId);
         validateIssuable(request, existingCount);
 
+        return issueLocked(request, existingCount);
+    }
+
+    @Transactional
+    public ExchangeCodeIssuanceResult issueOrPrepareEmail(Long requestId) {
+        ExchangeCodeRequest request = exchangeCodeRequestRepository.findByIdForUpdate(requestId)
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.EXCHANGE_CODE_REQUEST_NOT_FOUND));
+
+        long existingCount = exchangeCodeRepository.countByExchangeCodeRequestId(requestId);
+        if (request.isIssued()) {
+            validateResendable(request);
+            return prepareEmailResendLocked(request, existingCount);
+        }
+        validateIssuable(request, existingCount);
+        return issueLocked(request, existingCount);
+    }
+
+    private ExchangeCodeIssuanceResult issueLocked(
+            ExchangeCodeRequest request,
+            long existingCount) {
+        Long requestId = request.getId();
+
         Event event = eventRepository.findById(request.getEventId())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.EVENT_NOT_FOUND));
         OffsetDateTime now = OffsetDateTime.now();
@@ -91,6 +113,15 @@ public class ExchangeCodeIssuanceFinalizer {
 
         validateResendable(request);
 
+        long existingCount = exchangeCodeRepository.countByExchangeCodeRequestId(requestId);
+        return prepareEmailResendLocked(request, existingCount);
+    }
+
+    private ExchangeCodeIssuanceResult prepareEmailResendLocked(
+            ExchangeCodeRequest request,
+            long existingCount) {
+        Long requestId = request.getId();
+
         Event event = eventRepository.findById(request.getEventId())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.EVENT_NOT_FOUND));
         Member recipient = memberRepository.findById(request.getRequestedBy())
@@ -99,7 +130,6 @@ public class ExchangeCodeIssuanceFinalizer {
             ));
         validateRecipientEmail(recipient.getEmail());
 
-        long existingCount = exchangeCodeRepository.countByExchangeCodeRequestId(requestId);
         if (existingCount != request.getRequestedQuantity()) {
             throw new BusinessException(
                 GlobalErrorCode.EXCHANGE_CODE_REQUEST_ISSUANCE_INCONSISTENT

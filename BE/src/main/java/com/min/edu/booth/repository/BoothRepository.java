@@ -24,6 +24,7 @@ public interface BoothRepository extends JpaRepository<Booth, Long> {
     List<Booth> findByIdIn(List<Long> ids);
 
     boolean existsByEventIdAndBoothCode(Long eventId, String boothCode);
+    boolean existsByEventId(Long eventId);
 
     boolean existsByQrToken(String qrToken);
 

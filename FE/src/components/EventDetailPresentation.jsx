@@ -16,20 +16,7 @@ export default function EventDetailPresentation({ event, detailImages = [], prev
   if (type === "EXTERNAL_SITE") {
     const officialWebsiteUrl = safeHttpUrl(event?.officialWebsiteUrl);
     if (!officialWebsiteUrl) return <Empty icon="link_off" text="등록된 행사 공식 사이트 주소가 없습니다." />;
-    return (
-      <a href={officialWebsiteUrl} target="_blank" rel="noopener noreferrer" className="group mx-auto block max-w-[860px] overflow-hidden rounded-xl border border-hairline bg-[#343944] shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-        <div className={`${preview ? "min-h-[230px]" : "min-h-[320px]"} relative grid place-items-center overflow-hidden px-xl py-xxl text-center text-white`}>
-          {event.representativeFileId && <img src={fileDownloadUrl(event.representativeFileId)} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20 blur-[2px] transition group-hover:scale-105" />}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#303540]/95 to-[#4b5260]/85" />
-          <div className="relative">
-            <Icon name="open_in_new" className="text-[48px]" />
-            <h2 className="mt-md font-display-md text-[26px]">행사 공식 사이트 바로가기</h2>
-            <p className="mt-sm text-sm text-white/75">{event.name}</p>
-            <span className="mt-lg inline-flex items-center gap-xs rounded-full bg-white px-lg py-sm font-body-strong text-[#303540]">사이트 방문하기 <Icon name="arrow_forward" /></span>
-          </div>
-        </div>
-      </a>
-    );
+    return <ExternalSiteFrame event={event} url={officialWebsiteUrl} preview={preview} />;
   }
 
   if (type === "RICH_TEXT") {
@@ -61,6 +48,57 @@ export default function EventDetailPresentation({ event, detailImages = [], prev
   }
 
   return <Empty icon="image" text={preview ? "저장 후 등록한 상세 이미지가 이 영역에 순서대로 표시됩니다." : "등록된 상세정보 이미지와 설명이 없습니다."} />;
+}
+
+function ExternalSiteFrame({ event, url, preview }) {
+  const [showFallback, setShowFallback] = useState(false);
+
+  if (showFallback) {
+    return <ExternalSiteFallback event={event} url={url} preview={preview} />;
+  }
+
+  return (
+    <div className="mx-auto max-w-[1180px] overflow-hidden rounded-xl border border-hairline bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-sm border-b border-hairline bg-surface-container-low px-lg py-md">
+        <div>
+          <p className="font-body-strong text-on-surface">행사 공식 사이트</p>
+          <p className="mt-1 text-caption text-ink-muted">사이트가 표시되지 않으면 새 창에서 열어 주세요.</p>
+        </div>
+        <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-xs rounded-full border border-hairline bg-white px-lg py-sm text-caption font-bold hover:border-primary hover:text-primary">
+          새 창에서 열기 <Icon name="open_in_new" />
+        </a>
+        <button type="button" onClick={() => setShowFallback(true)} className="inline-flex items-center gap-xs rounded-full border border-hairline bg-white px-lg py-sm text-caption font-bold hover:border-primary hover:text-primary">
+          화면이 보이지 않나요? <Icon name="image" />
+        </button>
+      </div>
+      <div className={`${preview ? "h-[480px]" : "h-[760px]"} relative bg-surface-container-lowest`}>
+        <iframe
+          key={url}
+          src={url}
+          title={`${event?.name || "행사"} 공식 사이트`}
+          className="h-full w-full border-0"
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+      </div>
+    </div>
+  );
+}
+
+function ExternalSiteFallback({ event, url, preview }) {
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="group mx-auto block max-w-[860px] overflow-hidden rounded-xl border border-hairline bg-[#343944] shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+      <div className={`${preview ? "min-h-[230px]" : "min-h-[320px]"} relative grid place-items-center overflow-hidden px-xl py-xxl text-center text-white`}>
+        {event.representativeFileId && <img src={fileDownloadUrl(event.representativeFileId)} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20 blur-[2px] transition group-hover:scale-105" />}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#303540]/95 to-[#4b5260]/85" />
+        <div className="relative">
+          <Icon name="open_in_new" className="text-[48px]" />
+          <h2 className="mt-md font-display-md text-[26px]">공식 사이트를 페이지 안에서 표시할 수 없습니다.</h2>
+          <p className="mt-sm text-sm text-white/75">{event.name}</p>
+          <span className="mt-lg inline-flex items-center gap-xs rounded-full bg-white px-lg py-sm font-body-strong text-[#303540]">새 창에서 사이트 방문하기 <Icon name="arrow_forward" /></span>
+        </div>
+      </div>
+    </a>
+  );
 }
 
 function safeHttpUrl(value) {

@@ -576,7 +576,7 @@ export default function BoothManagementPanel({ eventId }) {
                         )}
                         <div className="text-[11px] text-ink-muted space-y-1">
                           <p>발급: {new Date(qrInfo.qrIssuedAt).toLocaleString()}</p>
-                          <p className="break-all">토큰: {qrInfo.qrToken}</p>
+                          <p>현장 안내용 QR입니다. 외부에 공유하지 마세요.</p>
                         </div>
                       </div>
                     )}

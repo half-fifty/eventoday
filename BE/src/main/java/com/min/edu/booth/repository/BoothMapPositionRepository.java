@@ -12,6 +12,7 @@ public interface BoothMapPositionRepository extends JpaRepository<BoothMapPositi
     List<BoothMapPosition> findByVenueMapId(Long venueMapId);
 
     List<BoothMapPosition> findByVenueMapIdIn(Collection<Long> venueMapIds);
+    boolean existsByVenueMapIdIn(Collection<Long> venueMapIds);
 
     void deleteByVenueMapId(Long venueMapId);
 }
