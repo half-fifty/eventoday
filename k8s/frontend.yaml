@@ -19,7 +19,7 @@ spec:
         - name: ghcr-pull-secret
       containers:
         - name: eventoday-fe
-          image: ghcr.io/half-fifty/eventoday-fe:61baab6bd30d25bcca7836a68fef739da7dd6153
+          image: ghcr.io/half-fifty/eventoday-fe:278305ee7c0d6826057ff635096653e0a268fc1b
           imagePullPolicy: Always
           ports:
             - containerPort: 80
