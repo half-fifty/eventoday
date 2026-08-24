@@ -9,12 +9,18 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 public interface AdvertisementRepository extends JpaRepository<Advertisement, Long>,
         JpaSpecificationExecutor<Advertisement> {
     Optional<Advertisement> findByPaymentOrderId(Long paymentOrderId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select a from Advertisement a where a.id = :id")
+    Optional<Advertisement> findByIdForUpdate(@Param("id") Long id);
     List<Advertisement> findAllByStatusInAndStartAtLessThanEqualAndEndAtGreaterThan(
             Collection<AdvertisementStatus> statuses, OffsetDateTime startAt, OffsetDateTime endAt);
     List<Advertisement> findAllByEventIdAndStatusInAndStartAtLessThanEqualAndEndAtGreaterThan(

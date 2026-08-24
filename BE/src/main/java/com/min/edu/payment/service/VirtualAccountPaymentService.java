@@ -1,5 +1,8 @@
 package com.min.edu.payment.service;
 
+import com.min.edu.advertisement.domain.Advertisement;
+import com.min.edu.advertisement.domain.AdvertisementStatus;
+import com.min.edu.advertisement.repository.AdvertisementRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.Payment;
@@ -8,6 +11,7 @@ import com.min.edu.payment.domain.PaymentAuditEventType;
 import com.min.edu.payment.domain.PaymentAuditSource;
 import com.min.edu.payment.domain.PaymentOrder;
 import com.min.edu.payment.domain.PaymentProvider;
+import com.min.edu.payment.domain.PaymentOrderType;
 import com.min.edu.payment.domain.PaymentVirtualAccount;
 import com.min.edu.payment.domain.TicketOrder;
 import com.min.edu.payment.dto.response.ConfirmPaymentResponse;
@@ -33,6 +37,7 @@ public class VirtualAccountPaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentVirtualAccountRepository virtualAccountRepository;
     private final PaymentAuditLogWriter auditLogWriter;
+    private final AdvertisementRepository advertisementRepository;
 
     @Transactional
     public ConfirmPaymentResponse getWaitingForDeposit(
@@ -41,9 +46,6 @@ public class VirtualAccountPaymentService {
         PaymentOrder lockedOrder = paymentOrderRepository
             .findByOrderNoForUpdate(paymentOrder.getOrderNo())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_ORDER_NOT_FOUND));
-        TicketOrder ticketOrder = ticketOrderRepository
-            .findByPaymentOrderId(lockedOrder.getId())
-            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
         Payment payment = paymentRepository.findByPaymentOrderId(lockedOrder.getId())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
         if (!lockedOrder.isWaitingForDeposit()
@@ -52,7 +54,7 @@ public class VirtualAccountPaymentService {
             throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
         }
 
-        return waitingResponse(payment, lockedOrder, ticketOrder);
+        return waitingResponse(payment, lockedOrder);
     }
 
     @Transactional
@@ -65,22 +67,19 @@ public class VirtualAccountPaymentService {
             .findByOrderNoForUpdate(paymentOrder.getOrderNo())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_ORDER_NOT_FOUND));
 
-        TicketOrder ticketOrder = ticketOrderRepository
-            .findByPaymentOrderId(lockedOrder.getId())
-            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
-
         if (lockedOrder.isWaitingForDeposit()) {
             Payment payment = paymentRepository.findByPaymentOrderId(lockedOrder.getId())
                 .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
             if (!paymentKey.equals(payment.getPaymentKey())) {
                 throw new BusinessException(GlobalErrorCode.PAYMENT_ALREADY_PROCESSED);
             }
-            return waitingResponse(payment, lockedOrder, ticketOrder);
+            return waitingResponse(payment, lockedOrder);
         }
 
-        if (!lockedOrder.isPending() || !ticketOrder.isPendingPayment()) {
+        if (!lockedOrder.isPending()) {
             throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
         }
+        validateSubjectPending(lockedOrder);
 
         if (paymentRepository.findByPaymentOrderId(lockedOrder.getId()).isPresent()) {
             throw new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT);
@@ -100,6 +99,7 @@ public class VirtualAccountPaymentService {
             now
         ));
 
+        lockedOrder.alignVirtualAccountExpiry(tossResponse.virtualAccount().dueDate(), now);
         lockedOrder.markWaitingForDeposit(now);
         PaymentVirtualAccount virtualAccount = virtualAccountRepository.save(
             PaymentVirtualAccount.create(
@@ -128,40 +128,53 @@ public class VirtualAccountPaymentService {
             now
         );
 
-        return ConfirmPaymentResponse.waitingForDeposit(
-            payment,
-            lockedOrder.getOrderNo(),
-            ticketOrder,
-            new ConfirmPaymentResponse.VirtualAccountResponse(
-                virtualAccount.getBankCode(),
-                virtualAccount.getAccountNumber(),
-                virtualAccount.getCustomerName(),
-                payment.getAmount(),
-                virtualAccount.getDueAt()
-            )
-        );
+        return waitingResponse(payment, lockedOrder, virtualAccount);
     }
 
     private ConfirmPaymentResponse waitingResponse(
-            Payment payment,
-            PaymentOrder paymentOrder,
-            TicketOrder ticketOrder) {
+            Payment payment, PaymentOrder paymentOrder) {
         PaymentVirtualAccount virtualAccount = virtualAccountRepository
             .findByPaymentId(payment.getId())
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
 
-        return ConfirmPaymentResponse.waitingForDeposit(
-            payment,
-            paymentOrder.getOrderNo(),
-            ticketOrder,
+        return waitingResponse(payment, paymentOrder, virtualAccount);
+    }
+
+    private ConfirmPaymentResponse waitingResponse(Payment payment, PaymentOrder paymentOrder,
+            PaymentVirtualAccount virtualAccount) {
+        ConfirmPaymentResponse.VirtualAccountResponse account =
             new ConfirmPaymentResponse.VirtualAccountResponse(
-                virtualAccount.getBankCode(),
-                virtualAccount.getAccountNumber(),
-                virtualAccount.getCustomerName(),
-                payment.getAmount(),
-                virtualAccount.getDueAt()
-            )
-        );
+                virtualAccount.getBankCode(), virtualAccount.getAccountNumber(),
+                virtualAccount.getCustomerName(), payment.getAmount(), virtualAccount.getDueAt());
+
+        if (paymentOrder.getOrderType() == PaymentOrderType.EVENT_AD) {
+            Advertisement advertisement = advertisementRepository.findByPaymentOrderId(paymentOrder.getId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+            return ConfirmPaymentResponse.waitingForDepositEventAd(
+                payment, paymentOrder.getOrderNo(), advertisement, account);
+        }
+
+        TicketOrder ticketOrder = ticketOrderRepository.findByPaymentOrderId(paymentOrder.getId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+
+        return ConfirmPaymentResponse.waitingForDeposit(
+            payment, paymentOrder.getOrderNo(), ticketOrder, account);
+    }
+
+    private void validateSubjectPending(PaymentOrder paymentOrder) {
+        if (paymentOrder.getOrderType() == PaymentOrderType.EVENT_AD) {
+            Advertisement advertisement = advertisementRepository.findByPaymentOrderId(paymentOrder.getId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+            if (advertisement.getStatus() != AdvertisementStatus.PAYMENT_PENDING) {
+                throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+            }
+            return;
+        }
+        TicketOrder ticketOrder = ticketOrderRepository.findByPaymentOrderId(paymentOrder.getId())
+            .orElseThrow(() -> new BusinessException(GlobalErrorCode.PAYMENT_DATA_INCONSISTENT));
+        if (!ticketOrder.isPendingPayment()) {
+            throw new BusinessException(GlobalErrorCode.PAYMENT_INVALID_STATE);
+        }
     }
 
     private void validateVirtualAccountResponse(TossConfirmResponse tossResponse) {

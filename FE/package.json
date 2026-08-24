@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node --test src/utils/ticketOrderAdmissionRetry.test.js",
+    "test": "node --test scripts/run-tests.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

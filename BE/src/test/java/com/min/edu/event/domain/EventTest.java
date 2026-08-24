@@ -35,7 +35,8 @@ class EventTest {
         Event event = event(EventStatus.SUBMITTED);
         event.reject("정보 부족", now);
 
-        event.update("수정 행사", "EXPO", "소개", "설명", "장소", "주소",
+        event.update("수정 행사", "EXPO", "소개", "설명",
+                EventDetailDisplayType.RICH_TEXT, null, "장소", "주소",
                 null, null, null, null, null, null, null,
                 now.plusDays(10), now.plusDays(11), now, now.plusDays(9),
                 BigDecimal.ZERO, 100, 2, null, true, true, true, 10, now.plusMinutes(1));
@@ -47,7 +48,9 @@ class EventTest {
 
     private Event event(EventStatus status) {
         return Event.builder().id(1L).organizerOrganizationId(1L).name("행사")
-                .eventType("EXPO").description("설명").venueName("장소").address("주소")
+                .eventType("EXPO").description("설명")
+                .detailDisplayType(EventDetailDisplayType.IMAGE_GALLERY)
+                .venueName("장소").address("주소")
                 .startAt(now.plusDays(10)).endAt(now.plusDays(11)).ticketPrice(BigDecimal.ZERO)
                 .ticketTotalQuantity(100).ticketSoldQuantity(0).ticketPurchaseLimit(2)
                 .status(status).noShowGraceMinutes(10).createdAt(now).updatedAt(now).build();

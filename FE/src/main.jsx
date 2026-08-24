@@ -1,42 +1,43 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import "./index.css";
 
 import Home from "./pages/Home.jsx";
-import Login from "./pages/Login.jsx";
-import BusinessSignup from "./pages/BusinessSignup.jsx";
-import EventOngoing from "./pages/EventOngoing.jsx";
-import EventRecruiting from "./pages/EventRecruiting.jsx";
-import RecruitmentList from "./pages/RecruitmentList.jsx";
-import RecruitmentDetail from "./pages/RecruitmentDetail.jsx";
-import RecruitmentCheck from "./pages/RecruitmentCheck.jsx";
-import BoothDetail from "./pages/BoothDetail.jsx";
-import BoothApply from "./pages/BoothApply.jsx";
-import BoothApplicationList from "./pages/BoothApplicationList.jsx";
-import MyPage from "./pages/MyPage.jsx";
-import OrganizerAdmin from "./pages/OrganizerAdmin.jsx";
-import ExhibitorAdmin from "./pages/ExhibitorAdmin.jsx";
-import PlatformAdmin from "./pages/PlatformAdmin.jsx";
-import EventDetail from "./pages/EventDetail.jsx";
-import EventList from "./pages/EventList.jsx";
-import EventForm from "./pages/EventForm.jsx";
-import EventMembers from "./pages/EventMembers.jsx";
-import OrganizerAdvertisements from "./pages/OrganizerAdvertisements.jsx";
-import AdvertisementPaymentResult from "./pages/AdvertisementPaymentResult.jsx";
-import TicketPaymentResult from "./pages/TicketPaymentResult.jsx";
-import Notices from "./pages/Notices.jsx";
-import NoticeDetail from "./pages/NoticeDetail.jsx";
-import TicketOrderDetail from "./pages/TicketOrderDetail.jsx";
-import PaymentDetail from "./pages/PaymentDetail.jsx";
-import RefundDetail from "./pages/RefundDetail.jsx";
-import AdmissionTicketDetail from "./pages/AdmissionTicketDetail.jsx";
-import EventAdmissionManagement from "./pages/EventAdmissionManagement.jsx";
-import StaffAdmissionEvents from "./pages/StaffAdmissionEvents.jsx";
-import GuestOrderAccess from "./pages/GuestOrderAccess.jsx";
-import GuestReservationManagement from "./pages/GuestReservationManagement.jsx";
-import NotFound from "./pages/NotFound.jsx";
-import VenueGuide from "./pages/VenueGuide.jsx";
+const Login = lazy(() => import("./pages/Login.jsx"));
+const BusinessSignup = lazy(() => import("./pages/BusinessSignup.jsx"));
+const EventOngoing = lazy(() => import("./pages/EventOngoing.jsx"));
+const EventRecruiting = lazy(() => import("./pages/EventRecruiting.jsx"));
+const RecruitmentList = lazy(() => import("./pages/RecruitmentList.jsx"));
+const RecruitmentDetail = lazy(() => import("./pages/RecruitmentDetail.jsx"));
+const RecruitmentCheck = lazy(() => import("./pages/RecruitmentCheck.jsx"));
+const BoothDetail = lazy(() => import("./pages/BoothDetail.jsx"));
+const BoothApply = lazy(() => import("./pages/BoothApply.jsx"));
+const BoothApplicationList = lazy(() => import("./pages/BoothApplicationList.jsx"));
+const MyPage = lazy(() => import("./pages/MyPage.jsx"));
+const OrganizerAdmin = lazy(() => import("./pages/OrganizerAdmin.jsx"));
+const ExhibitorAdmin = lazy(() => import("./pages/ExhibitorAdmin.jsx"));
+const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin.jsx"));
+const EventDetail = lazy(() => import("./pages/EventDetail.jsx"));
+const EventList = lazy(() => import("./pages/EventList.jsx"));
+const EventForm = lazy(() => import("./pages/EventForm.jsx"));
+const EventMembers = lazy(() => import("./pages/EventMembers.jsx"));
+const OrganizerAdvertisements = lazy(() => import("./pages/OrganizerAdvertisements.jsx"));
+const AdvertisementPaymentResult = lazy(() => import("./pages/AdvertisementPaymentResult.jsx"));
+const TicketPaymentResult = lazy(() => import("./pages/TicketPaymentResult.jsx"));
+const Notices = lazy(() => import("./pages/Notices.jsx"));
+const NoticeDetail = lazy(() => import("./pages/NoticeDetail.jsx"));
+const TicketOrderDetail = lazy(() => import("./pages/TicketOrderDetail.jsx"));
+const PaymentDetail = lazy(() => import("./pages/PaymentDetail.jsx"));
+const RefundDetail = lazy(() => import("./pages/RefundDetail.jsx"));
+const RefundPolicy = lazy(() => import("./pages/RefundPolicy.jsx"));
+const AdmissionTicketDetail = lazy(() => import("./pages/AdmissionTicketDetail.jsx"));
+const EventAdmissionManagement = lazy(() => import("./pages/EventAdmissionManagement.jsx"));
+const StaffAdmissionEvents = lazy(() => import("./pages/StaffAdmissionEvents.jsx"));
+const GuestOrderAccess = lazy(() => import("./pages/GuestOrderAccess.jsx"));
+const GuestReservationManagement = lazy(() => import("./pages/GuestReservationManagement.jsx"));
+const NotFound = lazy(() => import("./pages/NotFound.jsx"));
+const VenueGuide = lazy(() => import("./pages/VenueGuide.jsx"));
 import { AuthProvider } from "./auth/AuthProvider.jsx";
 import ProtectedRoute from "./auth/ProtectedRoute.jsx";
 import NotificationSseProvider from "./notifications/NotificationSseProvider.jsx";
@@ -106,6 +107,7 @@ const router = createBrowserRouter([
   { path: "/tickets/orders/:orderNo", element: <TicketOrderDetail /> },
   { path: "/payments/:paymentId", element: <PaymentDetail /> },
   { path: "/refunds/:refundId", element: <RefundDetail /> },
+  { path: "/refund-policy", element: <RefundPolicy /> },
   { path: "/admission-tickets/:admissionTicketId", element: <AdmissionTicketDetail /> },
   { path: "/guest/orders", element: <GuestOrderAccess /> },
   { path: "/guest/orders/:orderNo", element: <GuestReservationManagement /> },
@@ -140,7 +142,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <AuthProvider>
       <NotificationSseProvider onNavigate={(path) => router.navigate(path)}>
-        <RouterProvider router={router} />
+        <Suspense fallback={<main className="grid min-h-screen place-items-center bg-surface text-ink-muted">페이지를 불러오는 중입니다.</main>}>
+          <RouterProvider router={router} />
+        </Suspense>
       </NotificationSseProvider>
     </AuthProvider>
   </React.StrictMode>

@@ -58,14 +58,35 @@ class AdvertisementTest {
     }
 
     @Test
-    void 노출중인_광고는_문구와_이미지만_수정할_수_있다() {
+    void 노출중인_광고의_문구와_이미지를_수정하면_재심사상태가_된다() {
         Advertisement ad = ad(AdvertisementStatus.ACTIVE, now.minusHours(1));
 
         ad.updateCreative(15L, "새 광고 문구", now);
 
         assertEquals(15L, ad.getBannerFileId());
         assertEquals("새 광고 문구", ad.getAdText());
-        assertEquals(AdvertisementStatus.ACTIVE, ad.getStatus());
+        assertEquals(AdvertisementStatus.REVISION_PENDING, ad.getStatus());
+        assertEquals(null, ad.getReviewedBy());
+        assertEquals(null, ad.getApprovedAt());
+    }
+
+    @Test
+    void 노출예정_광고의_콘텐츠를_수정하면_재심사상태가_된다() {
+        Advertisement ad = ad(AdvertisementStatus.SCHEDULED, now.plusDays(1));
+
+        ad.updateCreative(15L, "수정 광고 문구", now);
+
+        assertEquals(AdvertisementStatus.REVISION_PENDING, ad.getStatus());
+    }
+
+    @Test
+    void 이미_노출된_수정재심사_광고는_환불없이_중단할_수_있다() {
+        Advertisement ad = ad(AdvertisementStatus.ACTIVE, now.minusHours(1));
+        ad.updateCreative(15L, "수정 광고 문구", now);
+
+        ad.stopRevision(now.plusMinutes(1));
+
+        assertEquals(AdvertisementStatus.STOPPED, ad.getStatus());
     }
 
     @Test
@@ -73,6 +94,34 @@ class AdvertisementTest {
         Advertisement ad = ad(AdvertisementStatus.REVIEW_PENDING, now.plusDays(1));
         assertThrows(IllegalStateException.class,
                 () -> ad.updateCreative(15L, "새 광고 문구", now));
+    }
+
+    @Test
+    void scheduledAdvertisementBecomesRefundedAfterFullRefund() {
+        Advertisement ad = ad(AdvertisementStatus.SCHEDULED, now.plusDays(1));
+        ad.markRefunded(now);
+        assertEquals(AdvertisementStatus.REFUNDED, ad.getStatus());
+    }
+
+    @Test
+    void activeAdvertisementCanStopButCannotRefund() {
+        Advertisement ad = ad(AdvertisementStatus.ACTIVE, now.minusHours(1));
+        assertThrows(IllegalStateException.class, () -> ad.markRefunded(now));
+        ad.stop(now);
+        assertEquals(AdvertisementStatus.STOPPED, ad.getStatus());
+    }
+
+    @Test
+    void terminalAdvertisementCanBeArchived() {
+        Advertisement ad = ad(AdvertisementStatus.REFUNDED, now.minusDays(1));
+        ad.archive(now);
+        assertEquals(now, ad.getArchivedAt());
+    }
+
+    @Test
+    void activeAdvertisementCannotBeArchived() {
+        Advertisement ad = ad(AdvertisementStatus.ACTIVE, now.minusHours(1));
+        assertThrows(IllegalStateException.class, () -> ad.archive(now));
     }
 
     private Advertisement ad(AdvertisementStatus status, OffsetDateTime startAt) {

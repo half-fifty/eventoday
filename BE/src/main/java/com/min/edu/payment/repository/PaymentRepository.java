@@ -1,6 +1,8 @@
 package com.min.edu.payment.repository;
 
 import java.util.Optional;
+import java.util.Collection;
+import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -14,6 +16,8 @@ import jakarta.persistence.LockModeType;
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     Optional<Payment> findByPaymentOrderId(Long paymentOrderId);
+
+    List<Payment> findAllByPaymentOrderIdIn(Collection<Long> paymentOrderIds);
 
     Optional<Payment> findByPaymentKey(String paymentKey);
 

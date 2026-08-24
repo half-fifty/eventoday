@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.min.edu.advertisement.repository.AdvertisementRepository;
 import com.min.edu.admission.repository.ExchangeCodeRepository;
 import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.PaymentAuditActorType;
@@ -46,6 +47,7 @@ class VirtualAccountExpirationRepairServiceTest {
     @Mock private TicketOrderRepository ticketOrderRepository;
     @Mock private ExchangeCodeRepository exchangeCodeRepository;
     @Mock private TicketInventoryGateway ticketInventoryGateway;
+    @Mock private AdvertisementRepository advertisementRepository;
     @Mock private PaymentFinalizer paymentFinalizer;
     @Mock private PaymentAuditLogWriter auditLogWriter;
 
@@ -60,6 +62,7 @@ class VirtualAccountExpirationRepairServiceTest {
             ticketOrderRepository,
             exchangeCodeRepository,
             ticketInventoryGateway,
+            advertisementRepository,
             paymentFinalizer,
             auditLogWriter
         );

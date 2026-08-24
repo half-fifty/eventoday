@@ -33,7 +33,7 @@ export default function Footer() {
           <h4 className="text-caption font-body-strong mb-xs">이용 안내</h4>
           <a className="text-caption text-on-surface-variant hover:underline" href="#">이용약관</a>
           <a className="text-caption text-on-surface-variant hover:underline" href="#">개인정보처리방침</a>
-          <a className="text-caption text-on-surface-variant hover:underline" href="#">환불 정책</a>
+          <Link className="text-caption text-on-surface-variant hover:underline" to="/refund-policy">환불 정책</Link>
         </div>
         <div className="flex flex-col gap-sm">
           <h4 className="text-caption font-body-strong mb-xs">고객센터</h4>

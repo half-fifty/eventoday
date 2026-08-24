@@ -1,5 +1,7 @@
 package com.min.edu.event.service;
 
+import com.min.edu.common.html.HtmlSanitizer;
+
 import com.min.edu.admin.service.PlatformAuditService;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.BoothRecruitmentStatus;
@@ -22,6 +24,7 @@ import com.min.edu.event.repository.EventRepository;
 import com.min.edu.event.repository.EventExhibitCategoryRepository;
 import com.min.edu.event.repository.ExhibitCategoryRepository;
 import com.min.edu.event.policy.EventOperationDeadlinePolicy;
+import com.min.edu.file.service.FileService;
 import com.min.edu.member.domain.PlatformRole;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
@@ -57,6 +60,7 @@ public class EventService {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final PlatformAuditService platformAuditService;
     private final EventOperationDeadlinePolicy deadlinePolicy;
+    private final FileService fileService;
 
     public EventService(EventRepository eventRepository, EventMemberRepository eventMemberRepository,
             EventOrganizationMemberRepository organizationMemberRepository,
@@ -66,7 +70,8 @@ public class EventService {
             EventExhibitCategoryRepository eventExhibitCategoryRepository,
             ApplicationEventPublisher applicationEventPublisher,
             PlatformAuditService platformAuditService,
-            EventOperationDeadlinePolicy deadlinePolicy) {
+            EventOperationDeadlinePolicy deadlinePolicy,
+            FileService fileService) {
         this.eventRepository = eventRepository;
         this.eventMemberRepository = eventMemberRepository;
         this.organizationMemberRepository = organizationMemberRepository;
@@ -77,6 +82,7 @@ public class EventService {
         this.applicationEventPublisher = applicationEventPublisher;
         this.platformAuditService = platformAuditService;
         this.deadlinePolicy = deadlinePolicy;
+        this.fileService = fileService;
     }
 
     public List<EventDtos.ManagedOrganization> findManagedOrganizations(AuthenticatedMemberDto actor) {
@@ -165,11 +171,15 @@ public class EventService {
             AuthenticatedMemberDto actor) {
         requireOrganizationManager(organizationId, actor);
         validateRequest(request);
+        fileService.assertPublicImageAccessible(request.representativeFileId(), actor.getMemberId());
         OffsetDateTime now = OffsetDateTime.now();
         Event event = Event.builder()
                 .organizerOrganizationId(organizationId).name(request.name())
                 .eventType(request.eventType()).shortDescription(request.shortDescription())
-                .description(request.description()).venueName(request.venueName()).address(request.address())
+                .description(HtmlSanitizer.sanitize(request.description()))
+                .detailDisplayType(request.detailDisplayType())
+                .officialWebsiteUrl(request.officialWebsiteUrl())
+                .venueName(request.venueName()).address(request.address())
                 .contactEmail(request.contactEmail()).contactPhone(request.contactPhone())
                 .postalCode(request.postalCode()).addressDetail(request.addressDetail())
                 .latitude(request.latitude()).longitude(request.longitude()).kakaoPlaceId(request.kakaoPlaceId())
@@ -196,9 +206,11 @@ public class EventService {
             AuthenticatedMemberDto actor) {
         requireOrganizationManager(organizationId, actor);
         validateRequest(request);
+        fileService.assertPublicImageAccessible(request.representativeFileId(), actor.getMemberId());
         Event event = getEvent(eventId);
         requireEventOrganization(event, organizationId);
-        event.update(request.name(), request.eventType(), request.shortDescription(), request.description(),
+        transition(() -> event.update(request.name(), request.eventType(), request.shortDescription(),
+                HtmlSanitizer.sanitize(request.description()), request.detailDisplayType(), request.officialWebsiteUrl(),
                 request.venueName(), request.address(), request.postalCode(), request.addressDetail(),
                 request.contactEmail(), request.contactPhone(),
                 request.latitude(), request.longitude(), request.kakaoPlaceId(), RegionCode.fromAddress(request.address()),
@@ -206,8 +218,34 @@ public class EventService {
                 request.ticketSalesStartAt(), request.ticketSalesEndAt(), request.ticketPrice(),
                 request.ticketTotalQuantity(), request.ticketPurchaseLimit(), request.representativeFileId(),
                 request.boothRecruitmentEnabled(), request.venueMapEnabled(), request.boothReservationEnabled(),
-                request.noShowGraceMinutes(), OffsetDateTime.now());
+                request.noShowGraceMinutes(), OffsetDateTime.now()));
         replaceCategories(eventId, request.exhibitCategoryCodes());
+        return EventDtos.Detail.from(event, categoryCodes(eventId));
+    }
+
+    @Transactional
+    public EventDtos.Detail updatePoster(Long organizationId, Long eventId,
+            EventDtos.PosterUpdateRequest request, AuthenticatedMemberDto actor) {
+        requireOrganizationManager(organizationId, actor);
+        Event event = getEvent(eventId);
+        requireEventOrganization(event, organizationId);
+        fileService.assertPublicImageAccessible(request.representativeFileId(), actor.getMemberId());
+        transition(() -> event.updateRepresentativeFile(
+                request.representativeFileId(), OffsetDateTime.now()));
+        return EventDtos.Detail.from(event, categoryCodes(eventId));
+    }
+
+    @Transactional
+    public EventDtos.Detail updatePublicInfo(Long organizationId, Long eventId,
+            EventDtos.PublicInfoUpdateRequest request, AuthenticatedMemberDto actor) {
+        requireOrganizationManager(organizationId, actor);
+        Event event = getEvent(eventId);
+        requireEventOrganization(event, organizationId);
+        fileService.assertPublicImageAccessible(request.representativeFileId(), actor.getMemberId());
+        transition(() -> event.updatePublicInfo(request.shortDescription(), HtmlSanitizer.sanitize(request.description()),
+                request.detailDisplayType(), request.officialWebsiteUrl(),
+                request.contactEmail(), request.contactPhone(), request.representativeFileId(),
+                OffsetDateTime.now()));
         return EventDtos.Detail.from(event, categoryCodes(eventId));
     }
 

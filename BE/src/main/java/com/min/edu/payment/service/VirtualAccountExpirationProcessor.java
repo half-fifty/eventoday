@@ -4,6 +4,7 @@ import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.payment.domain.Payment;
 import com.min.edu.payment.domain.PaymentOrder;
+import com.min.edu.payment.domain.PaymentOrderType;
 import com.min.edu.payment.domain.PaymentVirtualAccount;
 import com.min.edu.payment.repository.PaymentOrderRepository;
 import com.min.edu.payment.repository.PaymentRepository;
