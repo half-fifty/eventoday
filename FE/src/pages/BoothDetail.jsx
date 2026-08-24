@@ -4,7 +4,8 @@ import Icon from "../components/Icon.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
 import { ApiError } from "../api/apiClient.js";
 import { getGuideBoothDetail, addBoothInterest, removeBoothInterest, updateVacancyNotification, getMyInterests } from "../api/boothApi.js";
-import { listReservationSlots, getMyReservation, createReservation, cancelReservation } from "../api/boothReservationApi.js";
+import { listReservationSlots, getMyReservation, createReservation, cancelReservation, checkInBooth } from "../api/boothReservationApi.js";
+import { admissionApi } from "../api/admissionApi.js";
 import { getVenueMapMarkersWithCongestion } from "../api/venueMapApi.js";
 import {
   listReviews, createReview, updateReview, deleteReview, getMyReviews, getReviewSummary,
@@ -66,6 +67,13 @@ export default function BoothDetail() {
   // QR 방문 부스의 실시간 혼잡도 (평면도에 핀이 등록된 부스만 데이터가 있다).
   const [congestionInfo, setCongestionInfo] = useState(null);
   const [loadingCongestion, setLoadingCongestion] = useState(false);
+
+  // 부스 체크인: 이 행사에 대해 게이트에서 이미 입장 처리(USED)된 내 입장권 — 있어야 체크인 버튼을 보여준다.
+  const [myAdmissionTicket, setMyAdmissionTicket] = useState(null);
+  const [loadingAdmissionTicket, setLoadingAdmissionTicket] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [checkInError, setCheckInError] = useState("");
+  const [checkInSuccess, setCheckInSuccess] = useState(false);
 
   // 부스 후기 목록 (더보기 방식으로 누적)
   const [reviews, setReviews] = useState([]);
@@ -199,6 +207,54 @@ export default function BoothDetail() {
 
     return () => { cancelled = true; };
   }, [eventId, boothId]);
+
+  // 이 행사에 대해 게이트에서 이미 입장 처리(USED)된 내 입장권을 조회한다 — 체크인 버튼 노출 여부 판단용.
+  // (한 회원이 같은 행사 입장권을 여러 장 갖고 있을 수 있어 그중 하나만 찾으면 된다)
+  useEffect(() => {
+    if (!isAuthenticated || !eventId) {
+      setMyAdmissionTicket(null);
+      return undefined;
+    }
+    let cancelled = false;
+    setLoadingAdmissionTicket(true);
+    admissionApi.getMyAdmissionTickets({ status: "USED", size: 50 })
+      .then((data) => {
+        if (cancelled) return;
+        const content = data?.content ?? [];
+        const mine = content.find((t) => String(t.eventId) === String(eventId));
+        setMyAdmissionTicket(mine ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setMyAdmissionTicket(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAdmissionTicket(false);
+      });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, eventId]);
+
+  // 부스가 바뀌면 이전 부스의 체크인 결과 표시를 초기화한다.
+  useEffect(() => {
+    setCheckInSuccess(false);
+    setCheckInError("");
+  }, [boothId]);
+
+  const handleCheckIn = async () => {
+    if (!myAdmissionTicket || checkingIn) return;
+    const requestedBoothId = boothId;
+    setCheckingIn(true);
+    setCheckInError("");
+    try {
+      await checkInBooth(boothId, myAdmissionTicket.admissionTicketId);
+      if (currentBoothIdRef.current !== requestedBoothId) return;
+      setCheckInSuccess(true);
+    } catch (requestError) {
+      if (currentBoothIdRef.current !== requestedBoothId) return;
+      setCheckInError(requestError.message || "체크인에 실패했습니다.");
+    } finally {
+      if (currentBoothIdRef.current === requestedBoothId) setCheckingIn(false);
+    }
+  };
 
   // 부스를 빠르게 전환하거나 페이지를 연속으로 넘기면 응답이 요청과 다른 순서로 도착할 수 있어,
   // 매 요청마다 증가하는 id를 매겨 가장 마지막에 시작된 요청의 응답만 반영한다.
@@ -1047,6 +1103,33 @@ export default function BoothDetail() {
                     {vacancyNotificationError && (
                       <p className="text-caption text-error mb-sm">{vacancyNotificationError}</p>
                     )}
+
+                    <div className="border-t border-hairline pt-lg mb-lg">
+                      <h3 className="font-body-strong text-body-strong mb-sm">부스 체크인</h3>
+                      {!isAuthenticated ? (
+                        <p className="text-caption text-ink-muted">체크인은 로그인 후 이용할 수 있어요.</p>
+                      ) : loadingAdmissionTicket ? (
+                        <p className="text-caption text-ink-muted">입장권 정보를 확인하는 중입니다.</p>
+                      ) : !myAdmissionTicket ? (
+                        <p className="text-caption text-ink-muted">아직 이 행사에 입장 처리되지 않았어요. 게이트에서 먼저 입장해주세요.</p>
+                      ) : checkInSuccess ? (
+                        <p className="font-body-strong text-status-available flex items-center gap-1">
+                          <Icon name="check_circle" className="text-[18px]" /> 체크인 완료! 혼잡도 집계에 반영돼요.
+                        </p>
+                      ) : (
+                        <>
+                          <button
+                            onClick={handleCheckIn}
+                            disabled={checkingIn}
+                            className="w-full h-[44px] rounded-xl font-body-strong bg-primary text-white flex items-center justify-center gap-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <Icon name="qr_code_scanner" className="text-[18px]" />
+                            {checkingIn ? "체크인 처리 중..." : "이 부스 체크인하기"}
+                          </button>
+                          {checkInError && <p className="text-caption text-error mt-sm">{checkInError}</p>}
+                        </>
+                      )}
+                    </div>
 
                     <div className="border-t border-hairline pt-lg">
                       <h3 className="font-body-strong text-body-strong mb-sm">부스 예약</h3>
