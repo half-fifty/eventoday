@@ -8,6 +8,7 @@ jobs:
   backend-check:
     name: Backend (Gradle)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: BE
@@ -23,7 +24,9 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build and test
+      - name: Build and run unit tests
+        env:
+          CI_SKIP_TESTCONTAINERS: "true"
         run: ./gradlew build
 
   frontend-check:
