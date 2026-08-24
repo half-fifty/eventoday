@@ -25,7 +25,7 @@ export default function EventDetailSettings({ form, onChange, disabled = false }
       <label className="block">
         행사 공식 홈페이지 URL {form.detailDisplayType === "EXTERNAL_SITE" ? "*" : "(선택)"}
         <input disabled={disabled} required={form.detailDisplayType === "EXTERNAL_SITE"} type="url" maxLength={1000} value={form.officialWebsiteUrl || ""} onChange={(event) => onChange("officialWebsiteUrl", event.target.value)} placeholder="https://행사공식사이트.com" className="mt-xs h-11 w-full rounded-lg border border-hairline bg-white px-md outline-none focus:border-primary disabled:bg-surface-container" />
-        <span className="mt-xs block text-caption text-ink-muted">상세 페이지에서 공식 사이트 링크를 제공합니다. 공식 사이트 표시 방식에서는 클릭형 바로가기 카드로 사용됩니다.</span>
+        <span className="mt-xs block text-caption text-ink-muted">상세 페이지에서 공식 사이트 링크를 제공합니다. 공식 사이트 표시 방식에서는 사이트를 페이지 안에 먼저 보여주고, 상대 사이트가 iframe을 차단하면 포스터형 바로가기 화면을 제공합니다.</span>
       </label>
       {form.detailDisplayType === "RICH_TEXT" && (
         <div>

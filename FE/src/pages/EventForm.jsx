@@ -360,6 +360,38 @@ export default function EventForm() {
       showFormError("행사를 등록할 운영 조직을 선택해 주세요.");
       return;
     }
+    if (!publicInfoOnly && !form.name?.trim()) {
+      showFormError("행사명을 입력해 주세요.");
+      return;
+    }
+    if (!publicInfoOnly && !form.venueName?.trim()) {
+      showFormError("행사 장소명을 입력해 주세요.");
+      return;
+    }
+    if (!publicInfoOnly && !form.address?.trim()) {
+      showFormError("행사장 주소를 입력해 주세요.");
+      return;
+    }
+    if (!publicInfoOnly && (!form.startAt || !form.endAt)) {
+      showFormError("행사 시작과 종료 일시를 모두 입력해 주세요.");
+      return;
+    }
+    if (!form.contactEmail?.trim()) {
+      showFormError("담당자 이메일을 입력해 주세요.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contactEmail.trim())) {
+      showFormError("담당자 이메일 형식을 확인해 주세요.");
+      return;
+    }
+    if (!form.contactPhone?.trim()) {
+      showFormError("담당자 연락처를 입력해 주세요.");
+      return;
+    }
+    if (!/^[0-9-]{9,14}$/.test(form.contactPhone.trim())) {
+      showFormError("담당자 연락처는 숫자와 하이픈을 사용해 9~14자로 입력해 주세요.");
+      return;
+    }
     if (!form.representativeFileId) {
       showFormError("행사 포스터를 등록해 주세요.");
       return;
@@ -503,7 +535,7 @@ export default function EventForm() {
         <TopNav active="organizer" />
         <FormToast toast={toast} onClose={() => setToast(null)} />
         <main className="min-h-screen bg-surface-container-low px-lg pb-xl pt-[76px]">
-          <form onSubmit={submit} className="max-w-[920px] mx-auto space-y-lg">
+          <form noValidate onSubmit={submit} className="max-w-[920px] mx-auto space-y-lg">
             <header className="flex flex-wrap justify-between items-end gap-md">
               <div>
                 <p className="text-caption text-primary">ORGANIZER CENTER</p>
@@ -712,7 +744,7 @@ export default function EventForm() {
       <TopNav active="organizer" />
       <FormToast toast={toast} onClose={() => setToast(null)} />
       <main className="min-h-screen bg-surface-container-low px-lg pb-xl pt-[76px]">
-        <form onSubmit={submit} className="max-w-[1040px] mx-auto space-y-lg">
+        <form noValidate onSubmit={submit} className="max-w-[1040px] mx-auto space-y-lg">
           <header className="flex justify-between items-end gap-md">
             <div>
               <p className="text-caption text-primary">ORGANIZER CENTER</p>
@@ -1158,7 +1190,7 @@ export default function EventForm() {
 
           <section className={section}>
             <div>
-              <p className="text-caption text-primary mb-xs">02</p>
+              <p className="text-caption text-primary mb-xs">05</p>
               <h2 className="font-display-md text-[22px]">전시품목</h2>
               <p className="text-caption text-ink-muted mt-xs">
                 행사에서 다루는 품목을 최대 5개까지 선택해 주세요.
@@ -1191,7 +1223,7 @@ export default function EventForm() {
 
           <section className={section}>
             <div>
-              <p className="text-caption text-primary mb-xs">05</p>
+              <p className="text-caption text-primary mb-xs">06</p>
               <h2 className="font-display-md text-[22px]">운영 기능</h2>
             </div>
             <div className="grid md:grid-cols-3 gap-md">
@@ -1230,7 +1262,7 @@ export default function EventForm() {
           {eventId && form.detailDisplayType === "IMAGE_GALLERY" && (
             <section className={section}>
               <div>
-                <p className="text-caption text-primary mb-xs">06</p>
+                <p className="text-caption text-primary mb-xs">07</p>
                 <h2 className="font-display-md text-[22px]">상세정보 이미지</h2>
                 <p className="text-caption text-ink-muted mt-xs">
                   이미지 저장은 행사 기본정보 저장과 별도로 처리됩니다.
@@ -1245,7 +1277,7 @@ export default function EventForm() {
           {!eventId && form.detailDisplayType === "IMAGE_GALLERY" && (
             <section className={section}>
               <div>
-                <p className="text-caption text-primary mb-xs">06</p>
+                <p className="text-caption text-primary mb-xs">07</p>
                 <h2 className="font-display-md text-[22px]">상세정보 이미지</h2>
                 <p className="text-caption text-ink-muted mt-xs">행사를 처음 저장할 때 상세 이미지도 함께 등록됩니다.</p>
               </div>
