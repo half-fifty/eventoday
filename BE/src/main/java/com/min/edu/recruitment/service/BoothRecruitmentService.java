@@ -38,10 +38,9 @@ public class BoothRecruitmentService {
             Long eventId,
             BoothRecruitmentCreateRequestDto request,
             AuthenticatedMemberDto member) {
+        requireEventManager(eventId, member);
         Event event = eventRepository.findById(eventId)
             .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
-
-        requireEventManager(eventId, member);
         validatePeriod(request.getRecruitmentStartAt(), request.getRecruitmentEndAt());
         validateBeforeEventEnd(request.getRecruitmentEndAt(), event);
 

@@ -505,7 +505,7 @@ export default function OrganizerAdvertisements() {
                 광고할 행사가 없습니다
               </h2>
               <p className="mt-xs text-caption text-ink-muted">
-                행사를 먼저 등록한 뒤 광고를 신청해 주세요.
+                행사를 공개한 뒤 광고를 신청해 주세요.
               </p>
               <Link
                 to={`/organizer-admin/events/new?organizationId=${organizationId}`}

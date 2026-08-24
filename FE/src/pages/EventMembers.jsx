@@ -60,18 +60,29 @@ export default function EventMembers() {
   }, [eventId]);
 
   useEffect(() => {
+    let cancelled = false;
     if (memberQuery.trim().length < 2 || selectedMember) {
       setCandidates([]);
+      setSearching(false);
       return undefined;
     }
     const timer = window.setTimeout(() => {
       setSearching(true);
       eventApi.memberCandidates(eventId, memberQuery.trim())
-        .then((result) => setCandidates(result?.data || []))
-        .catch((requestError) => setError(requestError.message || "담당자를 검색하지 못했습니다."))
-        .finally(() => setSearching(false));
+        .then((result) => {
+          if (!cancelled) setCandidates(result?.data || []);
+        })
+        .catch((requestError) => {
+          if (!cancelled) setError(requestError.message || "담당자를 검색하지 못했습니다.");
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
     }, 300);
-    return () => window.clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [eventId, memberQuery, selectedMember]);
 
   const add = async (e) => {

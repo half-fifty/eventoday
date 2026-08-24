@@ -10,6 +10,7 @@ import com.min.edu.member.domain.PlatformRole;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ExchangeCodeIssuanceService {
@@ -30,21 +31,14 @@ public class ExchangeCodeIssuanceService {
         this.emailSender = emailSender;
     }
 
+    @Transactional
     public ExchangeCodeRequestDtos.IssuanceResponse issue(
             Long requestId,
             AuthenticatedMemberDto actor) {
         requireAdmin(actor);
 
-        ExchangeCodeIssuanceResult result;
-        try {
-            result = issuanceFinalizer.issue(requestId);
-        } catch (BusinessException exception) {
-            if (exception.getErrorCode() != GlobalErrorCode.EXCHANGE_CODE_REQUEST_ALREADY_ISSUED) {
-                throw exception;
-            }
-            // 코드 저장 후 SMTP만 실패한 요청은 다시 코드를 만들지 않고 기존 코드를 재사용한다.
-            result = issuanceFinalizer.prepareEmailResend(requestId);
-        }
+        // 발급 준비에서 이메일 기록까지 같은 트랜잭션으로 묶어 요청 행 잠금을 유지한다.
+        ExchangeCodeIssuanceResult result = issuanceFinalizer.issueOrPrepareEmail(requestId);
         emailSender.send(new EmailMessage(
             result.recipientEmail(),
             ISSUANCE_EMAIL_SUBJECT,
@@ -62,6 +56,7 @@ public class ExchangeCodeIssuanceService {
         );
     }
 
+    @Transactional
     public ExchangeCodeRequestDtos.EmailResendResponse resendEmail(
             Long requestId,
             AuthenticatedMemberDto actor) {

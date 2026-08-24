@@ -427,6 +427,17 @@ export default function EventForm() {
       showFormError("티켓 판매 시작은 실제 판매 종료보다 이전이어야 합니다.");
       return;
     }
+    if (!eventId && form.detailDisplayType === "IMAGE_GALLERY") {
+      const detailFileIds = draftDetailImages.map((image) => image.fileId);
+      if (detailFileIds.some((fileId) => !fileId)) {
+        showFormError("추가한 상세 이미지 파일을 모두 업로드해 주세요.");
+        return;
+      }
+      if (new Set(detailFileIds).size !== detailFileIds.length) {
+        showFormError("같은 상세 이미지는 한 번만 등록할 수 있습니다.");
+        return;
+      }
+    }
     setSaving(true);
     setError("");
     const payload = {

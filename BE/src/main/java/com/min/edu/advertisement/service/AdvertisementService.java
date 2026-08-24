@@ -125,12 +125,12 @@ public class AdvertisementService {
     public AdvertisementDtos.Response createEventAd(Long eventId, AdvertisementDtos.SaveRequest request,
             AuthenticatedMemberDto actor) {
         Event event = getEvent(eventId);
+        requireOrganizationManager(request.applicantOrganizationId(), actor);
+        if (!event.getOrganizerOrganizationId().equals(request.applicantOrganizationId()))
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         if (event.getStatus() != EventStatus.PUBLISHED) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
-        if (!event.getOrganizerOrganizationId().equals(request.applicantOrganizationId()))
-            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
-        requireOrganizationManager(request.applicantOrganizationId(), actor);
         fileService.assertPublicAccessible(request.bannerFileId(), actor.getMemberId());
         validatePeriod(request.startAt(), request.endAt());
         OffsetDateTime now = OffsetDateTime.now();

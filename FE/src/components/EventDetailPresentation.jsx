@@ -1,7 +1,7 @@
 import { fileDownloadUrl } from "../api/fileApi.js";
 import Icon from "./Icon.jsx";
 import RichTextViewer from "./RichTextViewer.jsx";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export const EVENT_DETAIL_DISPLAY_TYPES = [
   { value: "IMAGE_GALLERY", label: "상세 이미지", description: "세로형 이미지를 순서대로 보여줍니다.", icon: "image" },
@@ -51,25 +51,9 @@ export default function EventDetailPresentation({ event, detailImages = [], prev
 }
 
 function ExternalSiteFrame({ event, url, preview }) {
-  const [frameState, setFrameState] = useState("loading");
+  const [showFallback, setShowFallback] = useState(false);
 
-  useEffect(() => {
-    setFrameState("loading");
-    const controller = new AbortController();
-    fetch(url, { mode: "no-cors", signal: controller.signal })
-      .catch((error) => {
-        if (error?.name !== "AbortError") setFrameState("failed");
-      });
-    return () => controller.abort();
-  }, [url]);
-
-  useEffect(() => {
-    if (frameState !== "loading") return undefined;
-    const timeoutId = window.setTimeout(() => setFrameState("failed"), 8000);
-    return () => window.clearTimeout(timeoutId);
-  }, [url, frameState]);
-
-  if (frameState === "failed") {
+  if (showFallback) {
     return <ExternalSiteFallback event={event} url={url} preview={preview} />;
   }
 
@@ -83,27 +67,17 @@ function ExternalSiteFrame({ event, url, preview }) {
         <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-xs rounded-full border border-hairline bg-white px-lg py-sm text-caption font-bold hover:border-primary hover:text-primary">
           새 창에서 열기 <Icon name="open_in_new" />
         </a>
-        <button type="button" onClick={() => setFrameState("failed")} className="inline-flex items-center gap-xs rounded-full border border-hairline bg-white px-lg py-sm text-caption font-bold hover:border-primary hover:text-primary">
-          화면이 보이지 않나요? <Icon name="open_in_new" />
+        <button type="button" onClick={() => setShowFallback(true)} className="inline-flex items-center gap-xs rounded-full border border-hairline bg-white px-lg py-sm text-caption font-bold hover:border-primary hover:text-primary">
+          화면이 보이지 않나요? <Icon name="image" />
         </button>
       </div>
       <div className={`${preview ? "h-[480px]" : "h-[760px]"} relative bg-surface-container-lowest`}>
-        {frameState === "loading" && (
-          <div className="absolute inset-0 z-10 grid place-items-center bg-white">
-            <div className="text-center text-ink-muted">
-              <Icon name="language" className="text-[42px] text-primary" />
-              <p className="mt-sm font-body-strong">공식 사이트를 불러오는 중입니다.</p>
-            </div>
-          </div>
-        )}
         <iframe
           key={url}
           src={url}
           title={`${event?.name || "행사"} 공식 사이트`}
           className="h-full w-full border-0"
           referrerPolicy="strict-origin-when-cross-origin"
-          onLoad={() => setFrameState("loaded")}
-          onError={() => setFrameState("failed")}
         />
       </div>
     </div>

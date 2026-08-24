@@ -21,8 +21,8 @@ public interface MemberRepository extends JpaRepository<Member, Long>{
 
     @Query(value = """
         select * from members m
-        where lower(m.email) like lower(concat('%', :query, '%'))
-           or lower(m.nickname) like lower(concat('%', :query, '%'))
+        where position(lower(:query) in lower(coalesce(m.email, ''))) > 0
+           or position(lower(:query) in lower(coalesce(m.nickname, ''))) > 0
         order by m.nickname asc, m.id asc
         limit 20
         """, nativeQuery = true)

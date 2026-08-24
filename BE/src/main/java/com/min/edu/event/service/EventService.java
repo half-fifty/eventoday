@@ -171,7 +171,8 @@ public class EventService {
     public Page<EventDtos.Summary> findOrganizationEvents(Long organizationId,
             AuthenticatedMemberDto actor, Pageable pageable) {
         requireOrganizationMember(organizationId, actor);
-        List<Long> managedEventIds = eventMemberRepository.findActiveEventIdsByMemberId(actor.getMemberId());
+        List<Long> managedEventIds = eventMemberRepository.findActiveEventIdsByMemberIdAndRole(
+                actor.getMemberId(), EventRole.EVENT_MANAGER);
         if (managedEventIds.isEmpty()) return Page.empty(pageable);
         Specification<Event> spec = (root, query, cb) -> cb.and(
                 cb.equal(root.get("organizerOrganizationId"), organizationId),
@@ -357,7 +358,11 @@ public class EventService {
         Event event = getEvent(eventId);
         requireEventManager(event, actor);
         if (query == null || query.trim().length() < 2) return List.of();
-        return memberRepository.searchByEmailOrNickname(query.trim()).stream()
+        String normalizedQuery = query.trim();
+        if (normalizedQuery.length() > 100) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+        return memberRepository.searchByEmailOrNickname(normalizedQuery).stream()
                 .map(member -> new EventDtos.MemberCandidate(
                         member.getId(), member.getEmail(), member.getNickname()))
                 .toList();
@@ -370,8 +375,10 @@ public class EventService {
         EventMember member = eventMemberRepository.findByEventIdAndMemberId(eventId, request.memberId())
                 .orElseGet(() -> EventMember.builder().eventId(eventId).memberId(request.memberId())
                         .createdAt(OffsetDateTime.now()).build());
+        com.min.edu.member.domain.Member account = memberRepository.findById(request.memberId())
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
         member.update(request.eventRole(), true);
-        return EventDtos.MemberResponse.from(eventMemberRepository.save(member));
+        return EventDtos.MemberResponse.from(eventMemberRepository.save(member), account);
     }
 
     @Transactional
@@ -379,8 +386,10 @@ public class EventService {
             EventDtos.MemberUpdateRequest request, AuthenticatedMemberDto actor) {
         Event event = getEvent(eventId); requireEventManager(event, actor);
         EventMember member = getMember(eventId, memberId);
+        com.min.edu.member.domain.Member account = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.ENTITY_NOT_FOUND));
         member.update(request.eventRole(), request.active());
-        return EventDtos.MemberResponse.from(member);
+        return EventDtos.MemberResponse.from(member, account);
     }
 
     @Transactional

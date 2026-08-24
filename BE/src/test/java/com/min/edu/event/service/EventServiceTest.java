@@ -62,7 +62,8 @@ class EventServiceTest {
     void findOrganizationEvents_hidesEventsWithoutActiveAssignment() {
         given(organizationMemberRepository.existsByOrganizationIdAndMemberIdAndStatus(
                 100L, 10L, OrganizationMemberStatus.ACTIVE)).willReturn(true);
-        given(eventMemberRepository.findActiveEventIdsByMemberId(10L)).willReturn(List.of());
+        given(eventMemberRepository.findActiveEventIdsByMemberIdAndRole(
+                10L, com.min.edu.event.domain.EventRole.EVENT_MANAGER)).willReturn(List.of());
 
         var result = service().findOrganizationEvents(100L, actor(10L), PageRequest.of(0, 20));
 
