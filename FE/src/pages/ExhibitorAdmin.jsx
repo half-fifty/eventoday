@@ -515,7 +515,7 @@ export default function ExhibitorAdmin() {
               <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon name="storefront" /></div>
               <div className="min-w-0 flex-1">
                 <p className="font-body-strong">{application.teamName}</p>
-                <p className="text-caption text-ink-muted">신청번호 {application.applicationNo} · 부스 #{application.boothId}</p>
+                <p className="text-caption text-ink-muted">신청번호 {application.applicationNo}</p>
                 <p className="text-[11px] text-ink-muted">{formatDate(application.submittedAt)}</p>
               </div>
               <div className="flex items-center gap-sm">

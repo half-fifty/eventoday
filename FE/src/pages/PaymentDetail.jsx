@@ -155,7 +155,6 @@ export default function PaymentDetail() {
               <div className="mb-lg flex flex-wrap items-start justify-between gap-md">
                 <div>
                   <h2 className="font-display-md text-[24px]">{payment.eventName}</h2>
-                  <p className="mt-xs text-caption text-ink-muted">결제 ID {payment.paymentId}</p>
                 </div>
                 <span className="rounded-full bg-primary/10 px-md py-1 text-caption font-body-strong text-primary">
                   {statusLabel[payment.paymentStatus] || payment.paymentStatus}

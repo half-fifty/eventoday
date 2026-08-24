@@ -393,7 +393,7 @@ export default function AdmissionManagementPanel({ eventId }) {
                   <>
                     <p className="font-body-strong">입장 처리 완료</p>
                     <p className="text-caption">
-                      티켓 #{checkInResult.admissionTicketId} · {checkInResult.eventName} · {formatDateTime(checkInResult.processedAt)}
+                      {checkInResult.eventName} · {formatDateTime(checkInResult.processedAt)}
                     </p>
                   </>
                 ) : (
@@ -453,7 +453,7 @@ export default function AdmissionManagementPanel({ eventId }) {
               <div key={ticket.admissionTicketId} className="flex items-center gap-md border-b border-divider-soft p-lg last:border-b-0">
                 <div className="min-w-0 flex-1">
                   <p className="font-body-strong truncate">{ticket.memberNickname || "회원 정보 없음"}</p>
-                  <p className="text-caption text-ink-muted">티켓 #{ticket.admissionTicketId} · {ticket.eventName}</p>
+                  <p className="text-caption text-ink-muted">{ticket.eventName}</p>
                   <p className="text-[11px] text-ink-muted">
                     발급 {formatDateTime(ticket.issuedAt)}
                     {ticket.usedAt ? ` · 입장 ${formatDateTime(ticket.usedAt)}` : ""}
@@ -524,7 +524,7 @@ export default function AdmissionManagementPanel({ eventId }) {
                 <div className="min-w-0 flex-1">
                   <p className="font-body-strong">{actionLabel[log.action] || log.action}</p>
                   <p className="text-caption text-ink-muted">
-                    로그 #{log.admissionLogId} · 티켓 #{log.admissionTicketId} · {log.staffNickname || "스태프"}
+                    {log.staffNickname || "스태프"}
                   </p>
                   <p className="text-[11px] text-ink-muted">
                     {formatDateTime(log.processedAt)}{log.gateName ? ` · ${log.gateName}` : ""}

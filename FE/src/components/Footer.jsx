@@ -1,38 +1,20 @@
 import { Link } from "react-router-dom";
-import useAuth from "../hooks/useAuth.js";
 
 // Full site footer used on the home page. Other pages use compact variants inline.
 export default function Footer() {
-  const { isAuthenticated, loading } = useAuth();
-  const myPagePath = isAuthenticated ? "/mypage" : "/guest/orders";
-
   return (
     <footer className="w-full py-section bg-surface-container-low border-t border-hairline">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-lg px-lg max-w-[1200px] mx-auto">
-        <div className="col-span-2 md:col-span-1">
+      <div className="grid gap-lg px-lg max-w-[1200px] mx-auto sm:grid-cols-2 md:grid-cols-3">
+        <div>
           <div className="font-hero-display text-tagline text-on-surface mb-md">EvenToday</div>
           <p className="text-caption text-on-surface-variant leading-relaxed">
             박람회·행사 예약 및 부스 운영 관리 플랫폼
           </p>
         </div>
         <div className="flex flex-col gap-sm">
-          <h4 className="text-caption font-body-strong mb-xs">서비스</h4>
-          <Link className="text-caption text-on-surface-variant hover:underline" to="/">
-            전체 행사
-          </Link>
-          <Link className="text-caption text-on-surface-variant hover:underline" to="/recruitments">
-            부스 모집 공고
-          </Link>
-          {!loading && (
-            <Link className="text-caption text-on-surface-variant hover:underline" to={myPagePath}>
-              마이페이지
-            </Link>
-          )}
-        </div>
-        <div className="flex flex-col gap-sm">
           <h4 className="text-caption font-body-strong mb-xs">이용 안내</h4>
-          <a className="text-caption text-on-surface-variant hover:underline" href="#">이용약관</a>
-          <a className="text-caption text-on-surface-variant hover:underline" href="#">개인정보처리방침</a>
+          <Link className="text-caption text-on-surface-variant hover:underline" to="/notices/12">이용약관</Link>
+          <Link className="text-caption text-on-surface-variant hover:underline" to="/notices/11">개인정보처리방침</Link>
           <Link className="text-caption text-on-surface-variant hover:underline" to="/refund-policy">환불 정책</Link>
         </div>
         <div className="flex flex-col gap-sm">

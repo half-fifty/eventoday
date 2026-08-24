@@ -10,15 +10,20 @@ export default function EventDetailImageEditor({
   organizationId,
   eventId,
   disabled = false,
+  initialImages = [],
+  onImagesChange,
 }) {
-  const [images, setImages] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [images, setImages] = useState(initialImages);
+  const [loading, setLoading] = useState(Boolean(eventId));
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!organizationId || !eventId) return;
+    if (!organizationId || !eventId) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     eventApi
@@ -45,6 +50,10 @@ export default function EventDetailImageEditor({
       cancelled = true;
     };
   }, [organizationId, eventId]);
+
+  useEffect(() => {
+    if (!eventId) onImagesChange?.(images);
+  }, [eventId, images, onImagesChange]);
 
   const editingDisabled = disabled || saving;
   const update = (index, patch) => {
@@ -202,14 +211,14 @@ export default function EventDetailImageEditor({
             <Icon name="add_photo_alternate" />
             이미지 추가
           </button>
-          <button
+          {eventId && <button
             type="button"
             disabled={saving}
             onClick={save}
             className="rounded-full bg-primary px-xl py-sm text-caption font-body-strong text-white disabled:opacity-50"
           >
             {saving ? "저장 중..." : "상세 이미지 저장"}
-          </button>
+          </button>}
         </div>
       )}
       {message && (

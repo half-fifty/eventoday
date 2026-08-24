@@ -54,7 +54,7 @@ class ExchangeCodeIssuanceServiceTest {
             "ABCDEF-123456-7890AB"
         );
         OffsetDateTime emailedAt = OffsetDateTime.now();
-        given(issuanceFinalizer.issue(7L)).willReturn(result);
+        given(issuanceFinalizer.issueOrPrepareEmail(7L)).willReturn(result);
         given(emailRecorder.markEmailed(7L)).willReturn(emailedAt);
 
         ExchangeCodeRequestDtos.IssuanceResponse response = service.issue(
@@ -87,7 +87,7 @@ class ExchangeCodeIssuanceServiceTest {
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.UNAUTHORIZED);
 
-        verify(issuanceFinalizer, never()).issue(any());
+        verify(issuanceFinalizer, never()).issueOrPrepareEmail(any());
     }
 
     @Test
@@ -100,13 +100,13 @@ class ExchangeCodeIssuanceServiceTest {
             .extracting("errorCode")
             .isEqualTo(GlobalErrorCode.FORBIDDEN);
 
-        verify(issuanceFinalizer, never()).issue(any());
+        verify(issuanceFinalizer, never()).issueOrPrepareEmail(any());
     }
 
     @Test
     void issue_doesNotMarkEmailedWhenEmailSendingFails() {
         ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
-        given(issuanceFinalizer.issue(7L)).willReturn(result);
+        given(issuanceFinalizer.issueOrPrepareEmail(7L)).willReturn(result);
         org.mockito.BDDMockito.willThrow(new BusinessException(GlobalErrorCode.EMAIL_SEND_FAILED))
             .given(emailSender)
             .send(any(EmailMessage.class));
@@ -120,9 +120,23 @@ class ExchangeCodeIssuanceServiceTest {
     }
 
     @Test
+    void issue_reusesExistingCodesWhenPreviousEmailAttemptFailed() {
+        ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
+        OffsetDateTime emailedAt = OffsetDateTime.now();
+        given(issuanceFinalizer.issueOrPrepareEmail(7L)).willReturn(result);
+        given(emailRecorder.markEmailed(7L)).willReturn(emailedAt);
+
+        ExchangeCodeRequestDtos.IssuanceResponse response = service.issue(7L, admin());
+
+        assertThat(response.emailedAt()).isEqualTo(emailedAt);
+        verify(issuanceFinalizer).issueOrPrepareEmail(7L);
+        verify(emailSender).send(any(EmailMessage.class));
+    }
+
+    @Test
     void issue_propagatesRecorderFailureAfterEmailSent() {
         ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
-        given(issuanceFinalizer.issue(7L)).willReturn(result);
+        given(issuanceFinalizer.issueOrPrepareEmail(7L)).willReturn(result);
         org.mockito.BDDMockito.willThrow(new BusinessException(
                 GlobalErrorCode.EXCHANGE_CODE_REQUEST_INVALID_STATE))
             .given(emailRecorder)

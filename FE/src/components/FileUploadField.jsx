@@ -34,7 +34,7 @@ export default function FileUploadField({ label, value, onChange, onFileSelected
     <label className="font-body-strong">{label}{required ? " *" : ""}</label>
     <label className={`flex items-center gap-md border rounded-xl p-md cursor-pointer ${value ? "border-primary bg-primary/5" : "border-hairline"}`}>
       <Icon name={value ? "check_circle" : "cloud_upload"} className={value ? "text-primary" : "text-ink-muted"} />
-      <span className="flex-1 text-sm">{uploading ? "업로드 중..." : fileName || (value ? `업로드 완료 (파일 #${value})` : "이미지 파일을 선택하세요")}</span>
+      <span className="flex-1 text-sm">{uploading ? "업로드 중..." : fileName || (value ? "업로드 완료" : "이미지 파일을 선택하세요")}</span>
       <input type="file" accept={accept} className="hidden" disabled={uploading || disabled} onChange={upload} />
     </label>
     {error && <p className="text-caption text-error">{error}</p>}

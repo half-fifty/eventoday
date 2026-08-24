@@ -80,7 +80,6 @@ export default function RefundDetail() {
             <div className="mb-lg flex flex-wrap items-start justify-between gap-md">
               <div>
                 <h2 className="font-display-md text-[24px]">{refund.eventName}</h2>
-                <p className="mt-xs text-caption text-ink-muted">환불 ID {refund.refundId}</p>
               </div>
               <span className="rounded-full bg-primary/10 px-md py-1 text-caption font-body-strong text-primary">
                 {refundStatusLabel[refund.refundStatus] || refund.refundStatus}
@@ -88,7 +87,6 @@ export default function RefundDetail() {
             </div>
             <div className="grid gap-md sm:grid-cols-2">
               <Info label="주문번호" value={refund.orderNo} />
-              <Info label="결제 ID" value={refund.paymentId} />
               <Info label="환불 금액" value={formatMoney(refund.refundAmount)} />
               <Info label="결제 수단" value={refund.paymentMethod || "-"} />
               <Info label="티켓 주문 상태" value={ticketStatusLabel[refund.ticketOrderStatus] || refund.ticketOrderStatus} />

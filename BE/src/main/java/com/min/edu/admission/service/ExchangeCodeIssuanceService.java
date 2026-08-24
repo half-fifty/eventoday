@@ -10,6 +10,7 @@ import com.min.edu.member.domain.PlatformRole;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ExchangeCodeIssuanceService {
@@ -30,12 +31,14 @@ public class ExchangeCodeIssuanceService {
         this.emailSender = emailSender;
     }
 
+    @Transactional
     public ExchangeCodeRequestDtos.IssuanceResponse issue(
             Long requestId,
             AuthenticatedMemberDto actor) {
         requireAdmin(actor);
 
-        ExchangeCodeIssuanceResult result = issuanceFinalizer.issue(requestId);
+        // 발급 준비에서 이메일 기록까지 같은 트랜잭션으로 묶어 요청 행 잠금을 유지한다.
+        ExchangeCodeIssuanceResult result = issuanceFinalizer.issueOrPrepareEmail(requestId);
         emailSender.send(new EmailMessage(
             result.recipientEmail(),
             ISSUANCE_EMAIL_SUBJECT,
@@ -53,6 +56,7 @@ public class ExchangeCodeIssuanceService {
         );
     }
 
+    @Transactional
     public ExchangeCodeRequestDtos.EmailResendResponse resendEmail(
             Long requestId,
             AuthenticatedMemberDto actor) {
