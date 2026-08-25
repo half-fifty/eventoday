@@ -356,6 +356,8 @@ export default function EventForm() {
   };
   const submit = async (e) => {
     e.preventDefault();
+    const normalizedContactEmail = form.contactEmail?.trim() || "";
+    const normalizedContactPhone = form.contactPhone?.trim() || "";
     if (!organizationId) {
       showFormError("행사를 등록할 운영 조직을 선택해 주세요.");
       return;
@@ -376,19 +378,19 @@ export default function EventForm() {
       showFormError("행사 시작과 종료 일시를 모두 입력해 주세요.");
       return;
     }
-    if (!form.contactEmail?.trim()) {
+    if (!normalizedContactEmail) {
       showFormError("담당자 이메일을 입력해 주세요.");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contactEmail.trim())) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedContactEmail)) {
       showFormError("담당자 이메일 형식을 확인해 주세요.");
       return;
     }
-    if (!form.contactPhone?.trim()) {
+    if (!normalizedContactPhone) {
       showFormError("담당자 연락처를 입력해 주세요.");
       return;
     }
-    if (!/^[0-9-]{9,14}$/.test(form.contactPhone.trim())) {
+    if (!/^(?=.*\d)[0-9-]{9,14}$/.test(normalizedContactPhone)) {
       showFormError("담당자 연락처는 숫자와 하이픈을 사용해 9~14자로 입력해 주세요.");
       return;
     }
@@ -399,6 +401,15 @@ export default function EventForm() {
     if (form.detailDisplayType === "EXTERNAL_SITE" && !form.officialWebsiteUrl?.trim()) {
       showFormError("공식 사이트 표시를 선택했다면 행사 홈페이지 URL을 입력해 주세요.");
       return;
+    }
+    if (form.officialWebsiteUrl?.trim()) {
+      try {
+        const websiteUrl = new URL(form.officialWebsiteUrl.trim());
+        if (!["http:", "https:"].includes(websiteUrl.protocol)) throw new Error();
+      } catch {
+        showFormError("행사 홈페이지 URL은 http:// 또는 https://로 시작하는 올바른 주소를 입력해 주세요.");
+        return;
+      }
     }
     const normalizedDescription = form.description?.trim()
       || form.shortDescription?.trim()
@@ -413,8 +424,8 @@ export default function EventForm() {
           description: normalizedDescription,
           detailDisplayType: form.detailDisplayType,
           officialWebsiteUrl: form.officialWebsiteUrl?.trim() || null,
-          contactEmail: form.contactEmail,
-          contactPhone: form.contactPhone,
+          contactEmail: normalizedContactEmail,
+          contactPhone: normalizedContactPhone,
           representativeFileId: form.representativeFileId,
         });
         navigate(
@@ -433,6 +444,30 @@ export default function EventForm() {
     }
     if (!form.exhibitCategoryCodes.length) {
       showFormError("전시품목을 하나 이상 선택해 주세요.");
+      return;
+    }
+    const ticketPrice = Number(form.ticketPrice);
+    const ticketTotalQuantity = Number(form.ticketTotalQuantity);
+    const ticketPurchaseLimit = Number(form.ticketPurchaseLimit);
+    const noShowGraceMinutes = Number(form.noShowGraceMinutes);
+    if (form.ticketPrice === "" || !Number.isFinite(ticketPrice) || ticketPrice < 0) {
+      showFormError("티켓 가격은 0 이상의 숫자로 입력해 주세요.");
+      return;
+    }
+    if (form.ticketTotalQuantity === "" || !Number.isInteger(ticketTotalQuantity) || ticketTotalQuantity < 0) {
+      showFormError("총 티켓 수량은 0 이상의 정수로 입력해 주세요.");
+      return;
+    }
+    if (form.ticketPurchaseLimit === "" || !Number.isInteger(ticketPurchaseLimit) || ticketPurchaseLimit < 1) {
+      showFormError("1회 구매 제한은 1 이상의 정수로 입력해 주세요.");
+      return;
+    }
+    if (form.noShowGraceMinutes === "" || !Number.isInteger(noShowGraceMinutes) || noShowGraceMinutes < 0) {
+      showFormError("노쇼 유예 시간은 0 이상의 정수로 입력해 주세요.");
+      return;
+    }
+    if (ticketPurchaseLimit > ticketTotalQuantity) {
+      showFormError("1회 구매 제한은 총 티켓 수량보다 클 수 없습니다.");
       return;
     }
     if (new Date(form.startAt) >= new Date(form.endAt)) {
@@ -476,10 +511,12 @@ export default function EventForm() {
       ...form,
       description: normalizedDescription,
       officialWebsiteUrl: form.officialWebsiteUrl?.trim() || null,
-      ticketPrice: Number(form.ticketPrice),
-      ticketTotalQuantity: Number(form.ticketTotalQuantity),
-      ticketPurchaseLimit: Number(form.ticketPurchaseLimit),
-      noShowGraceMinutes: Number(form.noShowGraceMinutes),
+      contactEmail: normalizedContactEmail,
+      contactPhone: normalizedContactPhone,
+      ticketPrice,
+      ticketTotalQuantity,
+      ticketPurchaseLimit,
+      noShowGraceMinutes,
       startAt: toOffsetDateTime(form.startAt),
       endAt: toOffsetDateTime(form.endAt),
       ticketSalesStartAt: toOffsetDateTime(form.ticketSalesStartAt),
