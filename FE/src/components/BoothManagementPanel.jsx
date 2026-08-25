@@ -282,7 +282,8 @@ export default function BoothManagementPanel({ eventId }) {
       await refresh();
     } catch (err) {
       if (eventGenerationRef.current !== actionGeneration) return;
-      showToast(err.message || "요청에 실패했습니다.", { type: "error" });
+      const message = err instanceof Error && err.message ? err.message : "요청에 실패했습니다.";
+      showToast(message, { type: "error" });
     } finally {
       if (eventGenerationRef.current === actionGeneration) {
         setSubmitting(false);
