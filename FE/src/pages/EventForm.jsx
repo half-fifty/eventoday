@@ -356,8 +356,42 @@ export default function EventForm() {
   };
   const submit = async (e) => {
     e.preventDefault();
+    const normalizedContactEmail = form.contactEmail?.trim() || "";
+    const normalizedContactPhone = form.contactPhone?.trim() || "";
     if (!organizationId) {
       showFormError("행사를 등록할 운영 조직을 선택해 주세요.");
+      return;
+    }
+    if (!publicInfoOnly && !form.name?.trim()) {
+      showFormError("행사명을 입력해 주세요.");
+      return;
+    }
+    if (!publicInfoOnly && !form.venueName?.trim()) {
+      showFormError("행사 장소명을 입력해 주세요.");
+      return;
+    }
+    if (!publicInfoOnly && !form.address?.trim()) {
+      showFormError("행사장 주소를 입력해 주세요.");
+      return;
+    }
+    if (!publicInfoOnly && (!form.startAt || !form.endAt)) {
+      showFormError("행사 시작과 종료 일시를 모두 입력해 주세요.");
+      return;
+    }
+    if (!normalizedContactEmail) {
+      showFormError("담당자 이메일을 입력해 주세요.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedContactEmail)) {
+      showFormError("담당자 이메일 형식을 확인해 주세요.");
+      return;
+    }
+    if (!normalizedContactPhone) {
+      showFormError("담당자 연락처를 입력해 주세요.");
+      return;
+    }
+    if (!/^(?=.*\d)[0-9-]{9,14}$/.test(normalizedContactPhone)) {
+      showFormError("담당자 연락처는 숫자와 하이픈을 사용해 9~14자로 입력해 주세요.");
       return;
     }
     if (!form.representativeFileId) {
@@ -367,6 +401,15 @@ export default function EventForm() {
     if (form.detailDisplayType === "EXTERNAL_SITE" && !form.officialWebsiteUrl?.trim()) {
       showFormError("공식 사이트 표시를 선택했다면 행사 홈페이지 URL을 입력해 주세요.");
       return;
+    }
+    if (form.officialWebsiteUrl?.trim()) {
+      try {
+        const websiteUrl = new URL(form.officialWebsiteUrl.trim());
+        if (!["http:", "https:"].includes(websiteUrl.protocol)) throw new Error();
+      } catch {
+        showFormError("행사 홈페이지 URL은 http:// 또는 https://로 시작하는 올바른 주소를 입력해 주세요.");
+        return;
+      }
     }
     const normalizedDescription = form.description?.trim()
       || form.shortDescription?.trim()
@@ -381,8 +424,8 @@ export default function EventForm() {
           description: normalizedDescription,
           detailDisplayType: form.detailDisplayType,
           officialWebsiteUrl: form.officialWebsiteUrl?.trim() || null,
-          contactEmail: form.contactEmail,
-          contactPhone: form.contactPhone,
+          contactEmail: normalizedContactEmail,
+          contactPhone: normalizedContactPhone,
           representativeFileId: form.representativeFileId,
         });
         navigate(
@@ -401,6 +444,30 @@ export default function EventForm() {
     }
     if (!form.exhibitCategoryCodes.length) {
       showFormError("전시품목을 하나 이상 선택해 주세요.");
+      return;
+    }
+    const ticketPrice = Number(form.ticketPrice);
+    const ticketTotalQuantity = Number(form.ticketTotalQuantity);
+    const ticketPurchaseLimit = Number(form.ticketPurchaseLimit);
+    const noShowGraceMinutes = Number(form.noShowGraceMinutes);
+    if (form.ticketPrice === "" || !Number.isFinite(ticketPrice) || ticketPrice < 0) {
+      showFormError("티켓 가격은 0 이상의 숫자로 입력해 주세요.");
+      return;
+    }
+    if (form.ticketTotalQuantity === "" || !Number.isInteger(ticketTotalQuantity) || ticketTotalQuantity < 1) {
+      showFormError("총 티켓 수량은 1 이상의 정수로 입력해 주세요.");
+      return;
+    }
+    if (form.ticketPurchaseLimit === "" || !Number.isInteger(ticketPurchaseLimit) || ticketPurchaseLimit < 1) {
+      showFormError("1회 구매 제한은 1 이상의 정수로 입력해 주세요.");
+      return;
+    }
+    if (form.noShowGraceMinutes === "" || !Number.isInteger(noShowGraceMinutes) || noShowGraceMinutes < 0) {
+      showFormError("노쇼 유예 시간은 0 이상의 정수로 입력해 주세요.");
+      return;
+    }
+    if (ticketPurchaseLimit > ticketTotalQuantity) {
+      showFormError("1회 구매 제한은 총 티켓 수량보다 클 수 없습니다.");
       return;
     }
     if (new Date(form.startAt) >= new Date(form.endAt)) {
@@ -444,10 +511,12 @@ export default function EventForm() {
       ...form,
       description: normalizedDescription,
       officialWebsiteUrl: form.officialWebsiteUrl?.trim() || null,
-      ticketPrice: Number(form.ticketPrice),
-      ticketTotalQuantity: Number(form.ticketTotalQuantity),
-      ticketPurchaseLimit: Number(form.ticketPurchaseLimit),
-      noShowGraceMinutes: Number(form.noShowGraceMinutes),
+      contactEmail: normalizedContactEmail,
+      contactPhone: normalizedContactPhone,
+      ticketPrice,
+      ticketTotalQuantity,
+      ticketPurchaseLimit,
+      noShowGraceMinutes,
       startAt: toOffsetDateTime(form.startAt),
       endAt: toOffsetDateTime(form.endAt),
       ticketSalesStartAt: toOffsetDateTime(form.ticketSalesStartAt),
@@ -503,7 +572,7 @@ export default function EventForm() {
         <TopNav active="organizer" />
         <FormToast toast={toast} onClose={() => setToast(null)} />
         <main className="min-h-screen bg-surface-container-low px-lg pb-xl pt-[76px]">
-          <form onSubmit={submit} className="max-w-[920px] mx-auto space-y-lg">
+          <form noValidate onSubmit={submit} className="max-w-[920px] mx-auto space-y-lg">
             <header className="flex flex-wrap justify-between items-end gap-md">
               <div>
                 <p className="text-caption text-primary">ORGANIZER CENTER</p>
@@ -712,7 +781,7 @@ export default function EventForm() {
       <TopNav active="organizer" />
       <FormToast toast={toast} onClose={() => setToast(null)} />
       <main className="min-h-screen bg-surface-container-low px-lg pb-xl pt-[76px]">
-        <form onSubmit={submit} className="max-w-[1040px] mx-auto space-y-lg">
+        <form noValidate onSubmit={submit} className="max-w-[1040px] mx-auto space-y-lg">
           <header className="flex justify-between items-end gap-md">
             <div>
               <p className="text-caption text-primary">ORGANIZER CENTER</p>
@@ -984,7 +1053,7 @@ export default function EventForm() {
               <label>
                 총 티켓 수량
                 <input
-                  min="0"
+                  min="1"
                   type="number"
                   className={field}
                   value={form.ticketTotalQuantity}
@@ -1158,7 +1227,7 @@ export default function EventForm() {
 
           <section className={section}>
             <div>
-              <p className="text-caption text-primary mb-xs">02</p>
+              <p className="text-caption text-primary mb-xs">05</p>
               <h2 className="font-display-md text-[22px]">전시품목</h2>
               <p className="text-caption text-ink-muted mt-xs">
                 행사에서 다루는 품목을 최대 5개까지 선택해 주세요.
@@ -1191,7 +1260,7 @@ export default function EventForm() {
 
           <section className={section}>
             <div>
-              <p className="text-caption text-primary mb-xs">05</p>
+              <p className="text-caption text-primary mb-xs">06</p>
               <h2 className="font-display-md text-[22px]">운영 기능</h2>
             </div>
             <div className="grid md:grid-cols-3 gap-md">
@@ -1230,7 +1299,7 @@ export default function EventForm() {
           {eventId && form.detailDisplayType === "IMAGE_GALLERY" && (
             <section className={section}>
               <div>
-                <p className="text-caption text-primary mb-xs">06</p>
+                <p className="text-caption text-primary mb-xs">07</p>
                 <h2 className="font-display-md text-[22px]">상세정보 이미지</h2>
                 <p className="text-caption text-ink-muted mt-xs">
                   이미지 저장은 행사 기본정보 저장과 별도로 처리됩니다.
@@ -1245,7 +1314,7 @@ export default function EventForm() {
           {!eventId && form.detailDisplayType === "IMAGE_GALLERY" && (
             <section className={section}>
               <div>
-                <p className="text-caption text-primary mb-xs">06</p>
+                <p className="text-caption text-primary mb-xs">07</p>
                 <h2 className="font-display-md text-[22px]">상세정보 이미지</h2>
                 <p className="text-caption text-ink-muted mt-xs">행사를 처음 저장할 때 상세 이미지도 함께 등록됩니다.</p>
               </div>
