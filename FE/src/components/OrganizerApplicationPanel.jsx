@@ -9,6 +9,7 @@ import {
   startApplicationReview,
 } from "../api/boothApplicationApi.js";
 import Icon from "./Icon.jsx";
+import useToast from "../hooks/useToast.js";
 
 const PAGE_SIZE = 20;
 const EMPTY_FILTERS = { status: "", teamName: "", boothCode: "" };
@@ -31,11 +32,11 @@ const formatDate = (value) => value
   : "-";
 
 export default function OrganizerApplicationPanel({ eventId, onDataChanged }) {
+  const { showToast } = useToast();
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [page, setPage] = useState(0);
   const [pageResult, setPageResult] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
   const [files, setFiles] = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -57,7 +58,6 @@ export default function OrganizerApplicationPanel({ eventId, onDataChanged }) {
       return;
     }
     setLoading(true);
-    setError("");
     try {
       const result = await getEventApplications(id, {
         ...requestedFilters,
@@ -69,9 +69,12 @@ export default function OrganizerApplicationPanel({ eventId, onDataChanged }) {
     } catch (requestError) {
       if (requestId !== listRequestRef.current) return;
       setPageResult(null);
-      setError(requestError instanceof ApiError
-        ? `${requestError.code}: ${requestError.message}`
-        : "부스 신청서를 불러오지 못했습니다.");
+      showToast(
+        requestError instanceof ApiError
+          ? `${requestError.code}: ${requestError.message}`
+          : "부스 신청서를 불러오지 못했습니다.",
+        { type: "error" }
+      );
     } finally {
       if (requestId === listRequestRef.current) setLoading(false);
     }
@@ -103,7 +106,6 @@ export default function OrganizerApplicationPanel({ eventId, onDataChanged }) {
 
   const openDetail = async (applicationId) => {
     setDetailLoading(true);
-    setError("");
     setFiles([]);
     setRejectMode(false);
     setRejectionReason("");
@@ -116,7 +118,7 @@ export default function OrganizerApplicationPanel({ eventId, onDataChanged }) {
       setSelected(detail);
       setFiles(attachments || []);
     } catch (requestError) {
-      setError(requestError.message || "신청서 상세정보를 불러오지 못했습니다.");
+      showToast(requestError.message || "신청서 상세정보를 불러오지 못했습니다.", { type: "error" });
     } finally {
       setDetailLoading(false);
     }
@@ -226,7 +228,6 @@ export default function OrganizerApplicationPanel({ eventId, onDataChanged }) {
         </button>
       </form>
 
-      {error && <p className="rounded-xl border border-error/20 bg-error/10 p-md text-caption text-error">{error}</p>}
       {loading && <p className="text-caption text-ink-muted">신청서를 불러오는 중입니다.</p>}
 
       {!loading && applications.length === 0 ? (

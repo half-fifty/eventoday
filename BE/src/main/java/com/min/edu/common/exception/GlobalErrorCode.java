@@ -117,6 +117,7 @@ public enum GlobalErrorCode implements ErrorCode {
     RECRUITMENT_PERIOD_INVALID(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_001", "모집 종료일은 시작일 이후여야 합니다."),
     RECRUITMENT_ALREADY_EXISTS(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_002", "이미 모집 공고가 등록된 행사입니다."),
     RECRUITMENT_STATUS_TRANSITION_INVALID(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_003", "허용되지 않는 상태 변경입니다."),
+    RECRUITMENT_REQUIRES_AT_LEAST_ONE_BOOTH(HttpStatus.BAD_REQUEST, "RECRUITMENT_400_004", "부스를 최소 1개 이상 등록해야 모집 공고를 등록할 수 있습니다."),
     BOOTH_DELETE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "BOOTH_400_002", "사용 가능 상태인 부스만 삭제할 수 있습니다."),
     BOOTH_NOT_ASSIGNED(HttpStatus.BAD_REQUEST, "BOOTH_400_003", "배정된 부스만 소개를 등록할 수 있습니다."),
     BOOTH_STATUS_TRANSITION_INVALID(HttpStatus.BAD_REQUEST, "BOOTH_400_004", "허용되지 않는 부스 상태 변경입니다."),
