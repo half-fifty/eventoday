@@ -101,6 +101,16 @@ public class AdmissionTicketController {
             ));
     }
 
+    // 온고잉 페이지 등 "이 행사의 입장권을 가진 사람만" 접근을 제한할 때 프론트에서 확인하는 용도.
+    @GetMapping("/events/{eventId}/admission-tickets/me")
+    public ApiResponse<Boolean> hasMyAdmissionTicket(
+            @PathVariable Long eventId,
+            @AuthenticationPrincipal AuthenticatedMemberDto actor) {
+        return ApiResponse.success(
+            admissionTicketQueryService.hasValidAdmissionTicket(eventId, actor)
+        );
+    }
+
     @GetMapping("/events/{eventId}/admission-tickets")
     public ApiResponse<Page<AdmissionTicketDtos.EventListResponse>> getEventAdmissionTickets(
             @PathVariable Long eventId,

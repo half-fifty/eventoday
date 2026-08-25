@@ -105,6 +105,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/members/me/admission-tickets/*").authenticated()
                         .requestMatchers(HttpMethod.GET, "/members/me/admission-tickets/*/qr").authenticated()
                         .requestMatchers(HttpMethod.GET, "/events/*/admission-tickets").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/events/*/admission-tickets/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/events/*/admission-checkins").authenticated()
                         .requestMatchers(
                                 HttpMethod.POST,

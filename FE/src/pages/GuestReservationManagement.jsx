@@ -411,6 +411,14 @@ export default function GuestReservationManagement() {
                       {qrErrors[ticket.admissionTicketId] && (
                         <p className="text-caption text-error">{qrErrors[ticket.admissionTicketId]}</p>
                       )}
+                      {(ticket.status === "ISSUED" || ticket.status === "USED") && (
+                        <Link
+                          to={`/events/${ticket.eventId}/ongoing?guestOrderNo=${encodeURIComponent(orderNo)}`}
+                          className="mx-auto mt-sm flex w-fit items-center gap-xs rounded-full bg-primary px-lg py-sm text-caption font-body-strong text-white transition-colors hover:bg-primary-focus"
+                        >
+                          행사 화면으로 이동
+                        </Link>
+                      )}
                     </div>
                   ))}
                 </div>
