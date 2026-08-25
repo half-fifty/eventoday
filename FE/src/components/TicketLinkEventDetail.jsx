@@ -7,6 +7,8 @@ import Icon from "./Icon.jsx";
 import KakaoMapPreview from "./KakaoMapPreview.jsx";
 import VenueMapPins from "./VenueMapPins.jsx";
 import EventDetailPresentation from "./EventDetailPresentation.jsx";
+import FileDownloadLink from "./FileDownloadLink.jsx";
+import RichTextViewer from "./RichTextViewer.jsx";
 import { formatEventDistance, hasEventCoordinates, rankNearbyEvents } from "../utils/eventRecommendations.js";
 
 const formatDateTime = (value) =>
@@ -19,6 +21,7 @@ const formatDateTime = (value) =>
 
 const tabs = [
   ["detail", "상세정보"],
+  ["notices", "공지사항"],
   ["booths", "참가 부스"],
   ["map", "배치도"],
   ["venue", "장소정보"],
@@ -35,12 +38,15 @@ export default function TicketLinkEventDetail({
   venueMaps,
   loadingVenueMaps,
   venueMapError,
+  contents = [],
   onBoothClick,
   onPurchase,
   purchaseDisabled,
   purchaseLabel,
 }) {
   const [activeTab, setActiveTab] = useState("detail");
+  // 공지·자료: 제목을 누르면 본문이 펼쳐진다 (한 번에 하나만)
+  const [expandedContentId, setExpandedContentId] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(true);
   const [recommendationsError, setRecommendationsError] = useState("");
@@ -177,7 +183,7 @@ export default function TicketLinkEventDetail({
       </section>
 
       <nav className="sticky top-[64px] z-20 border-y border-hairline bg-white">
-        <div className="mx-auto grid max-w-[1080px] grid-cols-3 px-lg sm:grid-cols-6">
+        <div className="mx-auto grid max-w-[1080px] grid-cols-3 px-lg sm:grid-cols-7">
           {tabs.map(([key, label]) => (
             <button
               key={key}
@@ -194,6 +200,81 @@ export default function TicketLinkEventDetail({
       <section className="mx-auto min-h-[480px] max-w-[1080px] px-lg py-xl">
         {activeTab === "detail" && (
           <EventDetailPresentation event={event} detailImages={detailImages} />
+        )}
+
+        {activeTab === "notices" && (
+          <div>
+            <div className="mb-lg flex items-end justify-between">
+              <h2 className="font-display-md text-[24px]">공지 · 자료</h2>
+              <span className="text-caption text-ink-muted">{contents.length}개</span>
+            </div>
+
+            {!contents.length && (
+              <p className="border-y border-hairline py-xl text-center text-ink-muted">
+                등록된 공지사항이 없습니다.
+              </p>
+            )}
+
+            <div className="divide-y divide-divider-soft overflow-hidden rounded-lg border border-hairline bg-white">
+              {contents.map((content) => (
+                <div key={content.contentId}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedContentId(
+                        expandedContentId === content.contentId ? null : content.contentId,
+                      )
+                    }
+                    className="flex w-full items-center gap-sm p-lg text-left transition-colors hover:bg-surface-pearl"
+                  >
+                    <Icon
+                      name={content.contentType === "NOTICE" ? "campaign" : "folder"}
+                      className="flex-shrink-0 text-[18px] text-ink-muted"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-body-strong text-[14px]">
+                        {content.pinned && (
+                          <Icon name="push_pin" className="mr-1 text-[13px] text-primary" />
+                        )}
+                        {content.title}
+                      </p>
+                      <p className="text-caption text-ink-muted">
+                        {content.contentType === "NOTICE" ? "공지" : "자료"}
+                        {content.version ? ` · v${content.version}` : ""}
+                        {content.publishedAt
+                          ? ` · ${new Date(content.publishedAt).toLocaleDateString("ko-KR")}`
+                          : ""}
+                      </p>
+                    </div>
+                    <Icon
+                      name={expandedContentId === content.contentId ? "expand_less" : "expand_more"}
+                      className="text-[18px] text-ink-muted"
+                    />
+                  </button>
+
+                  {expandedContentId === content.contentId && (
+                    <div className="space-y-sm px-lg pb-lg">
+                      {content.content && (
+                        <div className="rounded-lg bg-surface-pearl p-md text-caption">
+                          <RichTextViewer html={content.content} />
+                        </div>
+                      )}
+                      {/* downloadUrl: BE가 권한 검증 후 발급한 Presigned URL.
+                          fileId만 넘기면 업로더가 아닌 사용자는 FILE_403_001이 난다 */}
+                      {(content.downloadUrl || content.fileId) && (
+                        <FileDownloadLink
+                          fileId={content.fileId}
+                          downloadUrl={content.downloadUrl}
+                          fileName={content.fileName || "첨부파일"}
+                          fileSize={content.fileSize}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {activeTab === "booths" && (
