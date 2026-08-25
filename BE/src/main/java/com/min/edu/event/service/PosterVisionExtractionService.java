@@ -10,10 +10,13 @@ import com.min.edu.event.repository.EventOrganizationMemberRepository;
 import com.min.edu.organization.domain.OrganizationMemberStatus;
 import com.min.edu.organization.domain.OrganizationRole;
 import java.net.http.HttpClient;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Semaphore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +33,14 @@ public class PosterVisionExtractionService {
     private static final List<OrganizationRole> MANAGER_ROLES =
             List.of(OrganizationRole.OWNER, OrganizationRole.MANAGER);
     private static final Semaphore ANALYSIS_SLOTS = new Semaphore(2, true);
+    private static final Set<String> ALLOWED_CATEGORY_CODES = Set.of(
+            "AGRI_FOOD", "ENERGY_ENVIRONMENT", "TEXTILE_FASHION_JEWELRY",
+            "METAL_MACHINERY_EQUIPMENT", "ELECTRIC_ELECTRONICS_ICT_BROADCAST",
+            "HEALTH_MEDICAL_OPTICS_PRECISION", "CONSTRUCTION_ARCHITECTURE_INTERIOR",
+            "TRANSPORT_SERVICE", "HOUSEHOLD_GIFTS", "BEAUTY_COSMETICS",
+            "FINANCE_REAL_ESTATE_PROFESSIONAL", "PUBLIC_DEFENSE", "EDUCATION",
+            "PREGNANCY_BIRTH_CHILDCARE", "WEDDING", "CULTURE_ART",
+            "LEISURE_TOURISM_SPORTS");
 
     private final EventOrganizationMemberRepository organizationMemberRepository;
     private final RestClient groqClient;
@@ -55,12 +66,13 @@ public class PosterVisionExtractionService {
 
     public PosterExtractionDto extract(Long organizationId, MultipartFile image, AuthenticatedMemberDto actor) {
         requireManager(organizationId, actor);
-        validate(image);
+        byte[] imageBytes = readAndValidate(image);
+        String mediaType = detectMediaType(imageBytes);
         if (apiKey.isBlank()) return unavailable("Groq API 키가 설정되지 않았습니다.");
         if (!ANALYSIS_SLOTS.tryAcquire()) return unavailable("포스터 분석 요청이 많습니다. 잠시 후 다시 시도해 주세요.");
         try {
-            String dataUrl = "data:" + image.getContentType() + ";base64,"
-                    + Base64.getEncoder().encodeToString(image.getBytes());
+            String dataUrl = "data:" + mediaType + ";base64,"
+                    + Base64.getEncoder().encodeToString(imageBytes);
             Map<String, Object> body = Map.of(
                     "model", model,
                     "temperature", 0,
@@ -75,7 +87,7 @@ public class PosterVisionExtractionService {
                     .body(body).retrieve().body(String.class);
             JsonNode root = objectMapper.readTree(raw);
             String content = root.path("choices").path(0).path("message").path("content").asText();
-            return objectMapper.readValue(content, PosterExtractionDto.class);
+            return sanitize(objectMapper.readValue(content, PosterExtractionDto.class));
         } catch (Exception exception) {
             log.warn("포스터 AI 분석에 실패했습니다. model={}, errorType={}",
                     model, exception.getClass().getSimpleName());
@@ -87,7 +99,21 @@ public class PosterVisionExtractionService {
 
     private PosterExtractionDto unavailable(String warning) {
         return new PosterExtractionDto(null, null, null, null, null, null, null,
-                null, List.of(), null, null, List.of(warning));
+                null, List.of(), null, null, List.of(), List.of(warning));
+    }
+
+    static PosterExtractionDto sanitize(PosterExtractionDto result) {
+        List<String> categoryCodes = result.categoryCodes() == null
+                ? List.of()
+                : new LinkedHashSet<>(result.categoryCodes()).stream()
+                        .filter(ALLOWED_CATEGORY_CODES::contains)
+                        .limit(5)
+                        .toList();
+        return new PosterExtractionDto(result.eventName(), result.startDate(), result.endDate(),
+                result.venueName(), result.hall(), result.officialWebsiteUrl(), result.organizer(),
+                result.operator(), result.sponsors() == null ? List.of() : result.sponsors(),
+                result.summary(), result.rawVisibleText(), categoryCodes,
+                result.warnings() == null ? List.of() : result.warnings());
     }
 
     private void requireManager(Long organizationId, AuthenticatedMemberDto actor) {
@@ -98,20 +124,47 @@ public class PosterVisionExtractionService {
         }
     }
 
-    private void validate(MultipartFile image) {
+    private byte[] readAndValidate(MultipartFile image) {
         if (image == null || image.isEmpty() || image.getSize() > MAX_IMAGE_SIZE) {
             throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
-        if (image.getContentType() == null || !List.of("image/jpeg", "image/png", "image/webp").contains(image.getContentType())) {
+        try {
+            byte[] bytes = image.getBytes();
+            detectMediaType(bytes);
+            return bytes;
+        } catch (IOException exception) {
+            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+
+    static String detectMediaType(byte[] bytes) {
+        if (bytes == null || bytes.length < 12) {
             throw new BusinessException(GlobalErrorCode.INVALID_FILE_TYPE);
         }
+        if ((bytes[0] & 0xff) == 0xff && (bytes[1] & 0xff) == 0xd8 && (bytes[2] & 0xff) == 0xff) {
+            return "image/jpeg";
+        }
+        if ((bytes[0] & 0xff) == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4e && bytes[3] == 0x47
+                && bytes[4] == 0x0d && bytes[5] == 0x0a && bytes[6] == 0x1a && bytes[7] == 0x0a) {
+            return "image/png";
+        }
+        if (bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
+                && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P') {
+            return "image/webp";
+        }
+        throw new BusinessException(GlobalErrorCode.INVALID_FILE_TYPE);
     }
 
     private String prompt() {
         return "행사 포스터에서 눈으로 확인되는 사실만 추출하세요. 추측하거나 빈 값을 만들지 마세요. "
                 + "날짜는 연도가 보일 때만 yyyy-MM-dd로 변환하고, 종료 연도가 없으면 시작 연도를 사용하세요. "
                 + "요일과 달력이 충돌하면 포스터에 인쇄된 날짜를 사용하고 warnings에 기록하세요. "
+                + "포스터의 행사명, 소개 문구와 전시 내용을 근거로 다음 코드 중 관련도가 높은 전시품목을 최대 5개 추천해 categoryCodes 배열에 넣으세요: "
+                + "AGRI_FOOD, ENERGY_ENVIRONMENT, TEXTILE_FASHION_JEWELRY, METAL_MACHINERY_EQUIPMENT, "
+                + "ELECTRIC_ELECTRONICS_ICT_BROADCAST, HEALTH_MEDICAL_OPTICS_PRECISION, CONSTRUCTION_ARCHITECTURE_INTERIOR, "
+                + "TRANSPORT_SERVICE, HOUSEHOLD_GIFTS, BEAUTY_COSMETICS, FINANCE_REAL_ESTATE_PROFESSIONAL, PUBLIC_DEFENSE, "
+                + "EDUCATION, PREGNANCY_BIRTH_CHILDCARE, WEDDING, CULTURE_ART, LEISURE_TOURISM_SPORTS. "
                 + "반드시 JSON 객체로만 답하세요. 키는 eventName,startDate,endDate,venueName,hall,officialWebsiteUrl,"
-                + "organizer,operator,sponsors,summary,rawVisibleText,warnings이며 문자열을 알 수 없으면 null, 배열은 []로 반환하세요.";
+                + "organizer,operator,sponsors,summary,rawVisibleText,categoryCodes,warnings이며 문자열을 알 수 없으면 null, 배열은 []로 반환하세요.";
     }
 }

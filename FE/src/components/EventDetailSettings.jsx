@@ -34,7 +34,7 @@ export default function EventDetailSettings({ form, onChange, disabled = false }
         </div>
       )}
       {form.detailDisplayType === "IMAGE_GALLERY" && (
-        <p className="rounded-lg bg-surface-pearl p-md text-caption leading-6 text-ink-muted">행사를 먼저 저장한 다음 아래의 상세정보 이미지 영역에서 여러 장을 순서대로 등록할 수 있습니다.</p>
+        <p className="rounded-lg bg-surface-pearl p-md text-caption leading-6 text-ink-muted">아래에서 상세 이미지를 바로 추가하고 노출 순서를 정할 수 있습니다.</p>
       )}
     </div>
   );
