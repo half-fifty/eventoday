@@ -40,7 +40,7 @@ public class ContentAiChatClient {
             @Value("${external.content-ai.api-key:}") String apiKey,
             @Value("${external.content-ai.model}") String model,
             @Value("${external.content-ai.reasoning-effort:}") String reasoningEffort,
-            @Value("${external.content-ai.max-tokens:2000}") int maxTokens,
+            @Value("${external.content-ai.max-tokens:2500}") int maxTokens,
             @Value("${external.content-ai.connect-timeout:5s}") Duration connectTimeout,
             @Value("${external.content-ai.read-timeout:45s}") Duration readTimeout) {
 
