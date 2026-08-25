@@ -454,8 +454,8 @@ export default function EventForm() {
       showFormError("티켓 가격은 0 이상의 숫자로 입력해 주세요.");
       return;
     }
-    if (form.ticketTotalQuantity === "" || !Number.isInteger(ticketTotalQuantity) || ticketTotalQuantity < 0) {
-      showFormError("총 티켓 수량은 0 이상의 정수로 입력해 주세요.");
+    if (form.ticketTotalQuantity === "" || !Number.isInteger(ticketTotalQuantity) || ticketTotalQuantity < 1) {
+      showFormError("총 티켓 수량은 1 이상의 정수로 입력해 주세요.");
       return;
     }
     if (form.ticketPurchaseLimit === "" || !Number.isInteger(ticketPurchaseLimit) || ticketPurchaseLimit < 1) {
@@ -1053,7 +1053,7 @@ export default function EventForm() {
               <label>
                 총 티켓 수량
                 <input
-                  min="0"
+                  min="1"
                   type="number"
                   className={field}
                   value={form.ticketTotalQuantity}
