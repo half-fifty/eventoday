@@ -58,8 +58,12 @@ jobs:
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
           AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
           AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ vars.SMTP_FROM }}
+          SMTP_FROM_NAME: ${{ vars.SMTP_FROM_NAME }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CONTENT_AI_API_KEY: ${{ secrets.CONTENT_AI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -223,8 +227,12 @@ jobs:
           KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
           AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
           AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ vars.SMTP_FROM }}
+          SMTP_FROM_NAME: ${{ vars.SMTP_FROM_NAME }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CONTENT_AI_API_KEY: ${{ secrets.CONTENT_AI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -254,8 +262,12 @@ jobs:
             printf 'KAKAO_MAP_REST_API_KEY=%s\n' "${KAKAO_MAP_REST_API_KEY}"
             printf 'AWS_ACCESS_KEY=%s\n' "${AWS_ACCESS_KEY}"
             printf 'AWS_SECRET_KEY=%s\n' "${AWS_SECRET_KEY}"
+            [[ -n "${SMTP_HOST:-}" ]] && printf 'SMTP_HOST=%s\n' "${SMTP_HOST}"
+            [[ -n "${SMTP_PORT:-}" ]] && printf 'SMTP_PORT=%s\n' "${SMTP_PORT}"
             printf 'SMTP_USERNAME=%s\n' "${SMTP_USERNAME}"
             printf 'SMTP_PASSWORD=%s\n' "${SMTP_PASSWORD}"
+            [[ -n "${SMTP_FROM:-}" ]] && printf 'SMTP_FROM=%s\n' "${SMTP_FROM}"
+            [[ -n "${SMTP_FROM_NAME:-}" ]] && printf 'SMTP_FROM_NAME=%s\n' "${SMTP_FROM_NAME}"
             printf 'GEMINI_API_KEY=%s\n' "${GEMINI_API_KEY}"
             printf 'CONTENT_AI_API_KEY=%s\n' "${CONTENT_AI_API_KEY}"
             printf 'GROQ_API_KEY=%s\n' "${GROQ_API_KEY}"

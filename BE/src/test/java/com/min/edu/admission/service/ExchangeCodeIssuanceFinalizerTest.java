@@ -265,6 +265,42 @@ class ExchangeCodeIssuanceFinalizerTest {
     }
 
     @Test
+    void issueOrPrepareEmail_reusesExistingCodesWhenAlreadyIssuedButEmailNotSent() {
+        ExchangeCodeRequest request = issuedRequest(null, 2);
+        Event event = event();
+        ExchangeCode first = ExchangeCode.createForExchangeCodeRequest(
+            1L,
+            7L,
+            "AAAAAA-AAAAAA-AAAAAA",
+            event.getEndAt(),
+            OffsetDateTime.now()
+        );
+        ExchangeCode second = ExchangeCode.createForExchangeCodeRequest(
+            1L,
+            7L,
+            "BBBBBB-BBBBBB-BBBBBB",
+            event.getEndAt(),
+            OffsetDateTime.now()
+        );
+        given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
+        given(exchangeCodeRepository.countByExchangeCodeRequestId(7L)).willReturn(2L);
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event));
+        given(memberRepository.findById(10L)).willReturn(Optional.of(member("requester@example.com")));
+        given(exchangeCodeRepository.findAllByExchangeCodeRequestIdOrderByIdAsc(7L))
+            .willReturn(List.of(first, second));
+
+        ExchangeCodeIssuanceResult result = finalizer.issueOrPrepareEmail(7L);
+
+        assertThat(result.codes()).containsExactly(
+            "AAAAAA-AAAAAA-AAAAAA",
+            "BBBBBB-BBBBBB-BBBBBB"
+        );
+        assertThat(result.generatedQuantity()).isEqualTo(2);
+        verifyNoInteractions(exchangeCodeGenerator);
+        verify(exchangeCodeRepository, never()).saveAllAndFlush(any());
+    }
+
+    @Test
     void prepareEmailResend_failsWhenEmailAlreadySent() {
         ExchangeCodeRequest request = issuedRequest(OffsetDateTime.now(), 1);
         given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
