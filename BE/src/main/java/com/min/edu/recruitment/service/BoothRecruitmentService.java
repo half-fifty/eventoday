@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.min.edu.auth.dto.AuthenticatedMemberDto;
 import com.min.edu.booth.domain.BoothRecruitment;
 import com.min.edu.booth.domain.BoothRecruitmentStatus;
+import com.min.edu.booth.repository.BoothRepository;
 import com.min.edu.common.exception.BusinessException;
 import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.event.domain.Event;
@@ -32,6 +33,7 @@ public class BoothRecruitmentService {
     private final BoothRecruitmentRepository boothRecruitmentRepository;
     private final EventRepository eventRepository;
     private final EventMemberRepository eventMemberRepository;
+    private final BoothRepository boothRepository;
 
     @Transactional
     public BoothRecruitmentResponseDto create(
@@ -46,6 +48,12 @@ public class BoothRecruitmentService {
 
         if (boothRecruitmentRepository.existsByEventId(eventId)) {
             throw new BusinessException(GlobalErrorCode.RECRUITMENT_ALREADY_EXISTS);
+        }
+
+        // 부스가 하나도 없는 행사에 모집 공고부터 올라가면, 지원자가 지원할 부스 자체가
+        // 없는 상태로 공고가 노출된다 - 부스 관리에서 최소 1개는 미리 등록해두게 한다.
+        if (!boothRepository.existsByEventId(eventId)) {
+            throw new BusinessException(GlobalErrorCode.RECRUITMENT_REQUIRES_AT_LEAST_ONE_BOOTH);
         }
 
         OffsetDateTime now = OffsetDateTime.now();
