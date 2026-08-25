@@ -19,14 +19,17 @@ public class ExchangeCodeIssuanceService {
 
     private final ExchangeCodeIssuanceFinalizer issuanceFinalizer;
     private final ExchangeCodeRequestEmailRecorder emailRecorder;
+    private final ExchangeCodeEmailSendLease emailSendLease;
     private final EmailSender emailSender;
 
     public ExchangeCodeIssuanceService(
             ExchangeCodeIssuanceFinalizer issuanceFinalizer,
             ExchangeCodeRequestEmailRecorder emailRecorder,
+            ExchangeCodeEmailSendLease emailSendLease,
             EmailSender emailSender) {
         this.issuanceFinalizer = issuanceFinalizer;
         this.emailRecorder = emailRecorder;
+        this.emailSendLease = emailSendLease;
         this.emailSender = emailSender;
     }
 
@@ -35,14 +38,8 @@ public class ExchangeCodeIssuanceService {
             AuthenticatedMemberDto actor) {
         requireAdmin(actor);
 
-        // 발급 준비에서 이메일 기록까지 같은 트랜잭션으로 묶어 요청 행 잠금을 유지한다.
         ExchangeCodeIssuanceResult result = issuanceFinalizer.issueOrPrepareEmail(requestId);
-        emailSender.send(new EmailMessage(
-            result.recipientEmail(),
-            ISSUANCE_EMAIL_SUBJECT,
-            buildEmailContent(result)
-        ));
-        OffsetDateTime emailedAt = emailRecorder.markEmailed(result.requestId());
+        OffsetDateTime emailedAt = sendEmailAndRecord(result);
 
         return new ExchangeCodeRequestDtos.IssuanceResponse(
             result.requestId(),
@@ -60,12 +57,7 @@ public class ExchangeCodeIssuanceService {
         requireAdmin(actor);
 
         ExchangeCodeIssuanceResult result = issuanceFinalizer.prepareEmailResend(requestId);
-        emailSender.send(new EmailMessage(
-            result.recipientEmail(),
-            ISSUANCE_EMAIL_SUBJECT,
-            buildEmailContent(result)
-        ));
-        OffsetDateTime emailedAt = emailRecorder.markEmailed(result.requestId());
+        OffsetDateTime emailedAt = sendEmailAndRecord(result);
 
         return new ExchangeCodeRequestDtos.EmailResendResponse(
             result.requestId(),
@@ -83,6 +75,24 @@ public class ExchangeCodeIssuanceService {
         }
         if (actor.getPlatformRole() != PlatformRole.PLATFORM_ADMIN) {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+    }
+
+    private OffsetDateTime sendEmailAndRecord(ExchangeCodeIssuanceResult result) {
+        ExchangeCodeEmailSendLeaseClaim claim = emailSendLease.tryClaim(result.requestId());
+        if (!claim.acquired()) {
+            throw new BusinessException(GlobalErrorCode.EMAIL_SEND_FAILED);
+        }
+
+        try {
+            emailSender.send(new EmailMessage(
+                result.recipientEmail(),
+                ISSUANCE_EMAIL_SUBJECT,
+                buildEmailContent(result)
+            ));
+            return emailRecorder.markEmailed(result.requestId());
+        } finally {
+            emailSendLease.release(result.requestId(), claim.token());
         }
     }
 
