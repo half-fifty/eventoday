@@ -58,27 +58,50 @@ const toInputDateTime = (value) => {
 const toOffsetDateTime = (value) =>
   value ? new Date(value).toISOString() : null;
 const OPERATION_CUTOFF_MS = 60 * 60 * 1000;
+const MAX_POSTER_ANALYSIS_BYTES = 10 * 1024 * 1024;
+
+const posterFileType = (file) => {
+  const mime = file?.type?.toLowerCase();
+  if (["image/jpeg", "image/jpg", "image/pjpeg"].includes(mime)) return "jpeg";
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+
+  const extension = file?.name?.split(".").pop()?.toLowerCase();
+  if (["jpg", "jpeg", "jfif"].includes(extension)) return "jpeg";
+  if (extension === "png") return "png";
+  if (extension === "webp") return "webp";
+  return null;
+};
 
 const normalizePosterForAnalysis = async (file) => {
-  const supported = ["image/jpeg", "image/png", "image/webp"];
-  if (!supported.includes(file.type)) {
-    throw new Error("포스터 분석은 JPG, PNG, WEBP 파일만 지원합니다. HEIC·GIF 파일은 JPG 또는 PNG로 변환해 주세요.");
-  }
-  if (file.type !== "image/webp") return file;
-  const bitmap = await createImageBitmap(file);
+  const type = posterFileType(file);
+  if (!type) throw new Error("지원하지 않는 포스터 형식입니다. JPG·JPEG·JFIF·PNG·WEBP 파일을 사용하고, HEIC·AVIF·GIF는 JPG 또는 PNG로 변환해 주세요.");
+  if (file.size > MAX_POSTER_ANALYSIS_BYTES) throw new Error("포스터 분석 파일은 10MB 이하여야 합니다.");
+
+  let bitmap;
   try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    throw new Error(`${type.toUpperCase()} 파일로 확인되지만 이미지 데이터를 읽을 수 없습니다. 파일을 다시 저장하거나 JPG·PNG로 변환해 주세요.`);
+  }
+  try {
+    const maxSide = 4096;
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement("canvas");
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    canvas.getContext("2d").drawImage(bitmap, 0, 0);
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise((resolve, reject) =>
       canvas.toBlob(
-        (result) => result ? resolve(result) : reject(new Error("WEBP 이미지를 변환하지 못했습니다.")),
+        (result) => result ? resolve(result) : reject(new Error("포스터 이미지를 분석용 JPG로 변환하지 못했습니다.")),
         "image/jpeg",
-        0.92,
+        0.94,
       ),
     );
-    return new File([blob], `${file.name.replace(/\.webp$/i, "")}.jpg`, { type: "image/jpeg" });
+    return new File([blob], `${file.name.replace(/\.[^.]+$/i, "")}.jpg`, { type: "image/jpeg" });
   } finally {
     bitmap.close();
   }
@@ -256,8 +279,13 @@ export default function EventForm() {
       const analysisFile = await normalizePosterForAnalysis(posterFile);
       const result = await eventApi.extractPoster(organizationId, analysisFile);
       setPosterExtraction(result?.data || null);
+      if (result?.data?.eventName || result?.data?.rawVisibleText) {
+        showToast("포스터 분석이 완료되었습니다.");
+      }
     } catch (requestError) {
-      setPosterAnalysisError(requestError.message || "포스터를 분석하지 못했습니다.");
+      const message = requestError.message || "포스터를 분석하지 못했습니다.";
+      setPosterAnalysisError(message);
+      showToast(message, "error");
     } finally {
       setPosterAnalyzing(false);
     }
@@ -887,9 +915,60 @@ export default function EventForm() {
                   placeholder="목록에 표시할 짧은 소개"
                 />
               </label>
+              <label>
+                담당자 이메일 *
+                <input
+                  required
+                  type="email"
+                  maxLength={255}
+                  className={field}
+                  value={form.contactEmail}
+                  onChange={(e) => change("contactEmail", e.target.value)}
+                  placeholder="event@example.com"
+                />
+              </label>
+              <label>
+                담당자 연락처 *
+                <input
+                  required
+                  type="tel"
+                  maxLength={30}
+                  pattern="[0-9\\-]{9,14}"
+                  title="숫자와 하이픈을 사용해 입력해 주세요."
+                  className={field}
+                  value={form.contactPhone}
+                  onChange={(e) =>
+                    change(
+                      "contactPhone",
+                      e.target.value.replace(/[^0-9-]/g, ""),
+                    )
+                  }
+                  placeholder="02-1234-5678"
+                />
+                <span className="block text-caption text-ink-muted mt-xs">
+                  예: 02-1234-5678, 031-123-4567
+                </span>
+              </label>
               <div className="md:col-span-2">
                 <EventDetailSettings form={form} onChange={change} />
               </div>
+              {form.detailDisplayType === "IMAGE_GALLERY" && (
+                <div className="md:col-span-2 border-t border-divider-soft pt-lg">
+                  <div className="mb-md">
+                    <p className="text-caption text-primary mb-xs">DETAIL IMAGES</p>
+                    <h3 className="font-display-md text-[20px]">상세정보 이미지 바로 등록</h3>
+                    <p className="mt-xs text-caption text-ink-muted">
+                      이미지를 추가하고 순서를 정하면 행사 상세 페이지에 위에서 아래로 이어서 표시됩니다.
+                    </p>
+                  </div>
+                  <EventDetailImageEditor
+                    organizationId={organizationId}
+                    eventId={eventId}
+                    initialImages={draftDetailImages}
+                    onImagesChange={setDraftDetailImages}
+                  />
+                </div>
+              )}
             </div>
           </section>
 
@@ -1087,68 +1166,30 @@ export default function EventForm() {
             </div>
           </section>
 
-          <section className={section}>
-            <div>
-              <p className="text-caption text-primary mb-xs">04</p>
-              <h2 className="font-display-md text-[22px]">문의처 및 포스터</h2>
-              <p className="text-caption text-ink-muted mt-xs">
-                방문객에게 공개되는 공식 문의처입니다. 개인번호보다 행사
-                대표번호 사용을 권장합니다.
-              </p>
-            </div>
-            <div className="grid md:grid-cols-2 gap-md">
-              <label>
-                담당자 이메일 *
-                <input
-                  required
-                  type="email"
-                  maxLength={255}
-                  className={field}
-                  value={form.contactEmail}
-                  onChange={(e) => change("contactEmail", e.target.value)}
-                  placeholder="event@example.com"
-                />
-              </label>
-              <label>
-                담당자 연락처 *
-                <input
-                  required
-                  type="tel"
-                  maxLength={30}
-                  pattern="[0-9\\-]{9,14}"
-                  title="숫자와 하이픈을 사용해 입력해 주세요."
-                  className={field}
-                  value={form.contactPhone}
-                  onChange={(e) =>
-                    change(
-                      "contactPhone",
-                      e.target.value.replace(/[^0-9-]/g, ""),
-                    )
-                  }
-                  placeholder="02-1234-5678"
-                />
-                <span className="block text-caption text-ink-muted mt-xs">
-                  예: 02-1234-5678, 031-123-4567
-                </span>
-              </label>
-            </div>
-            <FileUploadField
-              label="행사 포스터"
-              required
-              value={form.representativeFileId}
-              onChange={(fileId) => change("representativeFileId", fileId)}
-              onFileSelected={(file) => {
-                setPosterFile(file);
-                setPosterExtraction(null);
-                setPosterAnalysisError("");
-              }}
-            />
-            {aiPortalTarget && createPortal(<div className="rounded-xl border border-primary/20 bg-primary/5 p-md">
+          {aiPortalTarget && createPortal(<div className="rounded-xl border border-primary/20 bg-primary/5 p-md">
               <div className="flex flex-wrap items-center justify-between gap-md">
                 <div>
                   <strong className="flex items-center gap-xs text-primary"><Icon name="document_scanner" /> AI 포스터 정보 추출</strong>
                   <p className="mt-xs text-caption leading-5 text-ink-muted">Qwen이 이미지에 보이는 정보만 후보로 제안합니다. 확인 후 필요한 항목만 적용하세요.</p>
                 </div>
+              </div>
+              <div className="mt-md rounded-xl border border-primary/10 bg-white p-md">
+                <FileUploadField
+                  label="행사 포스터"
+                  required
+                  value={form.representativeFileId}
+                  onChange={(fileId) => change("representativeFileId", fileId)}
+                  onFileSelected={(file) => {
+                    setPosterFile(file);
+                    setPosterExtraction(null);
+                    setPosterAnalysisError("");
+                  }}
+                />
+                <p className="mt-sm text-caption text-ink-muted">
+                  세로형 3:4 비율, 최소 900×1200px 이미지를 권장합니다.
+                </p>
+              </div>
+              <div className="mt-md flex justify-end">
                 <button type="button" onClick={analyzePoster} disabled={!posterFile || posterAnalyzing} className="rounded-full bg-primary px-lg py-sm text-sm font-body-strong text-white disabled:bg-surface-container-highest disabled:text-ink-muted">
                   {posterAnalyzing ? "분석 중..." : "포스터 분석"}
                 </button>
@@ -1166,13 +1207,31 @@ export default function EventForm() {
                     <div key={label} className="flex items-center gap-sm rounded-lg bg-white px-md py-sm">
                       <span className="w-20 shrink-0 text-caption font-bold text-ink-muted">{label}</span>
                       <span className="min-w-0 flex-1 break-words text-sm">{value}</span>
-                      <button type="button" onClick={() => { apply(); showToast(`${label} 정보가 적용되었습니다.`); }} className="shrink-0 rounded-full border border-hairline px-md py-xs text-caption font-body-strong hover:border-primary hover:text-primary">적용</button>
+                      <button type="button" onClick={() => { apply(); showToast("적용되었습니다."); }} className="shrink-0 rounded-full border border-hairline px-md py-xs text-caption font-body-strong hover:border-primary hover:text-primary">적용</button>
                     </div>
                   ))}
                   {(posterExtraction.organizer || posterExtraction.operator || posterExtraction.sponsors?.length > 0) && (
                     <div className="rounded-lg bg-white px-md py-sm text-caption leading-6 text-ink-muted">
                       주최 {posterExtraction.organizer || "-"} · 주관 {posterExtraction.operator || "-"}
                       {posterExtraction.sponsors?.length > 0 && ` · 후원 ${posterExtraction.sponsors.join(", ")}`}
+                    </div>
+                  )}
+                  {posterExtraction.categoryCodes?.length > 0 && (
+                    <div className="rounded-lg bg-white p-md text-sm">
+                      <p className="font-body-strong">AI 추천 전시품목</p>
+                      <p className="mt-xs text-ink-muted">
+                        {posterExtraction.categoryCodes.map((code) => EXHIBIT_CATEGORIES.find(([value]) => value === code)?.[1] || code).join(" · ")}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          change("exhibitCategoryCodes", posterExtraction.categoryCodes.slice(0, 5));
+                          showToast("적용되었습니다.");
+                        }}
+                        className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary"
+                      >
+                        전시품목에 적용
+                      </button>
                     </div>
                   )}
                   {posterExtraction.warnings?.length > 0 && <div className="rounded-lg bg-warning/10 px-md py-sm text-caption text-on-surface-variant">확인 필요: {posterExtraction.warnings.join(" · ")}</div>}
@@ -1195,19 +1254,19 @@ export default function EventForm() {
                     {contentSuggestion.shortDescription && (
                       <div className="rounded-lg bg-white p-md text-sm">
                         <p className="font-body-strong">한 줄 소개</p><p className="mt-xs leading-6 text-ink-muted">{contentSuggestion.shortDescription}</p>
-                        <button type="button" onClick={() => { change("shortDescription", contentSuggestion.shortDescription); showToast("한 줄 소개가 적용되었습니다."); }} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">한 줄 소개에 적용</button>
+                        <button type="button" onClick={() => { change("shortDescription", contentSuggestion.shortDescription); showToast("적용되었습니다."); }} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">한 줄 소개에 적용</button>
                       </div>
                     )}
                     {contentSuggestion.description && (
                       <div className="rounded-lg bg-white p-md text-sm">
                         <p className="font-body-strong">상세 소개 초안</p><p className="mt-xs whitespace-pre-wrap leading-6 text-ink-muted">{contentSuggestion.description}</p>
-                        <button type="button" onClick={() => { change("description", contentSuggestion.description); showToast("상세 소개가 적용되었습니다."); }} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">상세 소개에 적용</button>
+                        <button type="button" onClick={() => { change("description", contentSuggestion.description); showToast("적용되었습니다."); }} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">상세 소개에 적용</button>
                       </div>
                     )}
                     {contentSuggestion.categoryCodes?.length > 0 && (
                       <div className="rounded-lg bg-white p-md text-sm">
                         <p className="font-body-strong">추천 전시품목</p><p className="mt-xs text-ink-muted">{contentSuggestion.categoryCodes.map((code) => EXHIBIT_CATEGORIES.find(([value]) => value === code)?.[1] || code).join(" · ")}</p>
-                        <button type="button" onClick={() => { change("exhibitCategoryCodes", contentSuggestion.categoryCodes.slice(0, 5)); showToast("추천 전시품목이 적용되었습니다."); }} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">전시품목에 적용</button>
+                        <button type="button" onClick={() => { change("exhibitCategoryCodes", contentSuggestion.categoryCodes.slice(0, 5)); showToast("적용되었습니다."); }} className="mt-sm rounded-full border border-hairline px-md py-xs text-caption hover:border-primary hover:text-primary">전시품목에 적용</button>
                       </div>
                     )}
                     {contentSuggestion.sources?.length > 0 && <p className="text-caption text-ink-muted">사용 근거: {contentSuggestion.sources.join(" · ")}</p>}
@@ -1216,18 +1275,10 @@ export default function EventForm() {
                 )}
               </div>
             </div>, aiPortalTarget)}
-            <div className="rounded-xl bg-primary/5 border border-primary/10 p-md text-caption text-on-surface-variant">
-              <strong className="block text-primary mb-xs">
-                포스터 권장 사양
-              </strong>
-              세로형 3:4 비율, 최소 900×1200px 이미지를 권장합니다. 행사 목록과
-              상세 페이지에 동일한 이미지가 사용됩니다.
-            </div>
-          </section>
 
           <section className={section}>
             <div>
-              <p className="text-caption text-primary mb-xs">05</p>
+              <p className="text-caption text-primary mb-xs">04</p>
               <h2 className="font-display-md text-[22px]">전시품목</h2>
               <p className="text-caption text-ink-muted mt-xs">
                 행사에서 다루는 품목을 최대 5개까지 선택해 주세요.
@@ -1260,7 +1311,7 @@ export default function EventForm() {
 
           <section className={section}>
             <div>
-              <p className="text-caption text-primary mb-xs">06</p>
+              <p className="text-caption text-primary mb-xs">05</p>
               <h2 className="font-display-md text-[22px]">운영 기능</h2>
             </div>
             <div className="grid md:grid-cols-3 gap-md">
@@ -1296,35 +1347,6 @@ export default function EventForm() {
               ))}
             </div>
           </section>
-          {eventId && form.detailDisplayType === "IMAGE_GALLERY" && (
-            <section className={section}>
-              <div>
-                <p className="text-caption text-primary mb-xs">07</p>
-                <h2 className="font-display-md text-[22px]">상세정보 이미지</h2>
-                <p className="text-caption text-ink-muted mt-xs">
-                  이미지 저장은 행사 기본정보 저장과 별도로 처리됩니다.
-                </p>
-              </div>
-              <EventDetailImageEditor
-                organizationId={organizationId}
-                eventId={eventId}
-              />
-            </section>
-          )}
-          {!eventId && form.detailDisplayType === "IMAGE_GALLERY" && (
-            <section className={section}>
-              <div>
-                <p className="text-caption text-primary mb-xs">07</p>
-                <h2 className="font-display-md text-[22px]">상세정보 이미지</h2>
-                <p className="text-caption text-ink-muted mt-xs">행사를 처음 저장할 때 상세 이미지도 함께 등록됩니다.</p>
-              </div>
-              <EventDetailImageEditor
-                organizationId={organizationId}
-                initialImages={draftDetailImages}
-                onImagesChange={setDraftDetailImages}
-              />
-            </section>
-          )}
           <div className="sticky bottom-md bg-white/90 backdrop-blur border border-hairline rounded-2xl p-md flex justify-between items-center shadow-lg">
             <p className="text-caption text-ink-muted hidden sm:block">
               필수 항목을 확인한 후 저장해 주세요.
@@ -1341,7 +1363,7 @@ export default function EventForm() {
           </div>
         </form>
       </main>
-      <EventPreviewModal open={previewOpen} onClose={() => setPreviewOpen(false)} form={form} detailImages={previewImages} />
+      <EventPreviewModal open={previewOpen} onClose={() => setPreviewOpen(false)} form={form} detailImages={eventId ? previewImages : draftDetailImages} />
     </>
   );
 }

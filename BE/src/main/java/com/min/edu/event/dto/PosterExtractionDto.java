@@ -14,5 +14,6 @@ public record PosterExtractionDto(
         List<String> sponsors,
         String summary,
         String rawVisibleText,
+        List<String> categoryCodes,
         List<String> warnings) {
 }
