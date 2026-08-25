@@ -20,16 +20,19 @@ public class ExchangeCodeIssuanceService {
     private final ExchangeCodeIssuanceFinalizer issuanceFinalizer;
     private final ExchangeCodeRequestEmailRecorder emailRecorder;
     private final ExchangeCodeEmailSendLease emailSendLease;
+    private final ExchangeCodeRecipientEmailValidator recipientEmailValidator;
     private final EmailSender emailSender;
 
     public ExchangeCodeIssuanceService(
             ExchangeCodeIssuanceFinalizer issuanceFinalizer,
             ExchangeCodeRequestEmailRecorder emailRecorder,
             ExchangeCodeEmailSendLease emailSendLease,
+            ExchangeCodeRecipientEmailValidator recipientEmailValidator,
             EmailSender emailSender) {
         this.issuanceFinalizer = issuanceFinalizer;
         this.emailRecorder = emailRecorder;
         this.emailSendLease = emailSendLease;
+        this.recipientEmailValidator = recipientEmailValidator;
         this.emailSender = emailSender;
     }
 
@@ -38,6 +41,7 @@ public class ExchangeCodeIssuanceService {
             AuthenticatedMemberDto actor) {
         requireAdmin(actor);
 
+        recipientEmailValidator.validateForRequest(requestId);
         ExchangeCodeIssuanceResult result = issuanceFinalizer.issueOrPrepareEmail(requestId);
         OffsetDateTime emailedAt = sendEmailAndRecord(result);
 
@@ -56,6 +60,7 @@ public class ExchangeCodeIssuanceService {
             AuthenticatedMemberDto actor) {
         requireAdmin(actor);
 
+        recipientEmailValidator.validateForRequest(requestId);
         ExchangeCodeIssuanceResult result = issuanceFinalizer.prepareEmailResend(requestId);
         OffsetDateTime emailedAt = sendEmailAndRecord(result);
 

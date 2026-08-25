@@ -193,11 +193,7 @@ public class ExchangeCodeIssuanceFinalizer {
     }
 
     private void validateRecipientEmail(String email) {
-        if (email == null || email.isBlank()) {
-            throw new BusinessException(
-                GlobalErrorCode.EXCHANGE_CODE_REQUEST_RECIPIENT_EMAIL_MISSING
-            );
-        }
+        ExchangeCodeRecipientEmailValidator.validate(email);
     }
 
     private List<ExchangeCode> createExchangeCodes(
