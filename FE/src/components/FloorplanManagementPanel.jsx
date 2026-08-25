@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "./Icon.jsx";
+import useToast from "../hooks/useToast.js";
 import FloorplanCanvasEditor from "./FloorplanCanvasEditor.jsx";
 import { ApiError } from "../api/apiClient.js";
 import { uploadFile, fileDownloadUrl } from "../api/fileApi.js";
@@ -50,12 +51,11 @@ const readImageDimensions = (file) =>
   });
 
 export default function FloorplanManagementPanel({ eventId }) {
+  const { showToast } = useToast();
   const [maps, setMaps] = useState([]);
   const [booths, setBooths] = useState([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
 
   const [uploadForm, setUploadForm] = useState(EMPTY_UPLOAD_FORM);
   // <input type="file">는 uncontrolled라 uploadForm.file을 null로 되돌려도 브라우저가 보여주는
@@ -92,7 +92,6 @@ export default function FloorplanManagementPanel({ eventId }) {
   const loadAll = async (id) => {
     const version = ++requestVersionRef.current;
     setLoading(true);
-    setError("");
     try {
       const [mapList, allBooths] = await Promise.all([
         listVenueMaps(id),
@@ -103,7 +102,10 @@ export default function FloorplanManagementPanel({ eventId }) {
       setBooths(allBooths);
     } catch (err) {
       if (requestVersionRef.current !== version) return;
-      setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "평면도 정보를 불러오지 못했습니다.");
+      showToast(
+        err instanceof ApiError ? `${err.code}: ${err.message}` : "평면도 정보를 불러오지 못했습니다.",
+        { type: "error" }
+      );
     } finally {
       if (requestVersionRef.current === version) {
         setLoading(false);
@@ -120,8 +122,6 @@ export default function FloorplanManagementPanel({ eventId }) {
     setShowCanvasEditor(false);
     setSelectedMapId(null);
     setPositions([]);
-    setMessage("");
-    setError("");
     setMaps([]);
     setBooths([]);
     // 이전 행사에서 진행 중이던 액션이 있었다면 그 결과는 이제 무의미하다 - runAction의
@@ -167,17 +167,18 @@ export default function FloorplanManagementPanel({ eventId }) {
     // 그대로 캡처하고 있어서 나중에 다시 읽어도 항상 같은 값이라 절대 안 바뀐 것처럼 보인다.
     const actionGeneration = eventGenerationRef.current;
     setSubmitting(true);
-    setError("");
-    setMessage("");
     try {
       await actionFn();
       if (eventGenerationRef.current !== actionGeneration) return;
       onSuccess?.();
-      setMessage(successMessage);
+      showToast(successMessage);
       await loadAll(eventId);
     } catch (err) {
       if (eventGenerationRef.current !== actionGeneration) return;
-      setError(err instanceof ApiError ? `${err.code}: ${err.message}` : err.message || "요청에 실패했습니다.");
+      showToast(
+        err instanceof ApiError ? `${err.code}: ${err.message}` : err.message || "요청에 실패했습니다.",
+        { type: "error" }
+      );
     } finally {
       if (eventGenerationRef.current === actionGeneration) {
         setSubmitting(false);
@@ -264,8 +265,6 @@ export default function FloorplanManagementPanel({ eventId }) {
     const actionMapId = selectedMapId;
     const actionMapGeneration = mapSelectionGenerationRef.current;
     setSubmitting(true);
-    setError("");
-    setMessage("");
     try {
       const suggestions = await suggestAutoLayout(eventId, actionMapId);
       if (eventGenerationRef.current !== actionGeneration
@@ -277,10 +276,13 @@ export default function FloorplanManagementPanel({ eventId }) {
       // 부수효과로 카운터를 세면 아래 메시지 계산 시점엔 아직 반영되지 않은 값을 읽게 된다.
       // 그래서 분류/카운트는 여기서 미리 순수하게 끝내고, setPositions엔 결과만 넘긴다.
       const placedIds = new Set(positions.map((p) => p.boothId));
+      const boothStatusById = new Map(booths.map((b) => [b.id, b.status]));
+      const assignedOnly = selectedMap?.mapType === "VISITOR";
       const additions = [];
       let skippedElsewhereCount = 0;
       for (const s of suggestions) {
         if (!s.matched || placedIds.has(s.boothId)) continue;
+        if (assignedOnly && boothStatusById.get(s.boothId) !== "ASSIGNED") continue;
         if (elsewherePlacementByBoothId.has(s.boothId)) {
           skippedElsewhereCount += 1;
           continue;
@@ -303,7 +305,7 @@ export default function FloorplanManagementPanel({ eventId }) {
       if (skippedElsewhereCount > 0) {
         notes.push(`다른 층에 이미 배치되어 제외한 부스 ${skippedElsewhereCount}개`);
       }
-      setMessage(
+      showToast(
         notes.length > 0
           ? `${addedCount}개 제안을 적용했습니다. ${notes.join(" / ")}`
           : `${addedCount}개 제안을 적용했습니다. 저장 전에 위치를 확인해 주세요.`
@@ -313,7 +315,10 @@ export default function FloorplanManagementPanel({ eventId }) {
           || mapSelectionGenerationRef.current !== actionMapGeneration) {
         return;
       }
-      setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "자동 배치 제안을 가져오지 못했습니다.");
+      showToast(
+        err instanceof ApiError ? `${err.code}: ${err.message}` : "자동 배치 제안을 가져오지 못했습니다.",
+        { type: "error" }
+      );
     } finally {
       if (eventGenerationRef.current === actionGeneration
           && mapSelectionGenerationRef.current === actionMapGeneration) {
@@ -389,10 +394,15 @@ export default function FloorplanManagementPanel({ eventId }) {
     });
   }
 
-  const unplacedBooths = booths.filter(
+  // 관람객용 지도는 실제로 입장 가능한 부스만 안내해야 하므로, 배정이 확정된(ASSIGNED)
+  // 부스만 배치 후보로 노출한다. 모집 공고용은 아직 배정 전이라 이 제한을 두지 않는다.
+  const placeableBooths =
+    selectedMap?.mapType === "VISITOR" ? booths.filter((b) => b.status === "ASSIGNED") : booths;
+
+  const unplacedBooths = placeableBooths.filter(
     (b) => !positions.some((p) => p.boothId === b.id) && !elsewherePlacementByBoothId.has(b.id)
   );
-  const placedElsewhereBooths = booths.filter(
+  const placedElsewhereBooths = placeableBooths.filter(
     (b) => !positions.some((p) => p.boothId === b.id) && elsewherePlacementByBoothId.has(b.id)
   );
 
@@ -409,8 +419,6 @@ export default function FloorplanManagementPanel({ eventId }) {
       )}
 
       {loading && <p className="text-caption text-ink-muted">불러오는 중...</p>}
-      {error && <p className="text-caption text-error">{error}</p>}
-      {message && <p className="text-caption text-status-available">{message}</p>}
 
       {eventId && (
         <>
@@ -546,6 +554,14 @@ export default function FloorplanManagementPanel({ eventId }) {
               return (
                 <div key={type} className="space-y-sm">
                   <p className="text-caption font-body-strong text-ink-muted">{MAP_TYPE_LABEL[type]}</p>
+                  <p className="text-[11px] text-ink-muted">
+                    아래 평면도 이름을 눌러 부스 좌표를 배치하세요.
+                  </p>
+                  {type === "VISITOR" && (
+                    <p className="text-[11px] text-ink-muted">
+                      배정이 완료된 부스만 배치할 수 있어요. 대기·검토 중인 부스는 목록에 나타나지 않아요.
+                    </p>
+                  )}
                   <div className="bg-white border border-hairline rounded-xl divide-y divide-divider-soft">
                     {mapsOfType.map((map) => (
                 <div key={map.id} className="p-lg space-y-sm">

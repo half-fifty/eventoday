@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import Icon from "./Icon.jsx";
+import useToast from "../hooks/useToast.js";
 import { ApiError } from "../api/apiClient.js";
 import {
   listBooths,
@@ -158,13 +159,12 @@ function SpecFormFields({ form, onChange, includeCode = true }) {
 }
 
 export default function BoothManagementPanel({ eventId }) {
+  const { showToast } = useToast();
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [page, setPage] = useState(0);
   const [pageResult, setPageResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState(EMPTY_SPEC_FORM);
@@ -213,7 +213,6 @@ export default function BoothManagementPanel({ eventId }) {
   const loadBooths = async (id, currentFilters, currentPage) => {
     const version = ++requestVersionRef.current;
     setLoading(true);
-    setError("");
     try {
       const result = await listBooths(id, { ...currentFilters, page: currentPage, size: PAGE_SIZE });
       if (requestVersionRef.current !== version) return;
@@ -221,7 +220,10 @@ export default function BoothManagementPanel({ eventId }) {
     } catch (err) {
       if (requestVersionRef.current !== version) return;
       setPageResult(null);
-      setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "부스 목록을 불러오지 못했습니다.");
+      showToast(
+        err instanceof ApiError ? `${err.code}: ${err.message}` : "부스 목록을 불러오지 못했습니다.",
+        { type: "error" }
+      );
     } finally {
       if (requestVersionRef.current === version) {
         setLoading(false);
@@ -236,7 +238,6 @@ export default function BoothManagementPanel({ eventId }) {
     setEditingBoothId(null);
     setIntroBoothId(null);
     closeQr();
-    setMessage("");
     setPageResult(null);
     // 이전 행사에서 진행 중이던 액션이 있었다면 그 결과는 이제 무의미하다 - runAction의
     // 가드가 그 액션의 후속 상태 변경은 막아주지만, submitting 자체는 그 액션의 finally가
@@ -274,16 +275,17 @@ export default function BoothManagementPanel({ eventId }) {
     // 그대로 캡처하고 있어서 나중에 다시 읽어도 항상 같은 값이라 절대 안 바뀐 것처럼 보인다.
     const actionGeneration = eventGenerationRef.current;
     setSubmitting(true);
-    setError("");
-    setMessage("");
     try {
       await actionFn();
       if (eventGenerationRef.current !== actionGeneration) return;
-      setMessage(successMessage);
+      showToast(successMessage);
       await refresh();
     } catch (err) {
       if (eventGenerationRef.current !== actionGeneration) return;
-      setError(err instanceof ApiError ? `${err.code}: ${err.message}` : err.message || "요청에 실패했습니다.");
+      showToast(
+        err instanceof ApiError ? `${err.code}: ${err.message}` : err.message || "요청에 실패했습니다.",
+        { type: "error" }
+      );
     } finally {
       if (eventGenerationRef.current === actionGeneration) {
         setSubmitting(false);
@@ -395,8 +397,6 @@ export default function BoothManagementPanel({ eventId }) {
       )}
 
       {loading && <p className="text-caption text-ink-muted">불러오는 중...</p>}
-      {error && <p className="text-caption text-error">{error}</p>}
-      {message && <p className="text-caption text-status-available">{message}</p>}
 
       {eventId && (
         <>
