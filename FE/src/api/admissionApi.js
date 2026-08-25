@@ -24,6 +24,9 @@ export const admissionApi = {
     }),
   getMyAdmissionTickets: (params = {}) =>
     apiRequest(withQuery("/members/me/admission-tickets", params)),
+  // 온고잉 페이지 진입 시 이 행사의 입장권을 가진 회원인지 확인하는 용도.
+  hasEventAdmission: (eventId) =>
+    apiRequest(`/events/${pathId(eventId)}/admission-tickets/me`),
   getAdmissionTicket: (admissionTicketId) =>
     apiRequest(`/members/me/admission-tickets/${pathId(admissionTicketId)}`),
   getAdmissionTicketQr: (admissionTicketId) =>

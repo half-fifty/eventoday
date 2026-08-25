@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import Icon from "../components/Icon.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
 import VenueMapPins from "../components/VenueMapPins.jsx";
 import { ApiError } from "../api/apiClient.js";
+import { admissionApi } from "../api/admissionApi.js";
 import { eventApi } from "../api/eventApi.js";
 import { listPublicVenueMaps, getVenueMapMarkersWithCongestion } from "../api/venueMapApi.js";
 import {
@@ -37,8 +38,58 @@ const tabButtons = [
 export default function EventOngoing() {
   const { isAuthenticated, loading: authLoading, logout } = useAuth();
   const { eventId } = useParams();
+  const [searchParams] = useSearchParams();
+  const guestOrderNo = searchParams.get("guestOrderNo") || "";
   const selectedEventId = eventId || "";
   const trackFunnelAction = useFunnelTracking(eventId);
+
+  // 온고잉 페이지는 이 행사의 입장권을 가진 사람(로그인 회원 또는 비회원 주문자)만 볼 수 있다.
+  // "checking" 동안은 아무 것도 보여주지 않다가, 확인이 끝나면 granted/denied로 갈린다.
+  const [accessStatus, setAccessStatus] = useState("checking");
+  useEffect(() => {
+    if (!selectedEventId || authLoading) return;
+    let cancelled = false;
+    setAccessStatus("checking");
+
+    const checkAccess = async () => {
+      if (isAuthenticated) {
+        try {
+          const response = await admissionApi.hasEventAdmission(selectedEventId);
+          if (!cancelled) setAccessStatus(response?.data ? "granted" : "denied");
+        } catch {
+          if (!cancelled) setAccessStatus("denied");
+        }
+        return;
+      }
+
+      const orderAccessToken = guestOrderNo
+        ? sessionStorage.getItem(`ticket-order-token:${guestOrderNo}`)
+        : null;
+      if (!orderAccessToken) {
+        if (!cancelled) setAccessStatus("denied");
+        return;
+      }
+
+      try {
+        const ticketsResponse = await admissionApi.getGuestOrderAdmissionTickets(guestOrderNo, orderAccessToken);
+        const tickets = ticketsResponse?.data ?? [];
+        const hasTicket = tickets.some(
+          (ticket) =>
+            String(ticket.eventId) === String(selectedEventId) &&
+            (ticket.status === "ISSUED" || ticket.status === "USED")
+        );
+        if (!cancelled) setAccessStatus(hasTicket ? "granted" : "denied");
+      } catch {
+        if (!cancelled) setAccessStatus("denied");
+      }
+    };
+
+    checkAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEventId, isAuthenticated, authLoading, guestOrderNo]);
+
   const [eventDetail, setEventDetail] = useState(null);
   const [loadingEventDetail, setLoadingEventDetail] = useState(false);
   const [eventDetailError, setEventDetailError] = useState("");
@@ -388,6 +439,42 @@ export default function EventOngoing() {
     setLoggingOut(true);
     try { await logout(); } finally { setLoggingOut(false); }
   };
+
+  if (authLoading || accessStatus === "checking") {
+    return (
+      <main className="grid min-h-screen place-items-center bg-surface text-ink-muted">
+        입장권 정보를 확인하는 중입니다.
+      </main>
+    );
+  }
+
+  if (accessStatus === "denied") {
+    return (
+      <main className="grid min-h-screen place-items-center bg-surface px-lg text-center">
+        <div>
+          <p className="mb-md text-on-surface-variant">
+            이 행사의 입장권을 가진 분만 입장할 수 있어요.
+          </p>
+          <div className="flex justify-center gap-sm">
+            <Link
+              to={`/events/${selectedEventId}`}
+              className="rounded-full bg-primary px-lg py-sm text-caption font-body-strong text-white"
+            >
+              행사 상세 보기
+            </Link>
+            {!isAuthenticated && (
+              <Link
+                to="/guest/orders"
+                className="rounded-full border border-hairline px-lg py-sm text-caption font-body-strong"
+              >
+                비회원 예매 조회
+              </Link>
+            )}
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <div className="bg-surface font-body text-on-surface antialiased">

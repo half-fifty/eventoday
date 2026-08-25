@@ -129,6 +129,11 @@ public class AdmissionTicketQueryService {
         return admissionQrImageGenerator.generate(ticket.getQrToken());
     }
 
+    public boolean hasValidAdmissionTicket(Long eventId, AuthenticatedMemberDto actor) {
+        requireAuthenticated(actor);
+        return admissionTicketRepository.existsByMemberIdAndEventId(actor.getMemberId(), eventId);
+    }
+
     public Page<AdmissionTicketDtos.EventListResponse> getEventAdmissionTickets(
             Long eventId,
             AdmissionTicketStatus status,
