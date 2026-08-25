@@ -10,7 +10,6 @@ import com.min.edu.member.domain.PlatformRole;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ExchangeCodeIssuanceService {
@@ -31,7 +30,6 @@ public class ExchangeCodeIssuanceService {
         this.emailSender = emailSender;
     }
 
-    @Transactional
     public ExchangeCodeRequestDtos.IssuanceResponse issue(
             Long requestId,
             AuthenticatedMemberDto actor) {
@@ -56,7 +54,6 @@ public class ExchangeCodeIssuanceService {
         );
     }
 
-    @Transactional
     public ExchangeCodeRequestDtos.EmailResendResponse resendEmail(
             Long requestId,
             AuthenticatedMemberDto actor) {

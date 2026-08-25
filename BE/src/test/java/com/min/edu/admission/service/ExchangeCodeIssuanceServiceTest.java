@@ -15,6 +15,7 @@ import com.min.edu.common.exception.GlobalErrorCode;
 import com.min.edu.common.mail.EmailMessage;
 import com.min.edu.common.mail.EmailSender;
 import com.min.edu.member.domain.PlatformRole;
+import java.lang.reflect.Method;
 import java.time.OffsetDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.Transactional;
 
 @ExtendWith(MockitoExtension.class)
 class ExchangeCodeIssuanceServiceTest {
@@ -120,6 +122,25 @@ class ExchangeCodeIssuanceServiceTest {
     }
 
     @Test
+    void issue_keepsEmailUnmarkedAcrossRepeatedSmtpFailures() {
+        ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
+        given(issuanceFinalizer.issueOrPrepareEmail(7L)).willReturn(result);
+        org.mockito.BDDMockito.willThrow(new BusinessException(GlobalErrorCode.EMAIL_SEND_FAILED))
+            .given(emailSender)
+            .send(any(EmailMessage.class));
+
+        for (int i = 0; i < 5; i++) {
+            assertThatThrownBy(() -> service.issue(7L, admin()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(GlobalErrorCode.EMAIL_SEND_FAILED);
+        }
+
+        verify(issuanceFinalizer, org.mockito.Mockito.times(5)).issueOrPrepareEmail(7L);
+        verify(emailRecorder, never()).markEmailed(any());
+    }
+
+    @Test
     void issue_reusesExistingCodesWhenPreviousEmailAttemptFailed() {
         ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
         OffsetDateTime emailedAt = OffsetDateTime.now();
@@ -131,6 +152,23 @@ class ExchangeCodeIssuanceServiceTest {
         assertThat(response.emailedAt()).isEqualTo(emailedAt);
         verify(issuanceFinalizer).issueOrPrepareEmail(7L);
         verify(emailSender).send(any(EmailMessage.class));
+    }
+
+    @Test
+    void issue_doesNotOpenOuterTransactionSoIssuanceCanCommitBeforeEmail() throws Exception {
+        Method issue = ExchangeCodeIssuanceService.class.getMethod(
+            "issue",
+            Long.class,
+            AuthenticatedMemberDto.class
+        );
+        Method resendEmail = ExchangeCodeIssuanceService.class.getMethod(
+            "resendEmail",
+            Long.class,
+            AuthenticatedMemberDto.class
+        );
+
+        assertThat(issue.getAnnotation(Transactional.class)).isNull();
+        assertThat(resendEmail.getAnnotation(Transactional.class)).isNull();
     }
 
     @Test
