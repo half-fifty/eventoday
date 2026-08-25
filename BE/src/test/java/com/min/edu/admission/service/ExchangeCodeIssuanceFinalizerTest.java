@@ -190,6 +190,24 @@ class ExchangeCodeIssuanceFinalizerTest {
     }
 
     @Test
+    void issue_failsWhenRecipientEmailIsMalformedBeforeGeneratingCodes() {
+        ExchangeCodeRequest request = request(ExchangeCodeRequestStatus.APPROVED, 1);
+        given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
+        given(exchangeCodeRepository.countByExchangeCodeRequestId(7L)).willReturn(0L);
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event()));
+        given(memberRepository.findById(10L)).willReturn(Optional.of(member("invalid-email")));
+
+        assertThatThrownBy(() -> finalizer.issueOrPrepareEmail(7L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_RECIPIENT_EMAIL_INVALID);
+
+        assertThat(request.getStatus()).isEqualTo(ExchangeCodeRequestStatus.APPROVED);
+        verifyNoInteractions(exchangeCodeGenerator);
+        verify(exchangeCodeRepository, never()).saveAllAndFlush(any());
+    }
+
+    @Test
     void issue_failsWhenSavedCountDoesNotMatchRequestedQuantity() {
         ExchangeCodeRequest request = request(ExchangeCodeRequestStatus.APPROVED, 2);
         given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
@@ -383,6 +401,23 @@ class ExchangeCodeIssuanceFinalizerTest {
             .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_ISSUANCE_INCONSISTENT);
 
         verify(exchangeCodeRepository, never()).findAllByExchangeCodeRequestIdOrderByIdAsc(any());
+        verifyNoInteractions(exchangeCodeGenerator);
+    }
+
+    @Test
+    void prepareEmailResend_failsWhenRecipientEmailIsMalformedBeforeSendingExistingCodes() {
+        ExchangeCodeRequest request = issuedRequest(null, 2);
+        given(exchangeCodeRequestRepository.findByIdForUpdate(7L)).willReturn(Optional.of(request));
+        given(eventRepository.findById(1L)).willReturn(Optional.of(event()));
+        given(memberRepository.findById(10L)).willReturn(Optional.of(member("invalid-email")));
+
+        assertThatThrownBy(() -> finalizer.prepareEmailResend(7L))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_RECIPIENT_EMAIL_INVALID);
+
+        verify(exchangeCodeRepository, never()).findAllByExchangeCodeRequestIdOrderByIdAsc(any());
+        verify(exchangeCodeRepository, never()).saveAllAndFlush(any());
         verifyNoInteractions(exchangeCodeGenerator);
     }
 

@@ -46,6 +46,9 @@ class ExchangeCodeIssuanceServiceTest {
     private ExchangeCodeEmailSendLease emailSendLease;
 
     @Mock
+    private ExchangeCodeRecipientEmailValidator recipientEmailValidator;
+
+    @Mock
     private EmailSender emailSender;
 
     private ExchangeCodeIssuanceService service;
@@ -56,6 +59,7 @@ class ExchangeCodeIssuanceServiceTest {
             issuanceFinalizer,
             emailRecorder,
             emailSendLease,
+            recipientEmailValidator,
             emailSender
         );
         org.mockito.Mockito.lenient().when(emailSendLease.tryClaim(any()))
@@ -120,6 +124,24 @@ class ExchangeCodeIssuanceServiceTest {
     }
 
     @Test
+    void issue_rejectsInvalidRecipientEmailBeforeIssuanceTransactionAndSmtp() {
+        org.mockito.BDDMockito.willThrow(new BusinessException(
+                GlobalErrorCode.EXCHANGE_CODE_REQUEST_RECIPIENT_EMAIL_INVALID))
+            .given(recipientEmailValidator)
+            .validateForRequest(7L);
+
+        assertThatThrownBy(() -> service.issue(7L, admin()))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_RECIPIENT_EMAIL_INVALID);
+
+        verify(issuanceFinalizer, never()).issueOrPrepareEmail(any());
+        verify(emailSendLease, never()).tryClaim(any());
+        verify(emailSender, never()).send(any());
+        verify(emailRecorder, never()).markEmailed(any());
+    }
+
+    @Test
     void issue_doesNotMarkEmailedWhenEmailSendingFails() {
         ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
         given(issuanceFinalizer.issueOrPrepareEmail(7L)).willReturn(result);
@@ -177,6 +199,7 @@ class ExchangeCodeIssuanceServiceTest {
             issuanceFinalizer,
             emailRecorder,
             new InMemoryLease(),
+            recipientEmailValidator,
             retryEmailSender
         );
         ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
@@ -322,6 +345,24 @@ class ExchangeCodeIssuanceServiceTest {
     }
 
     @Test
+    void resendEmail_rejectsInvalidRecipientEmailBeforeSmtp() {
+        org.mockito.BDDMockito.willThrow(new BusinessException(
+                GlobalErrorCode.EXCHANGE_CODE_REQUEST_RECIPIENT_EMAIL_INVALID))
+            .given(recipientEmailValidator)
+            .validateForRequest(7L);
+
+        assertThatThrownBy(() -> service.resendEmail(7L, admin()))
+            .isInstanceOf(BusinessException.class)
+            .extracting("errorCode")
+            .isEqualTo(GlobalErrorCode.EXCHANGE_CODE_REQUEST_RECIPIENT_EMAIL_INVALID);
+
+        verify(issuanceFinalizer, never()).prepareEmailResend(any());
+        verify(emailSendLease, never()).tryClaim(any());
+        verify(emailSender, never()).send(any());
+        verify(emailRecorder, never()).markEmailed(any());
+    }
+
+    @Test
     void resendEmail_doesNotMarkEmailedWhenEmailSendingFails() {
         ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
         given(issuanceFinalizer.prepareEmailResend(7L)).willReturn(result);
@@ -378,6 +419,7 @@ class ExchangeCodeIssuanceServiceTest {
             issuanceFinalizer,
             emailRecorder,
             new InMemoryLease(),
+            recipientEmailValidator,
             blockingEmailSender
         );
         ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
@@ -409,6 +451,7 @@ class ExchangeCodeIssuanceServiceTest {
             issuanceFinalizer,
             emailRecorder,
             new InMemoryLease(),
+            recipientEmailValidator,
             blockingEmailSender
         );
         ExchangeCodeIssuanceResult result = result("event", "ABCDEF-123456-7890AB");
