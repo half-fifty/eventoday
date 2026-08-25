@@ -118,6 +118,7 @@ export default function EventDetail() {
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [buyer, setBuyer] = useState(emptyBuyer);
+  const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS.CARD);
   const [purchasing, setPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState("");
   const [purchaseInfo, setPurchaseInfo] = useState("");
@@ -354,9 +355,12 @@ export default function EventDetail() {
     const abortController = new AbortController();
     purchaseAbortControllerRef.current = abortController;
     try {
+      const selectedPaymentMethod = isAuthenticated
+        ? paymentMethod
+        : PAYMENT_METHODS.CARD;
       const payload = {
         quantity: ticketQuantity,
-        paymentMethod: PAYMENT_METHODS.CARD,
+        paymentMethod: selectedPaymentMethod,
         funnelSessionId: resolveSessionId(),
         ...(isAuthenticated
           ? {}
@@ -406,20 +410,36 @@ export default function EventDetail() {
         );
       const tossPayments = await loadTossPayments(clientKey);
       const payment = tossPayments.payment({ customerKey: ANONYMOUS });
-      await payment.requestPayment({
-        method: "CARD",
+      const paymentRequest = {
+        method: selectedPaymentMethod,
         amount: { currency: "KRW", value: Number(order.totalAmount) },
         orderId: order.orderNo,
         orderName: `${event.name} 티켓`,
         successUrl: `${window.location.origin}/tickets/payment/success?eventId=${eventId}`,
         failUrl: `${window.location.origin}/tickets/payment/fail?eventId=${eventId}`,
-        card: {
-          useEscrow: false,
-          flowMode: "DEFAULT",
-          useCardPoint: false,
-          useAppCardOnly: false,
-        },
-      });
+        ...(!isAuthenticated
+          ? {
+              customerName: buyer.name.trim(),
+              customerEmail: buyer.email.trim(),
+              customerMobilePhone: buyer.phone.replace(/[^0-9]/g, ""),
+            }
+          : {}),
+        ...(selectedPaymentMethod === PAYMENT_METHODS.VIRTUAL_ACCOUNT
+          ? {
+              virtualAccount: {
+                dueDate: formatTossVirtualAccountDueDate(order.expiresAt),
+              },
+            }
+          : {
+              card: {
+                useEscrow: false,
+                flowMode: "DEFAULT",
+                useCardPoint: false,
+                useAppCardOnly: false,
+              },
+            }),
+      };
+      await payment.requestPayment(paymentRequest);
     } catch (requestError) {
       if (requestError?.name === "AbortError" || purchaseRunRef.current !== runId) {
         return;
@@ -446,6 +466,7 @@ export default function EventDetail() {
     setCompletedOrderNo("");
     setOrderNoCopyMessage("");
     setTicketOrderIdempotencyKey("");
+    setPaymentMethod(PAYMENT_METHODS.CARD);
   };
 
   const copyCompletedOrderNo = async () => {
@@ -468,6 +489,7 @@ export default function EventDetail() {
     }
     setPurchaseError("");
     setPurchaseInfo("");
+    setPaymentMethod(PAYMENT_METHODS.CARD);
     setTicketOrderIdempotencyKey(crypto.randomUUID());
     setPurchaseOpen(true);
     trackFunnelAction("OPEN_PURCHASE_MODAL");
@@ -1065,6 +1087,48 @@ export default function EventDetail() {
                     className="mt-xs w-full h-11 border border-hairline rounded-lg px-md"
                   />
                 </label>
+                {isAuthenticated && Number(event.ticketPrice) > 0 && (
+                  <fieldset className="space-y-sm border-t border-hairline pt-md">
+                    <legend className="text-caption text-ink-muted">
+                      결제수단
+                    </legend>
+                    <div className="mt-sm grid grid-cols-2 gap-sm">
+                      {[
+                        {
+                          value: PAYMENT_METHODS.CARD,
+                          label: "카드",
+                          icon: "credit_card",
+                        },
+                        {
+                          value: PAYMENT_METHODS.VIRTUAL_ACCOUNT,
+                          label: "가상계좌",
+                          icon: "account_balance",
+                        },
+                      ].map((method) => (
+                        <button
+                          key={method.value}
+                          type="button"
+                          onClick={() => setPaymentMethod(method.value)}
+                          aria-pressed={paymentMethod === method.value}
+                          className={`flex h-12 items-center justify-center gap-xs rounded-lg border text-caption font-body-strong transition ${
+                            paymentMethod === method.value
+                              ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
+                              : "border-hairline hover:border-primary/50"
+                          }`}
+                        >
+                          <Icon name={method.icon} />
+                          {method.label}
+                        </button>
+                      ))}
+                    </div>
+                    {paymentMethod === PAYMENT_METHODS.VIRTUAL_ACCOUNT && (
+                      <div className="rounded-lg bg-surface-container p-sm text-[12px] leading-relaxed text-ink-muted">
+                        <p>가상계좌 발급 후 30분 안에 입금해 주세요.</p>
+                        <p>입금이 확인되어야 예매가 확정되며, 미입금 주문은 자동 만료됩니다.</p>
+                      </div>
+                    )}
+                  </fieldset>
+                )}
                 {!isAuthenticated && (
                   <div className="space-y-md border-t border-hairline pt-md">
                     <p className="text-caption text-ink-muted">
@@ -1134,7 +1198,10 @@ export default function EventDetail() {
                     ? "주문 생성 중..."
                     : Number(event.ticketPrice) === 0
                       ? "무료 티켓 받기"
-                      : "결제하기"}
+                      : paymentMethod === PAYMENT_METHODS.VIRTUAL_ACCOUNT &&
+                          isAuthenticated
+                        ? "가상계좌 발급하기"
+                        : "카드로 결제하기"}
                 </button>
               </form>
             )}
