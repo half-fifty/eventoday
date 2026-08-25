@@ -221,7 +221,7 @@ export default function BoothManagementPanel({ eventId }) {
       if (requestVersionRef.current !== version) return;
       setPageResult(null);
       showToast(
-        err instanceof ApiError ? `${err.code}: ${err.message}` : "부스 목록을 불러오지 못했습니다.",
+        err instanceof ApiError ? err.message : "부스 목록을 불러오지 못했습니다.",
         { type: "error" }
       );
     } finally {
@@ -282,10 +282,8 @@ export default function BoothManagementPanel({ eventId }) {
       await refresh();
     } catch (err) {
       if (eventGenerationRef.current !== actionGeneration) return;
-      showToast(
-        err instanceof ApiError ? `${err.code}: ${err.message}` : err.message || "요청에 실패했습니다.",
-        { type: "error" }
-      );
+      const message = err instanceof Error && err.message ? err.message : "요청에 실패했습니다.";
+      showToast(message, { type: "error" });
     } finally {
       if (eventGenerationRef.current === actionGeneration) {
         setSubmitting(false);

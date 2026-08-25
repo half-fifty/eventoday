@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Icon from "./Icon.jsx";
+import useToast from "../hooks/useToast.js";
 import { ApiError } from "../api/apiClient.js";
 import { toIsoOffset, toDatetimeLocal } from "../utils/datetime.js";
 import {
@@ -38,12 +39,11 @@ const EMPTY_FORM = {
 };
 
 export default function RecruitmentManagementPanel({ eventId }) {
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [recruitment, setRecruitment] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // 행사를 빠르게 전환할 때 이전 요청의 응답이 늦게 도착해 현재 화면을 덮어쓰는 것을 막기 위한 버전 가드.
   const requestVersionRef = useRef(0);
@@ -66,8 +66,6 @@ export default function RecruitmentManagementPanel({ eventId }) {
 
   const loadRecruitment = async (id, version) => {
     setLoading(true);
-    setError("");
-    setMessage("");
 
     try {
       const data = await getManagementRecruitment(id);
@@ -79,7 +77,7 @@ export default function RecruitmentManagementPanel({ eventId }) {
       setRecruitment(null);
       setForm(EMPTY_FORM);
       if (!(err instanceof ApiError && err.status === 404)) {
-        setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "조회에 실패했습니다.");
+        showToast(err instanceof ApiError ? err.message : "조회에 실패했습니다.", { type: "error" });
       }
     } finally {
       if (requestVersionRef.current === version) {
@@ -113,17 +111,15 @@ export default function RecruitmentManagementPanel({ eventId }) {
 
     const version = requestVersionRef.current;
     setSubmitting(true);
-    setError("");
-    setMessage("");
 
     try {
       const data = await actionFn();
       if (requestVersionRef.current !== version) return;
       setRecruitment(data);
-      setMessage(successMessage);
+      showToast(successMessage);
     } catch (err) {
       if (requestVersionRef.current !== version) return;
-      setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "요청에 실패했습니다.");
+      showToast(err instanceof ApiError ? err.message : "요청에 실패했습니다.", { type: "error" });
     } finally {
       if (requestVersionRef.current === version) setSubmitting(false);
     }
@@ -145,18 +141,16 @@ export default function RecruitmentManagementPanel({ eventId }) {
 
     const version = requestVersionRef.current;
     setSubmitting(true);
-    setError("");
-    setMessage("");
 
     try {
       await deleteRecruitment(eventId);
       if (requestVersionRef.current !== version) return;
       setRecruitment(null);
       setForm(EMPTY_FORM);
-      setMessage("삭제했습니다.");
+      showToast("삭제했습니다.");
     } catch (err) {
       if (requestVersionRef.current !== version) return;
-      setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "삭제에 실패했습니다.");
+      showToast(err instanceof ApiError ? err.message : "삭제에 실패했습니다.", { type: "error" });
     } finally {
       if (requestVersionRef.current === version) setSubmitting(false);
     }
@@ -175,8 +169,6 @@ export default function RecruitmentManagementPanel({ eventId }) {
       )}
 
       {loading && <p className="text-caption text-ink-muted">불러오는 중...</p>}
-      {error && <p className="text-caption text-error">{error}</p>}
-      {message && <p className="text-caption text-status-available">{message}</p>}
 
       {loaded && !loading && (
         <div className="bg-white border border-hairline rounded-xl p-lg space-y-lg">
