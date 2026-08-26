@@ -15,12 +15,30 @@ spec:
       labels:
         app: eventoday-fe
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: eventoday-fe
-          image: ghcr.io/half-fifty/eventoday-fe:d5beb6b5ba7662a7ae7adef92a003a347a84f879
+          image: ghcr.io/half-fifty/eventoday-fe:ac12964d0006651b82fca07c01227768271ddb32
           imagePullPolicy: Always
           ports:
             - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 15
 ---
 apiVersion: v1
 kind: Service

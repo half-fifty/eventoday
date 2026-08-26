@@ -100,4 +100,90 @@ public class BoothApplication {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    /**
+     * 신청서 생성 팩토리 메서드 - BoothRecruitment.create() 패턴과 동일
+     */
+    public static BoothApplication create(
+            String applicationNo,
+            Long recruitmentId,
+            Long boothId,
+            Long applicantOrganizationId,
+            Long applicantMemberId,
+            String teamName,
+            String contactName,
+            String contactEmail,
+            String contactPhone,
+            String activityDescription,
+            String exhibitionContent,
+            Integer expectedVisitors,
+            boolean electricityRequired,
+            boolean waterRequired,
+            boolean drainageRequired,
+            boolean internetRequired,
+            String applicationReason,
+            OffsetDateTime now) {
+        return BoothApplication.builder()
+                .applicationNo(applicationNo)
+                .recruitmentId(recruitmentId)
+                .boothId(boothId)
+                .applicantOrganizationId(applicantOrganizationId)
+                .applicantMemberId(applicantMemberId)
+                .teamName(teamName)
+                .contactName(contactName)
+                .contactEmail(contactEmail)
+                .contactPhone(contactPhone)
+                .activityDescription(activityDescription)
+                .exhibitionContent(exhibitionContent)
+                .expectedVisitors(expectedVisitors)
+                .electricityRequired(electricityRequired)
+                .waterRequired(waterRequired)
+                .drainageRequired(drainageRequired)
+                .internetRequired(internetRequired)
+                .applicationReason(applicationReason)
+                .status(BoothApplicationStatus.SUBMITTED)
+                .submittedAt(now)
+                .updatedAt(now)
+                .build();
+    }
+
+    /**
+     * 신청 취소 - cancelledAt 기록, 상태 CANCELLED로 변경
+     */
+    public void cancel(OffsetDateTime now) {
+        this.status = BoothApplicationStatus.CANCELLED;
+        this.cancelledAt = now;
+        this.updatedAt = now;
+    }
+
+    /**
+     * 검토 시작 - 상태 UNDER_REVIEW로 변경, 검토 담당자 기록
+     */
+    public void startReview(Long reviewerMemberId, OffsetDateTime now) {
+        this.status = BoothApplicationStatus.UNDER_REVIEW;
+        this.reviewedBy = reviewerMemberId;
+        this.updatedAt = now;
+    }
+
+    /**
+     * 신청 승인 - 상태 APPROVED로 변경, 검토 담당자·검토 시각 기록
+     * reviewedAt은 최종 처리(승인/반려) 시각
+     */
+    public void approve(Long reviewerMemberId, OffsetDateTime now) {
+        this.status = BoothApplicationStatus.APPROVED;
+        this.reviewedBy = reviewerMemberId;
+        this.reviewedAt = now;
+        this.updatedAt = now;
+    }
+
+    /**
+     * 신청 반려 - 상태 REJECTED로 변경, 반려 사유·검토 담당자·검토 시각 기록
+     */
+    public void reject(Long reviewerMemberId, String rejectionReason, OffsetDateTime now) {
+        this.status = BoothApplicationStatus.REJECTED;
+        this.reviewedBy = reviewerMemberId;
+        this.reviewedAt = now;
+        this.rejectionReason = rejectionReason;
+        this.updatedAt = now;
+    }
 }

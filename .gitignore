@@ -40,3 +40,7 @@ build/
 application-local.yml
 application-local.properties
 application-secret.yml
+
+### Local Codex/runtime artifacts ###
+.codex-run/
+.event-seed-assets/

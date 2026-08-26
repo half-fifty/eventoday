@@ -49,4 +49,36 @@ public class AdmissionTicket {
 
     @Column(name = "cancelled_at")
     private OffsetDateTime cancelledAt;
+
+    public static AdmissionTicket issue(
+            Long exchangeCodeId,
+            Long memberId,
+            String qrToken,
+            OffsetDateTime now) {
+        return AdmissionTicket.builder()
+            .exchangeCodeId(exchangeCodeId)
+            .memberId(memberId)
+            .qrToken(qrToken)
+            .status(AdmissionTicketStatus.ISSUED)
+            .issuedAt(now)
+            .build();
+    }
+
+    public void checkIn(OffsetDateTime now) {
+        if (status != AdmissionTicketStatus.ISSUED) {
+            throw new IllegalStateException("Admission ticket is not check-in available.");
+        }
+
+        this.status = AdmissionTicketStatus.USED;
+        this.usedAt = now;
+    }
+
+    public void cancelCheckIn() {
+        if (status != AdmissionTicketStatus.USED) {
+            throw new IllegalStateException("Admission ticket check-in cannot be cancelled.");
+        }
+
+        this.status = AdmissionTicketStatus.ISSUED;
+        this.usedAt = null;
+    }
 }

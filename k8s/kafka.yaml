@@ -1,0 +1,145 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: eventoday-kafka-data
+  namespace: eventoday
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eventoday-kafka
+  namespace: eventoday
+  labels:
+    app: eventoday-kafka
+spec:
+  replicas: 1
+  strategy:
+    # 단일 브로커 + ReadWriteOnce PVC라 새 파드가 기존 파드와 동시에 볼륨을 잡을 수 없다.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: eventoday-kafka
+  template:
+    metadata:
+      labels:
+        app: eventoday-kafka
+    spec:
+      # 공식 apache/kafka 이미지는 기본적으로 non-root(appuser)로 동작한다.
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: kafka
+          image: apache/kafka:4.1.2
+          securityContext:
+            # 이 이미지는 유저를 숫자 UID가 아니라 이름(appuser)으로만 지정해서, kubelet이
+            # runAsNonRoot 검증을 위해 컨테이너를 실행해보지 않고는 root 여부를 정적으로
+            # 확인할 수 없어 CreateContainerConfigError로 거부한다 (직접 겪음). 이미지
+            # 안 appuser의 실제 UID(1000, 로컬에서 `docker run --entrypoint id`로 확인)를
+            # 명시해서 정적으로 검증 가능하게 한다.
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - containerPort: 9092
+          env:
+            # 브로커가 1개뿐이라 Service(로드밸런싱 대상) 대신 자기 파드 IP로 직접
+            # advertise한다. Service 이름으로 자기 자신에게 접속하게 하면, 그 Service가
+            # "Ready인 파드만 라우팅"하는 기본 동작 때문에 "Ready가 되려면 컨트롤러 쿼럼을
+            # 완성해야 하는데, 그러려면 자기 자신에게 접속해야 하고, 그러려면 Ready여야
+            # 한다"는 순환 데드락에 빠진다 (직접 겪음). 파드 IP는 이런 문제가 없다.
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: KAFKA_NODE_ID
+              value: "1"
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker,controller"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+            - name: KAFKA_LISTENERS
+              value: "CONTROLLER://0.0.0.0:29093,PLAINTEXT://0.0.0.0:9092"
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://$(POD_IP):9092"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "PLAINTEXT"
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "1@$(POD_IP):29093"
+            # 로컬 docker-compose와 동일한 값 (팀 내부 고정 클러스터 ID, 비밀값 아님)
+            - name: CLUSTER_ID
+              value: "4L6g3nShT-eMCtK--X86sw"
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+              value: "0"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR
+              value: "1"
+            - name: KAFKA_LOG_DIRS
+              value: "/tmp/kraft-combined-logs"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /tmp/kraft-combined-logs
+          # kafka-topics.sh는 JVM CLI라 뜨는 데만 1초 넘게 걸린다. 기본 timeoutSeconds(1s)로는
+          # 브로커가 멀쩡해도 매번 타임아웃난다 (직접 겪음) — 넉넉하게 늘려준다.
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"
+            failureThreshold: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"
+            periodSeconds: 10
+            timeoutSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            periodSeconds: 15
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: eventoday-kafka-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eventoday-kafka
+  namespace: eventoday
+spec:
+  selector:
+    app: eventoday-kafka
+  ports:
+    - name: plaintext
+      port: 9092
+      targetPort: 9092

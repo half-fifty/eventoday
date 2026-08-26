@@ -5,6 +5,7 @@ metadata:
   namespace: eventoday
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: eventoday-redirect-https@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:

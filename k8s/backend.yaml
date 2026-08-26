@@ -15,12 +15,33 @@ spec:
       labels:
         app: eventoday-be
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: eventoday-be
-          image: ghcr.io/half-fifty/eventoday-be:d5beb6b5ba7662a7ae7adef92a003a347a84f879
+          image: ghcr.io/half-fifty/eventoday-be:ac12964d0006651b82fca07c01227768271ddb32
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
+          resources:
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              memory: 768Mi
+          startupProbe:
+            tcpSocket:
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 15
           env:
             - name: TZ
               value: "Asia/Seoul"
@@ -30,6 +51,14 @@ spec:
               value: "10.0.0.31"
             - name: REDIS_PORT
               value: "6379"
+            - name: FRONTEND_URL
+              value: "https://eventoday.duckdns.org"
+            - name: COOKIE_SECURE
+              value: "true"
+            - name: ELASTICSEARCH_URIS
+              value: "http://eventoday-elasticsearch:9200"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "eventoday-kafka:9092"
           envFrom:
             - secretRef:
                 name: eventoday-secret

@@ -58,4 +58,70 @@ public class ExchangeCodeRequest {
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    public static ExchangeCodeRequest create(
+            Long eventId,
+            Long requestedBy,
+            Integer requestedQuantity,
+            String purpose,
+            OffsetDateTime now) {
+        return ExchangeCodeRequest.builder()
+            .eventId(eventId)
+            .requestedBy(requestedBy)
+            .requestedQuantity(requestedQuantity)
+            .purpose(purpose)
+            .status(ExchangeCodeRequestStatus.REQUESTED)
+            .createdAt(now)
+            .build();
+    }
+
+    public boolean isRequested() {
+        return status == ExchangeCodeRequestStatus.REQUESTED;
+    }
+
+    public boolean isApproved() {
+        return status == ExchangeCodeRequestStatus.APPROVED;
+    }
+
+    public boolean isIssued() {
+        return status == ExchangeCodeRequestStatus.ISSUED;
+    }
+
+    public void approve(Long reviewerId, OffsetDateTime now) {
+        if (!isRequested()) {
+            throw new IllegalStateException("Exchange code request is not reviewable.");
+        }
+
+        this.status = ExchangeCodeRequestStatus.APPROVED;
+        this.reviewedBy = reviewerId;
+        this.reviewedAt = now;
+        this.rejectionReason = null;
+    }
+
+    public void reject(Long reviewerId, String reason, OffsetDateTime now) {
+        if (!isRequested()) {
+            throw new IllegalStateException("Exchange code request is not reviewable.");
+        }
+
+        this.status = ExchangeCodeRequestStatus.REJECTED;
+        this.reviewedBy = reviewerId;
+        this.reviewedAt = now;
+        this.rejectionReason = reason;
+    }
+
+    public void issue() {
+        if (!isApproved()) {
+            throw new IllegalStateException("Exchange code request is not issuable.");
+        }
+
+        this.status = ExchangeCodeRequestStatus.ISSUED;
+    }
+
+    public void markEmailed(OffsetDateTime emailedAt) {
+        if (!isIssued()) {
+            throw new IllegalStateException("Exchange code request is not issued.");
+        }
+
+        this.emailedAt = emailedAt;
+    }
 }

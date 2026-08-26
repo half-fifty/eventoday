@@ -11,6 +11,13 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: #fcf8fb;
+  /* F7 캐럿 브라우징이 켜져도 일반 본문에 입력 커서가 노출되지 않게 한다. */
+  caret-color: transparent;
+}
+input,
+textarea,
+[contenteditable="true"] {
+  caret-color: auto;
 }
 .font-hero-display,
 .font-display-md,
@@ -84,6 +91,59 @@ body {
 .pulse {
   animation: pulse-soft 1.8s infinite ease-in-out;
 }
+
+@keyframes notification-toast-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(24px, -8px, 0) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes notification-toast-progress {
+  from {
+    width: calc(100% - 4px);
+  }
+  to {
+    width: 0;
+  }
+}
+
+@keyframes notification-panel-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.notification-toast {
+  animation: notification-toast-enter 0.38s cubic-bezier(0.16, 1, 0.3, 1)
+    both;
+}
+
+.notification-toast-progress {
+  animation: notification-toast-progress 6s linear forwards;
+}
+
+.notification-panel-enter {
+  animation: notification-panel-enter 0.28s cubic-bezier(0.16, 1, 0.3, 1)
+    both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-toast,
+  .notification-toast-progress,
+  .notification-panel-enter {
+    animation: none;
+  }
+}
 .booth-cell {
   cursor: pointer;
   transition: all 0.2s ease;
@@ -136,3 +196,145 @@ body {
 .sheet-overlay.open .sheet-panel {
   transform: translateY(0);
 }
+
+/* Venue guide */
+.venue-hero {
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(circle at 80% 10%, rgba(73, 95, 232, 0.12), transparent 30%), linear-gradient(135deg, #fff 0%, #f3f7ff 100%);
+  border-bottom: 1px solid #e7edf5;
+}
+.venue-hero::after {
+  content: "";
+  position: absolute;
+  right: -80px;
+  bottom: -130px;
+  width: 410px;
+  height: 410px;
+  border: 1px solid rgba(73, 95, 232, 0.12);
+  border-radius: 50%;
+  box-shadow: 0 0 0 48px rgba(73, 95, 232, 0.025), 0 0 0 96px rgba(73, 95, 232, 0.018);
+  pointer-events: none;
+}
+.venue-search-box {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  max-width: 420px;
+  height: 54px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px;
+  border: 1px solid #dfe6f0;
+  border-radius: 18px;
+  background: rgba(255,255,255,.9);
+  box-shadow: 0 12px 35px rgba(32, 50, 80, .07);
+}
+.venue-search-box:focus-within { border-color: #495fe8; box-shadow: 0 12px 35px rgba(73,95,232,.12), 0 0 0 3px rgba(73,95,232,.08); }
+.venue-search-box input { min-width: 0; flex: 1; outline: none; background: transparent; font-size: 13px; color: #1e293b; }
+.venue-filter-chip { position: relative; z-index: 1; flex: none; padding: 9px 16px; border: 1px solid #dfe6f0; border-radius: 999px; background: rgba(255,255,255,.75); color: #64748b; font-size: 12px; font-weight: 700; transition: .2s ease; }
+.venue-filter-chip:hover { border-color: #aeb9c9; color: #334155; }
+.venue-filter-chip.is-active { border-color: #111827; background: #111827; color: white; box-shadow: 0 6px 18px rgba(15,23,42,.18); }
+.venue-infographic { display: grid; grid-template-columns: minmax(235px, 1fr) minmax(440px, 1.7fr) minmax(235px, 1fr); gap: 22px; align-items: start; padding: 26px; border: 1px solid #dfe7f0; border-radius: 32px; background: linear-gradient(145deg,#eaf2fb,#dce8f5); box-shadow: 0 24px 60px rgba(48,73,102,.12); }
+.venue-side-list { display: grid; gap: 10px; align-content: start; }
+.venue-list-card { position: relative; display: grid; grid-template-columns: 4px minmax(0,1fr); gap: 13px; overflow: hidden; min-height: 80px; padding: 13px; border: 1px solid rgba(255,255,255,.75); border-radius: 17px; background: rgba(255,255,255,.68); box-shadow: 0 5px 14px rgba(63,84,109,.045); backdrop-filter: blur(10px); transition: transform .22s ease, border-color .22s ease, background .22s ease, box-shadow .22s ease; }
+.venue-list-card:hover { transform: translateY(-2px); background: rgba(255,255,255,.95); box-shadow: 0 10px 24px rgba(63,84,109,.11); }
+.venue-list-card.is-selected { border-color: var(--venue-color); background: white; box-shadow: 0 12px 28px color-mix(in srgb, var(--venue-color) 18%, transparent); }
+.venue-card-accent { width: 4px; height: 100%; min-height: 48px; border-radius: 8px; background: var(--venue-color); }
+.venue-wordmark { overflow: hidden; color: var(--venue-color); font-size: 14px; letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
+.venue-region { flex: none; border-radius: 999px; background: #eef2f7; padding: 3px 7px; color: #64748b; font-size: 9px; font-weight: 800; }
+.venue-map-stage { position: relative; min-width: 0; overflow: hidden; padding: 18px 16px 22px; border: 1px solid rgba(255,255,255,.72); border-radius: 25px; background: radial-gradient(circle at 50% 32%,rgba(255,255,255,.92),rgba(230,239,249,.5) 48%,rgba(203,219,235,.35)); }
+.venue-map-glow { position: absolute; left: 50%; top: 43%; width: 360px; height: 360px; transform: translate(-50%,-50%); border-radius: 50%; background: rgba(255,255,255,.75); filter: blur(28px); }
+.venue-map-canvas { position: relative; z-index: 1; width: min(72%, 390px); aspect-ratio: 2 / 3; margin: 0 auto 18px; }
+.venue-korea-map { display: block; width: 100%; height: auto; aspect-ratio: 2 / 3; opacity: .72; filter: saturate(.35) hue-rotate(175deg) drop-shadow(0 18px 18px rgba(63,84,109,.16)); }
+.venue-marker { position: absolute; z-index: 5; width: 20px; height: 20px; transform: translate(-50%,-50%); transition: opacity .2s ease, transform .2s ease; }
+.venue-marker:hover, .venue-marker.is-active { z-index: 8; transform: translate(-50%,-50%) scale(1.12); }
+.venue-marker.is-dimmed { opacity: .13; }
+.venue-marker-dot { position: absolute; inset: 5px; border: 2px solid white; border-radius: 50%; background: var(--venue-color); box-shadow: 0 2px 7px rgba(15,23,42,.25); }
+.venue-marker-ring { position: absolute; inset: 1px; border: 1px solid var(--venue-color); border-radius: 50%; opacity: 0; }
+.venue-marker.is-active .venue-marker-ring { animation: venue-ping 1.8s cubic-bezier(0,0,.2,1) infinite; opacity: 1; }
+.venue-marker-label { position: absolute; left: 50%; top: 19px; transform: translateX(-50%); border-radius: 5px; background: rgba(15,23,42,.88); padding: 3px 6px; color: white; font-size: 7px; font-weight: 900; letter-spacing: .04em; white-space: nowrap; opacity: 0; transition: opacity .2s ease, top .2s ease; }
+.venue-marker:hover .venue-marker-label, .venue-marker.is-active .venue-marker-label { top: 22px; opacity: 1; }
+.venue-detail-card { position: relative; z-index: 12; width: min(92%, 390px); margin: 0 auto; overflow: hidden; border: 1px solid rgba(255,255,255,.9); border-radius: 21px; background: rgba(255,255,255,.95); box-shadow: 0 25px 55px rgba(30,49,71,.22); backdrop-filter: blur(18px); animation: venue-card-in .35s cubic-bezier(.2,.8,.2,1); }
+.venue-detail-visual { position: relative; display: flex; height: 128px; align-items: center; justify-content: center; overflow: hidden; background: linear-gradient(125deg, color-mix(in srgb, var(--venue-color) 85%, #101828), var(--venue-color)); }
+.venue-detail-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.venue-detail-shade { position: absolute; inset: 0; background: linear-gradient(to top, rgba(15,23,42,.68), transparent 65%); }
+.venue-detail-visual:not(.has-photo) .venue-detail-shade { display: none; }
+.venue-photo-credit { position: absolute; right: 10px; bottom: 8px; color: rgba(255,255,255,.72); font-size: 7px; font-weight: 600; }
+.venue-detail-grid { position: absolute; inset: 0; opacity: .2; background-image: linear-gradient(rgba(255,255,255,.25) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.25) 1px,transparent 1px); background-size: 20px 20px; transform: perspective(100px) rotateX(35deg) scale(1.4); }
+.venue-detail-button { display: flex; height: 37px; align-items: center; justify-content: center; gap: 5px; border-radius: 10px; font-size: 11px; font-weight: 800; }
+.venue-detail-button.secondary { border: 1px solid #dfe6ee; color: #475569; }
+.venue-detail-button.primary { background: #111827; color: white; }
+@keyframes venue-ping { 75%,100% { transform: scale(2.2); opacity: 0; } }
+@keyframes venue-card-in { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (max-width: 1023px) {
+  .venue-infographic { grid-template-columns: 1fr 1fr; }
+  .venue-map-stage { grid-column: 1 / -1; grid-row: 1; }
+  .venue-side-list { grid-row: 2; }
+}
+@media (max-width: 640px) {
+  .venue-infographic { display: flex; flex-direction: column; gap: 14px; padding: 10px; border-radius: 24px; }
+  .venue-map-stage { width: 100%; padding: 10px 8px 14px; border-radius: 19px; }
+  .venue-map-canvas { width: 82%; margin-bottom: 12px; }
+  .venue-marker-label { display: none; }
+  .venue-detail-card { width: calc(100% - 16px); }
+  .venue-side-list { width: 100%; }
+  .venue-side-right { padding-top: 0; }
+  .venue-list-card { min-height: 72px; }
+}
+
+/* 리치 텍스트 본문(공지 상세 · 에디터 입력 영역) 공통 타이포그래피.
+   Tailwind typography 플러그인을 쓰지 않으므로 프로젝트 색상 토큰에 맞춰 직접 정의한다.
+   RichTextViewer와 RichTextEditor가 같은 규칙을 공유해 작성 화면과 조회 화면의 모양을 맞춘다. */
+/* word-break: break-word는 폐기된 값이라 표준 속성을 쓴다.
+   anywhere 대신 break-word를 쓰는 이유: anywhere는 min-content 계산에도 줄바꿈을 반영해
+   본문 안의 표 열 너비가 과하게 좁아질 수 있다. */
+.rich-text { color: #1b1b1d; font-size: 15px; line-height: 1.8; overflow-wrap: break-word; }
+.rich-text > :first-child { margin-top: 0; }
+.rich-text > :last-child { margin-bottom: 0; }
+.rich-text p { margin: 0 0 1em; }
+.rich-text h1 { margin: 1.4em 0 .6em; font-size: 24px; font-weight: 700; line-height: 1.4; }
+.rich-text h2 { margin: 1.3em 0 .5em; font-size: 20px; font-weight: 700; line-height: 1.4; }
+.rich-text h3 { margin: 1.2em 0 .5em; font-size: 17px; font-weight: 700; line-height: 1.5; }
+.rich-text h4 { margin: 1.1em 0 .4em; font-size: 15px; font-weight: 700; line-height: 1.5; }
+.rich-text strong, .rich-text b { font-weight: 700; }
+.rich-text em, .rich-text i { font-style: italic; }
+.rich-text u { text-decoration: underline; }
+.rich-text s { text-decoration: line-through; }
+.rich-text ul, .rich-text ol { margin: 0 0 1em; padding-left: 1.4em; }
+.rich-text ul { list-style: disc; }
+.rich-text ol { list-style: decimal; }
+.rich-text li { margin: .25em 0; }
+.rich-text li > p { margin: 0; }
+.rich-text a { color: #0071e3; text-decoration: underline; }
+.rich-text blockquote { margin: 1em 0; padding: .2em 0 .2em 1em; border-left: 3px solid #e0e0e0; color: #7a7a7a; }
+.rich-text hr { margin: 1.5em 0; border: 0; border-top: 1px solid #e0e0e0; }
+.rich-text code { padding: .1em .35em; border-radius: 4px; background: #f0edef; font-size: .9em; }
+.rich-text pre { margin: 1em 0; padding: 1em; overflow-x: auto; border-radius: 8px; background: #f0edef; }
+.rich-text pre code { padding: 0; background: none; }
+/* Tailwind Preflight가 img를 display:block으로 바꾸는데, 블록 요소는 부모 문단의
+   text-align을 무시한다. 이미지 정렬이 먹으려면 인라인 계열로 되돌려야 한다. */
+.rich-text img { display: inline-block; vertical-align: top; max-width: 100%; height: auto; margin: .5em 0; border-radius: 8px; }
+/* 표는 모바일에서 넘칠 수 있어 가로 스크롤을 허용한다 */
+.rich-text table { display: block; width: 100%; max-width: 100%; margin: 1em 0; overflow-x: auto; border-collapse: collapse; }
+.rich-text th, .rich-text td { min-width: 80px; padding: .5em .75em; border: 1px solid #e0e0e0; text-align: left; vertical-align: top; }
+.rich-text th { background: #fafafc; font-weight: 700; }
+
+/* 리치 텍스트 에디터(Tiptap/ProseMirror) 입력 영역.
+   본문에는 위의 .rich-text 규칙이 그대로 적용되고, 여기서는 편집에만 필요한 것을 더한다. */
+.ProseMirror { outline: none; }
+.ProseMirror table { display: table; table-layout: fixed; }
+.ProseMirror table td, .ProseMirror table th { position: relative; }
+/* 선택된 셀 표시 */
+.ProseMirror .selectedCell::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; background: rgba(0, 113, 227, 0.12);
+}
+/* 열 너비 조절 손잡이 */
+.ProseMirror .column-resize-handle {
+  position: absolute; top: 0; right: -2px; bottom: -2px; width: 4px;
+  background: #0071e3; pointer-events: none;
+}
+.ProseMirror.resize-cursor { cursor: col-resize; }
+/* 이미지·표를 노드째 선택했을 때 */
+.ProseMirror .ProseMirror-selectednode { outline: 2px solid #0071e3; }

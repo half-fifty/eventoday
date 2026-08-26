@@ -8,7 +8,7 @@ spec:
 
   source:
     repoURL: https://github.com/half-fifty/eventoday.git
-    targetRevision: main
+    targetRevision: dev
     path: k8s
 
   destination:

@@ -34,13 +34,15 @@ docs/   요구사항/API/테이블 명세 등 프로젝트 문서
 - Node.js 20+
 - Docker / Docker Compose
 
-### 1. 인프라 실행 (PostgreSQL, Redis)
+### 1. 환경변수 설정 및 로컬 인프라 실행
 
 ```bash
+cp .env.example .env
 docker compose up -d
 ```
 
-기본 접속 정보는 `.env.example`을 참고하세요. 필요 시 `.env`로 복사해 값을 덮어쓸 수 있습니다.
+PostgreSQL, Redis, Kafka, MinIO는 Docker Compose로 로컬에 실행됩니다. 로컬 데이터는
+Docker 볼륨에 유지되며 배포 DB와 완전히 분리됩니다.
 
 ### 2. 백엔드 실행
 

@@ -56,4 +56,69 @@ public class PaymentRefund {
 
     @Column(name = "pg_cancel_key", length = 200)
     private String pgCancelKey;
+
+    public static PaymentRefund requested(
+            Long paymentId,
+            Long requesterMemberId,
+            BigDecimal refundAmount,
+            String reason,
+            OffsetDateTime requestedAt) {
+        return PaymentRefund.builder()
+            .paymentId(paymentId)
+            .requesterMemberId(requesterMemberId)
+            .refundAmount(refundAmount)
+            .reason(reason)
+            .status(PaymentRefundStatus.REQUESTED)
+            .requestedAt(requestedAt)
+            .build();
+    }
+
+    public boolean isCompleted() {
+        return status == PaymentRefundStatus.COMPLETED;
+    }
+
+    public boolean isFailed() {
+        return status == PaymentRefundStatus.FAILED;
+    }
+
+    public void complete(String pgCancelKey, OffsetDateTime completedAt) {
+        if (status != PaymentRefundStatus.REQUESTED) {
+            throw new IllegalStateException("Refund is not requested.");
+        }
+
+        this.status = PaymentRefundStatus.COMPLETED;
+        this.pgCancelKey = pgCancelKey;
+        this.completedAt = completedAt;
+    }
+
+    public void fail(OffsetDateTime failedAt) {
+        if (status == PaymentRefundStatus.COMPLETED) {
+            throw new IllegalStateException("Completed refund cannot fail.");
+        }
+
+        this.status = PaymentRefundStatus.FAILED;
+        this.completedAt = failedAt;
+    }
+
+    public void failAfterGatewayCancellation(String pgCancelKey, OffsetDateTime failedAt) {
+        fail(failedAt);
+        this.pgCancelKey = pgCancelKey;
+    }
+
+    public void retry(
+            Long requesterMemberId,
+            BigDecimal refundAmount,
+            String reason,
+            OffsetDateTime requestedAt) {
+        if (status != PaymentRefundStatus.FAILED) {
+            throw new IllegalStateException("Only failed refund can retry.");
+        }
+
+        this.requesterMemberId = requesterMemberId;
+        this.refundAmount = refundAmount;
+        this.reason = reason;
+        this.status = PaymentRefundStatus.REQUESTED;
+        this.requestedAt = requestedAt;
+        this.completedAt = null;
+    }
 }
