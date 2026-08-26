@@ -31,15 +31,18 @@ public class Member {
     @Column(name = "email", nullable = false, unique = true, length = 255)
     private String email;
 
-    @Column(name = "nickname", nullable = false, unique = true, length = 50)
+    @Column(name = "nickname", nullable = false, length = 50)
     private String nickname;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "oauth_provider", nullable = false, length = 20)
+    @Column(name = "oauth_provider", length = 20)
     private OauthProvider oauthProvider;
 
-    @Column(name = "oauth_subject", nullable = false, length = 255)
+    @Column(name = "oauth_subject", length = 255)
     private String oauthSubject;
+
+    @Column(name = "password_hash", length = 255)
+    private String passwordHash;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "platform_role", nullable = false, length = 30)
@@ -57,4 +60,57 @@ public class Member {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public static Member createOAuthMember(
+            String email,
+            String nickname,
+            OauthProvider oauthProvider,
+            String oauthSubject,
+            OffsetDateTime now) {
+        return Member.builder()
+            .email(email)
+            .nickname(nickname)
+            .oauthProvider(oauthProvider)
+            .oauthSubject(oauthSubject)
+            .platformRole(PlatformRole.USER)
+            .status(MemberStatus.ACTIVE)
+            .lastLoginAt(now)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+    }
+
+    public static Member createBusinessMember(
+            String email,
+            String nickname,
+            String passwordHash,
+            OffsetDateTime now) {
+        return Member.builder()
+            .email(email)
+            .nickname(nickname)
+            .passwordHash(passwordHash)
+            .platformRole(PlatformRole.USER)
+            .status(MemberStatus.ACTIVE)
+            .createdAt(now)
+            .updatedAt(now)
+            .build();
+    }
+
+    public void updateOAuthProfile(
+            String email,
+            OffsetDateTime loginAt) {
+        this.email = email;
+        this.lastLoginAt = loginAt;
+        this.updatedAt = loginAt;
+    }
+
+    public void updateLastLoginAt(OffsetDateTime loginAt) {
+        this.lastLoginAt = loginAt;
+        this.updatedAt = loginAt;
+    }
+
+    public void changeStatus(MemberStatus status, OffsetDateTime updatedAt) {
+        this.status = status;
+        this.updatedAt = updatedAt;
+    }
 }

@@ -16,6 +16,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+// 한 회원은 같은 부스를 한 번만 예약할 수 있다(취소된 예약 포함, V21).
 @Entity
 @Table(
         name = "booth_reservations",
@@ -34,6 +35,10 @@ public class BoothReservation {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
     private Long id;
+
+    @Column(name = "created_at", nullable = false)
+    private OffsetDateTime createdAt;
+
 
     @Column(name = "booth_id", nullable = false)
     private Long boothId;
@@ -65,4 +70,25 @@ public class BoothReservation {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    public void updateStatus(BoothReservationStatus status) {
+        this.status = status;
+    }
+
+    public void updateCancelledAt(OffsetDateTime cancelledAt) {
+        this.cancelledAt = cancelledAt;
+    }
+
+    public void updateCheckedInAt(OffsetDateTime checkedInAt) {
+        this.checkedInAt = checkedInAt;
+    }
+
+    public void updateNoShowAt(OffsetDateTime noShowAt) {
+        this.noShowAt = noShowAt;
+    }
+
+    public void updateUpdatedAt(OffsetDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
 }

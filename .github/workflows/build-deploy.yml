@@ -1,0 +1,406 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches:
+      - dev
+    paths-ignore:
+      - 'k8s/**'
+      - 'argocd/**'
+      - 'docs/**'
+      - '**.md'
+
+  # Actions 화면에서 수동 실행도 가능하게 설정
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+# 여러 배포가 동시에 실행되어 서로 덮어쓰는 문제 방지
+concurrency:
+  group: eventoday-dev-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    runs-on: [self-hosted, arm64]
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ----------------------------------------------------------------
+      # 배포에 필요한 Secret / Variable 누락 검증
+      # ----------------------------------------------------------------
+      - name: Validate deployment configuration
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
+          NTS_BUSINESS_API_KEY: ${{ secrets.NTS_BUSINESS_API_KEY }}
+          ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
+          TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
+          KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
+          AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ vars.SMTP_FROM }}
+          SMTP_FROM_NAME: ${{ vars.SMTP_FROM_NAME }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CONTENT_AI_API_KEY: ${{ secrets.CONTENT_AI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
+          VITE_TOSS_CLIENT_KEY: ${{ vars.VITE_TOSS_CLIENT_KEY }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          COOKIE_SECURE: ${{ vars.COOKIE_SECURE }}
+          GROQ_BASE_URL: ${{ vars.GROQ_BASE_URL }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+          GROQ_VISION_MODEL: ${{ vars.GROQ_VISION_MODEL }}
+          GROQ_CONNECT_TIMEOUT: ${{ vars.GROQ_CONNECT_TIMEOUT }}
+          GROQ_READ_TIMEOUT: ${{ vars.GROQ_READ_TIMEOUT }}
+          GROQ_VISION_READ_TIMEOUT: ${{ vars.GROQ_VISION_READ_TIMEOUT }}
+
+        run: |
+          set -euo pipefail
+
+          required=(
+            POSTGRES_PASSWORD
+            JWT_SECRET
+            GOOGLE_CLIENT_ID
+            GOOGLE_CLIENT_SECRET
+            NAVER_CLIENT_ID
+            NAVER_CLIENT_SECRET
+            KAKAO_CLIENT_ID
+            KAKAO_CLIENT_SECRET
+            NTS_BUSINESS_API_KEY
+            ORDER_ACCESS_TOKEN_SECRET
+            TOSS_SECRET_KEY
+            KAKAO_MAP_REST_API_KEY
+            AWS_ACCESS_KEY
+            AWS_SECRET_KEY
+            SMTP_USERNAME
+            SMTP_PASSWORD
+            GEMINI_API_KEY
+            CONTENT_AI_API_KEY
+            GROQ_API_KEY
+
+            VITE_API_BASE_URL
+            VITE_KAKAO_MAP_JS_KEY
+            VITE_TOSS_CLIENT_KEY
+            FRONTEND_URL
+            COOKIE_SECURE
+            GROQ_BASE_URL
+            GROQ_MODEL
+            GROQ_VISION_MODEL
+            GROQ_CONNECT_TIMEOUT
+            GROQ_READ_TIMEOUT
+            GROQ_VISION_READ_TIMEOUT
+          )
+
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Required deployment setting is missing: $name"
+              exit 1
+            fi
+          done
+
+      # ----------------------------------------------------------------
+      # 백엔드 이미지 빌드 및 GHCR 업로드
+      # ----------------------------------------------------------------
+      - name: Build and push BE image
+        env:
+          BE_IMAGE: ghcr.io/half-fifty/eventoday-be:${{ github.sha }}
+
+        run: |
+          set -euo pipefail
+
+          docker build \
+            -t "${BE_IMAGE}" \
+            -t ghcr.io/half-fifty/eventoday-be:latest \
+            -f BE/Dockerfile \
+            BE
+
+          docker push "${BE_IMAGE}"
+          docker push ghcr.io/half-fifty/eventoday-be:latest
+
+      # ----------------------------------------------------------------
+      # 프론트엔드 이미지 빌드 및 GHCR 업로드
+      # ----------------------------------------------------------------
+      - name: Build and push FE image
+        env:
+          FE_IMAGE: ghcr.io/half-fifty/eventoday-fe:${{ github.sha }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_KAKAO_MAP_JS_KEY: ${{ vars.VITE_KAKAO_MAP_JS_KEY }}
+          VITE_TOSS_CLIENT_KEY: ${{ vars.VITE_TOSS_CLIENT_KEY }}
+
+        run: |
+          set -euo pipefail
+
+          docker build \
+            --build-arg "VITE_API_BASE_URL=${VITE_API_BASE_URL}" \
+            --build-arg "VITE_KAKAO_MAP_JS_KEY=${VITE_KAKAO_MAP_JS_KEY}" \
+            --build-arg "VITE_TOSS_CLIENT_KEY=${VITE_TOSS_CLIENT_KEY}" \
+            -t "${FE_IMAGE}" \
+            -t ghcr.io/half-fifty/eventoday-fe:latest \
+            -f FE/Dockerfile \
+            FE
+
+          docker push "${FE_IMAGE}"
+          docker push ghcr.io/half-fifty/eventoday-fe:latest
+
+      # ----------------------------------------------------------------
+      # Git에 저장된 Kubernetes manifest 이미지 태그 갱신
+      # ----------------------------------------------------------------
+      - name: Update manifest image tags
+        id: bump_manifest
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          COOKIE_SECURE: ${{ vars.COOKIE_SECURE }}
+
+        run: |
+          set -euo pipefail
+
+          sed -i \
+            "s|eventoday-be:.*|eventoday-be:${IMAGE_TAG}|" \
+            k8s/backend.yaml
+
+          sed -i \
+            "s|eventoday-fe:.*|eventoday-fe:${IMAGE_TAG}|" \
+            k8s/frontend.yaml
+
+          sed -i \
+            "/name: FRONTEND_URL/{n;s|value: \".*\"|value: \"${FRONTEND_URL}\"|}" \
+            k8s/backend.yaml
+
+          sed -i \
+            "/name: COOKIE_SECURE/{n;s|value: \".*\"|value: \"${COOKIE_SECURE}\"|}" \
+            k8s/backend.yaml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add k8s/backend.yaml k8s/frontend.yaml
+
+          git commit \
+            -m "chore: bump image tag to ${IMAGE_TAG} [skip ci]" \
+            || echo "No manifest changes to commit"
+
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # ----------------------------------------------------------------
+      # Kubernetes Secret 갱신
+      # ----------------------------------------------------------------
+      - name: Sync k8s Secret
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
+          NTS_BUSINESS_API_KEY: ${{ secrets.NTS_BUSINESS_API_KEY }}
+          ORDER_ACCESS_TOKEN_SECRET: ${{ secrets.ORDER_ACCESS_TOKEN_SECRET }}
+          TOSS_SECRET_KEY: ${{ secrets.TOSS_SECRET_KEY }}
+          KAKAO_MAP_REST_API_KEY: ${{ secrets.KAKAO_MAP_REST_API_KEY }}
+          AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ vars.SMTP_FROM }}
+          SMTP_FROM_NAME: ${{ vars.SMTP_FROM_NAME }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CONTENT_AI_API_KEY: ${{ secrets.CONTENT_AI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_BASE_URL: ${{ vars.GROQ_BASE_URL }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+          GROQ_VISION_MODEL: ${{ vars.GROQ_VISION_MODEL }}
+          GROQ_CONNECT_TIMEOUT: ${{ vars.GROQ_CONNECT_TIMEOUT }}
+          GROQ_READ_TIMEOUT: ${{ vars.GROQ_READ_TIMEOUT }}
+          GROQ_VISION_READ_TIMEOUT: ${{ vars.GROQ_VISION_READ_TIMEOUT }}
+
+        run: |
+          set -euo pipefail
+
+          {
+            printf 'POSTGRES_USER=%s\n' 'expo_user'
+            printf 'POSTGRES_PASSWORD=%s\n' "${POSTGRES_PASSWORD}"
+            printf 'JWT_SECRET=%s\n' "${JWT_SECRET}"
+            printf 'GOOGLE_CLIENT_ID=%s\n' "${GOOGLE_CLIENT_ID}"
+            printf 'GOOGLE_CLIENT_SECRET=%s\n' "${GOOGLE_CLIENT_SECRET}"
+            printf 'NAVER_CLIENT_ID=%s\n' "${NAVER_CLIENT_ID}"
+            printf 'NAVER_CLIENT_SECRET=%s\n' "${NAVER_CLIENT_SECRET}"
+            printf 'KAKAO_CLIENT_ID=%s\n' "${KAKAO_CLIENT_ID}"
+            printf 'KAKAO_CLIENT_SECRET=%s\n' "${KAKAO_CLIENT_SECRET}"
+            printf 'NTS_BUSINESS_API_KEY=%s\n' "${NTS_BUSINESS_API_KEY}"
+            printf 'ORDER_ACCESS_TOKEN_SECRET=%s\n' "${ORDER_ACCESS_TOKEN_SECRET}"
+            printf 'TOSS_SECRET_KEY=%s\n' "${TOSS_SECRET_KEY}"
+            printf 'KAKAO_MAP_REST_API_KEY=%s\n' "${KAKAO_MAP_REST_API_KEY}"
+            printf 'AWS_ACCESS_KEY=%s\n' "${AWS_ACCESS_KEY}"
+            printf 'AWS_SECRET_KEY=%s\n' "${AWS_SECRET_KEY}"
+            [[ -n "${SMTP_HOST:-}" ]] && printf 'SMTP_HOST=%s\n' "${SMTP_HOST}"
+            [[ -n "${SMTP_PORT:-}" ]] && printf 'SMTP_PORT=%s\n' "${SMTP_PORT}"
+            printf 'SMTP_USERNAME=%s\n' "${SMTP_USERNAME}"
+            printf 'SMTP_PASSWORD=%s\n' "${SMTP_PASSWORD}"
+            [[ -n "${SMTP_FROM:-}" ]] && printf 'SMTP_FROM=%s\n' "${SMTP_FROM}"
+            [[ -n "${SMTP_FROM_NAME:-}" ]] && printf 'SMTP_FROM_NAME=%s\n' "${SMTP_FROM_NAME}"
+            printf 'GEMINI_API_KEY=%s\n' "${GEMINI_API_KEY}"
+            printf 'CONTENT_AI_API_KEY=%s\n' "${CONTENT_AI_API_KEY}"
+            printf 'GROQ_API_KEY=%s\n' "${GROQ_API_KEY}"
+            printf 'GROQ_BASE_URL=%s\n' "${GROQ_BASE_URL}"
+            printf 'GROQ_MODEL=%s\n' "${GROQ_MODEL}"
+            printf 'GROQ_VISION_MODEL=%s\n' "${GROQ_VISION_MODEL}"
+            printf 'GROQ_CONNECT_TIMEOUT=%s\n' "${GROQ_CONNECT_TIMEOUT}"
+            printf 'GROQ_READ_TIMEOUT=%s\n' "${GROQ_READ_TIMEOUT}"
+            printf 'GROQ_VISION_READ_TIMEOUT=%s\n' "${GROQ_VISION_READ_TIMEOUT}"
+
+          } | sudo kubectl create secret generic eventoday-secret \
+            --namespace eventoday \
+            --from-env-file=/dev/stdin \
+            --dry-run=client \
+            -o yaml \
+            | sudo kubectl apply -f -
+
+      # Secret이 먼저 반영된 뒤 manifest를 push해야 새 Pod가 최신 envFrom 값을 읽는다.
+      - name: Push updated manifests
+        run: |
+          set -euo pipefail
+          git push origin HEAD:dev
+
+      # ----------------------------------------------------------------
+      # 배포는 ArgoCD가 유일한 주체로 수행한다.
+      # ----------------------------------------------------------------
+      - name: Sync ArgoCD and wait for healthy rollout
+        env:
+          EXPECTED_REVISION: ${{ steps.bump_manifest.outputs.commit_sha }}
+
+        run: |
+          set -euo pipefail
+
+          sudo kubectl -n argocd annotate application eventoday \
+            argocd.argoproj.io/refresh=hard \
+            --overwrite
+
+          echo "Waiting for ArgoCD to sync to ${EXPECTED_REVISION} and become Healthy..."
+
+          for i in $(seq 1 60); do
+            SYNCED_REVISION=$(sudo kubectl -n argocd get application eventoday \
+              -o jsonpath='{.status.sync.revision}')
+            HEALTH=$(sudo kubectl -n argocd get application eventoday \
+              -o jsonpath='{.status.health.status}')
+
+            echo "  [$i] revision=${SYNCED_REVISION} health=${HEALTH}"
+
+            if [[ "${SYNCED_REVISION}" == "${EXPECTED_REVISION}" && "${HEALTH}" == "Healthy" ]]; then
+              echo "ArgoCD synced to ${EXPECTED_REVISION} and is Healthy."
+              exit 0
+            fi
+
+            sleep 5
+          done
+
+          echo "::error::Timed out waiting for ArgoCD to sync to ${EXPECTED_REVISION}"
+          exit 1
+
+      # ----------------------------------------------------------------
+      # 진단용: 위 단계가 실패했을 때만(Ready 안 된 파드가 있을 때) 원인을 로그에 남긴다.
+      # ----------------------------------------------------------------
+      - name: Dump not-ready pod diagnostics
+        if: failure()
+        run: |
+          set +e
+
+          echo "=== kubectl get pods -n eventoday -o wide ==="
+          sudo kubectl get pods -n eventoday -o wide
+
+          NOT_READY_PODS=$(sudo kubectl get pods -n eventoday \
+            -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[0].ready}{"\n"}{end}' \
+            | awk '$2 != "true" {print $1}')
+
+          for pod in ${NOT_READY_PODS}; do
+            echo
+            echo "=== describe ${pod} ==="
+            sudo kubectl describe pod "${pod}" -n eventoday
+            echo
+            echo "=== logs ${pod} (current) ==="
+            sudo kubectl logs "${pod}" -n eventoday --tail=300
+            echo
+            echo "=== logs ${pod} (previous, if restarted) ==="
+            sudo kubectl logs "${pod}" -n eventoday --tail=300 --previous || true
+          done
+
+      # ----------------------------------------------------------------
+      # 실제 Deployment에 원하는 이미지가 적용됐는지 검증
+      # ----------------------------------------------------------------
+      - name: Verify deployed images
+        env:
+          EXPECTED_BE_IMAGE: ghcr.io/half-fifty/eventoday-be:${{ github.sha }}
+          EXPECTED_FE_IMAGE: ghcr.io/half-fifty/eventoday-fe:${{ github.sha }}
+
+        run: |
+          set -euo pipefail
+
+          ACTUAL_BE_IMAGE=$(sudo kubectl get deployment eventoday-be \
+            -n eventoday \
+            -o jsonpath='{.spec.template.spec.containers[0].image}')
+
+          ACTUAL_FE_IMAGE=$(sudo kubectl get deployment eventoday-fe \
+            -n eventoday \
+            -o jsonpath='{.spec.template.spec.containers[0].image}')
+
+          echo "Expected BE image: ${EXPECTED_BE_IMAGE}"
+          echo "Actual BE image:   ${ACTUAL_BE_IMAGE}"
+          echo
+          echo "Expected FE image: ${EXPECTED_FE_IMAGE}"
+          echo "Actual FE image:   ${ACTUAL_FE_IMAGE}"
+
+          if [[ "${ACTUAL_BE_IMAGE}" != "${EXPECTED_BE_IMAGE}" ]]; then
+            echo "::error::Backend deployment image does not match"
+            exit 1
+          fi
+
+          if [[ "${ACTUAL_FE_IMAGE}" != "${EXPECTED_FE_IMAGE}" ]]; then
+            echo "::error::Frontend deployment image does not match"
+            exit 1
+          fi
+
+          echo "Backend and frontend images were deployed successfully."
+
+      # ----------------------------------------------------------------
+      # 현재 배포 상태 출력
+      # ----------------------------------------------------------------
+      - name: Show deployment status
+        run: |
+          set -euo pipefail
+
+          sudo kubectl get deployments \
+            -n eventoday \
+            -o wide
+
+          sudo kubectl get pods \
+            -n eventoday \
+            -o wide
